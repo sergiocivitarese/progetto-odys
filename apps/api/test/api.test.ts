@@ -385,3 +385,45 @@ test('Creator Studio: bozza privata, media, pubblicazione, feed, like e salvatag
   assert.equal((await call('DELETE', `/studio/posts/${id}`, undefined, author)).status, 204);
   assert.equal((await call<unknown[]>('GET', '/studio/posts', undefined, author)).data.length, 0);
 });
+
+test('moderazione: segnalazione, coda dell’amministratore, rimozione del contenuto e sospensione (S-07, G-02…G-04)', async () => {
+  const owner = 'token-autrice';
+  const ownerId = db.addUser(owner, undefined, 'autrice@example.com');
+  Object.assign(db.user(ownerId).profile, { role: 'coordinator', firstName: 'Nora', lastName: 'Gatti' });
+  await call('POST', '/coordinator/guidelines', {}, owner);
+  const reporter = 'token-segnalante';
+  db.addUser(reporter, undefined, 'segnalante@example.com');
+  const adminToken = 'token-moderatore';
+  const adminId = db.addUser(adminToken, undefined, 'moderatore@example.com');
+  Object.assign(db.user(adminId).profile, { role: 'admin' });
+
+  const post = await call<{ id: string }>('POST', '/studio/posts', { caption: 'Spam sospetto', rightsConfirmed: true }, owner);
+  const media = await call<{ id: string }>('POST', `/studio/posts/${post.data.id}/media`, { mimeType: 'image/jpeg', sizeBytes: 1000, extension: 'jpg' }, owner);
+  await call('PATCH', `/studio/posts/${post.data.id}/media/${media.data.id}`, { status: 'ready' }, owner);
+  await call('POST', `/studio/posts/${post.data.id}/publish`, {}, owner);
+
+  // Segnalare richiede l'accesso, un motivo valido e un contenuto visibile.
+  assert.equal((await call('POST', '/reports', { targetKind: 'post', targetId: post.data.id, reason: 'spam' })).status, 401);
+  assert.equal((await call('POST', '/reports', { targetKind: 'post', targetId: post.data.id, reason: 'boh' }, reporter)).status, 422);
+  assert.equal((await call('POST', '/reports', { targetKind: 'post', targetId: post.data.id, reason: 'other' }, reporter)).status, 422);
+  const report = await call<{ id: string; status: string }>('POST', '/reports', { targetKind: 'post', targetId: post.data.id, reason: 'spam', details: 'Link pubblicitari' }, reporter);
+  assert.deepEqual([report.status, report.data.status], [201, 'open']);
+  assert.equal((await call('POST', '/reports', { targetKind: 'post', targetId: post.data.id, reason: 'spam' }, reporter)).status, 409);
+
+  // Solo l'amministratore vede la coda e decide (G-04).
+  assert.equal((await call('GET', '/admin/reports', undefined, reporter)).status, 403);
+  const queue = await call<Array<{ id: string; reportsOnTarget: number }>>('GET', '/admin/reports?status=open', undefined, adminToken);
+  assert.equal(queue.data.find((item) => item.id === report.data.id)?.reportsOnTarget, 1);
+  const resolved = await call<{ status: string; actionTaken: string }>('POST', `/admin/reports/${report.data.id}/resolve`, { action: 'hidden', note: 'Contenuto promozionale' }, adminToken);
+  assert.deepEqual([resolved.data.status, resolved.data.actionTaken], ['resolved', 'hidden']);
+  assert.equal((await call('GET', `/posts/${post.data.id}`)).status, 404, 'il post rimosso esce dal feed');
+  assert.equal((await call('POST', `/admin/reports/${report.data.id}/resolve`, { action: 'dismiss' }, adminToken)).status, 422);
+
+  // Gestione account (G-02): sospensione con traccia; un amministratore non modifica sé stesso.
+  const accounts = await call<Array<{ id: string; email: string }>>('GET', '/admin/accounts?q=autrice', undefined, adminToken);
+  assert.deepEqual(accounts.data.map((item) => item.email), ['autrice@example.com']);
+  const suspended = await call<{ status: string }>('PATCH', `/admin/accounts/${ownerId}`, { status: 'suspended', note: 'Spam ripetuto' }, adminToken);
+  assert.equal(suspended.data.status, 'suspended');
+  assert.equal((await call('PATCH', `/admin/accounts/${adminId}`, { role: 'traveler' }, adminToken)).status, 422);
+  assert.equal((await call('PATCH', `/admin/accounts/${ownerId}`, { role: 'superuser' }, adminToken)).status, 400);
+});

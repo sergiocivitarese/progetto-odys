@@ -2,7 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppConfig } from '../../config/env';
 import type { AuthUser } from '../../shared/auth';
 import type {
+  AccountSummary,
   AdminRepository,
+  ContentReport,
+  ReportAction,
+  ReportInput,
+  ReportReview,
+  ReportsRepository,
+  ReportStatus,
   ApplicationReview,
   ApplicationsRepository,
   ApplicationStatus,
@@ -216,6 +223,79 @@ class SupabaseAdminRepository implements AdminRepository {
     if (error) throw dbError(error);
     return (await this.listApplications()).find((item) => item.id === id) ?? null;
   }
+
+  async listReports(status?: ReportStatus): Promise<ReportReview[]> {
+    const { data, error } = await this.db.rpc('admin_content_reports', { p_status: status ?? null });
+    if (error) throw dbError(error);
+    return (data as Array<Record<string, unknown>>).map(toReportReview);
+  }
+
+  async resolveReport(id: string, action: ReportAction, note?: string): Promise<ReportReview | null> {
+    if (!isUuid(id)) return null;
+    const { error } = await this.db.rpc('admin_resolve_report', { p_report_id: id, p_action: action, p_note: note ?? null });
+    if (error) throw dbError(error);
+    return (await this.listReports()).find((item) => item.id === id) ?? null;
+  }
+
+  async listAccounts(query?: string): Promise<AccountSummary[]> {
+    const { data, error } = await this.db.rpc('admin_accounts', { p_query: query ?? null });
+    if (error) throw dbError(error);
+    return (data as Array<Record<string, unknown>>).map(toAccount);
+  }
+
+  async updateAccount(id: string, changes: { role?: AccountSummary['role']; status?: AccountSummary['status'] }, note?: string): Promise<AccountSummary | null> {
+    if (!isUuid(id)) return null;
+    const { error } = await this.db.rpc('admin_update_account', { p_user_id: id, p_role: changes.role ?? null, p_status: changes.status ?? null, p_note: note ?? null });
+    if (error) throw dbError(error);
+    return (await this.listAccounts()).find((item) => item.id === id) ?? null;
+  }
+}
+
+function toReportReview(row: Record<string, unknown>): ReportReview {
+  return {
+    id: row['id'] as string,
+    targetKind: row['target_kind'] as ReportReview['targetKind'],
+    targetId: row['target_id'] as string,
+    reason: row['reason'] as ReportReview['reason'],
+    details: (row['details'] as string | null) ?? undefined,
+    status: row['status'] as ReportStatus,
+    actionTaken: (row['action_taken'] as ReportReview['actionTaken'] | null) ?? undefined,
+    resolutionNote: (row['resolution_note'] as string | null) ?? undefined,
+    decidedAt: (row['decided_at'] as string | null) ?? undefined,
+    createdAt: row['created_at'] as string,
+    reporterEmail: (row['reporter_email'] as string | null) ?? undefined,
+    targetTitle: (row['target_title'] as string | null) ?? undefined,
+    targetOwnerId: (row['target_owner_id'] as string | null) ?? undefined,
+    targetOwnerName: (row['target_owner_name'] as string | null) ?? undefined,
+    reportsOnTarget: Number(row['reports_on_target'] ?? 1),
+  };
+}
+
+function toAccount(row: Record<string, unknown>): AccountSummary {
+  return {
+    id: row['id'] as string,
+    email: (row['email'] as string | null) ?? undefined,
+    firstName: row['first_name'] as string,
+    lastName: row['last_name'] as string,
+    role: row['role'] as AccountSummary['role'],
+    status: row['status'] as AccountSummary['status'],
+    createdAt: row['created_at'] as string,
+  };
+}
+
+class SupabaseReportsRepository implements ReportsRepository {
+  constructor(private readonly db: SupabaseClient) {}
+
+  async create(input: ReportInput): Promise<ContentReport> {
+    const { data, error } = await this.db.from('content_reports')
+      .insert({ target_kind: input.targetKind, target_id: input.targetId, reason: input.reason, details: input.details ?? null })
+      .select('id, target_kind, target_id, reason, details, status, action_taken, decided_at, created_at').single();
+    if (error) throw dbError(error.code === '23505' ? { code: '23505', message: 'Hai già segnalato questo contenuto: lo stiamo valutando.' } : error);
+    return {
+      id: data.id, targetKind: data.target_kind, targetId: data.target_id, reason: data.reason, details: data.details ?? undefined,
+      status: data.status, actionTaken: data.action_taken ?? undefined, decidedAt: data.decided_at ?? undefined, createdAt: data.created_at,
+    };
+  }
 }
 
 export function supabaseCommunity(config: AppConfig): CommunityStore {
@@ -223,5 +303,6 @@ export function supabaseCommunity(config: AppConfig): CommunityStore {
     participation: (user) => new SupabaseParticipationRepository(userClient(config, user.accessToken), user),
     applications: (user) => new SupabaseApplicationsRepository(userClient(config, user.accessToken), user),
     admin: (user) => new SupabaseAdminRepository(userClient(config, user.accessToken), user),
+    reports: (user) => new SupabaseReportsRepository(userClient(config, user.accessToken)),
   };
 }

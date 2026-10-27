@@ -77,10 +77,60 @@ export interface ApplicationsRepository {
   submit(input: CoordinatorApplicationInput, guidelinesVersion: string): Promise<CoordinatorApplication>;
 }
 
+export type ReportTarget = 'post' | 'published_trip' | 'profile';
+export type ReportReason = 'spam' | 'inappropriate' | 'misleading' | 'copyright' | 'safety' | 'other';
+export type ReportStatus = 'open' | 'resolved' | 'dismissed';
+/** `hidden`: post o viaggio archiviato; `suspended`: account dell'autore sospeso. */
+export type ReportAction = 'dismiss' | 'none' | 'hidden' | 'suspended';
+
+export interface ReportInput {
+  targetKind: ReportTarget;
+  targetId: string;
+  reason: ReportReason;
+  details?: string;
+}
+
+export interface ContentReport extends ReportInput {
+  id: string;
+  status: ReportStatus;
+  actionTaken?: 'none' | 'hidden' | 'suspended';
+  decidedAt?: string;
+  createdAt: string;
+}
+
+/** Segnalazione nella coda dell'amministratore (G-04), con riepilogo del contenuto. */
+export interface ReportReview extends ContentReport {
+  resolutionNote?: string;
+  reporterEmail?: string;
+  targetTitle?: string;
+  targetOwnerId?: string;
+  targetOwnerName?: string;
+  reportsOnTarget: number;
+}
+
+export interface AccountSummary {
+  id: string;
+  email?: string;
+  firstName: string;
+  lastName: string;
+  role: 'traveler' | 'coordinator' | 'agency' | 'admin';
+  status: 'active' | 'suspended' | 'disabled';
+  createdAt: string;
+}
+
+/** Segnalazioni inviate dagli utenti (S-07). */
+export interface ReportsRepository {
+  create(input: ReportInput): Promise<ContentReport>;
+}
+
 export interface AdminRepository {
   isAdmin(): Promise<boolean>;
   listApplications(status?: ApplicationStatus): Promise<ApplicationReview[]>;
   decideApplication(id: string, approve: boolean, adminNote?: string, reviewerMessage?: string): Promise<ApplicationReview | null>;
+  listReports(status?: ReportStatus): Promise<ReportReview[]>;
+  resolveReport(id: string, action: ReportAction, note?: string): Promise<ReportReview | null>;
+  listAccounts(query?: string): Promise<AccountSummary[]>;
+  updateAccount(id: string, changes: { role?: AccountSummary['role']; status?: AccountSummary['status'] }, note?: string): Promise<AccountSummary | null>;
 }
 
 /** Fabbriche dei repository di questa area, per l'utente della richiesta. */
@@ -88,4 +138,5 @@ export interface CommunityStore {
   participation(user: AuthUser): ParticipationRepository;
   applications(user: AuthUser): ApplicationsRepository;
   admin(user: AuthUser): AdminRepository;
+  reports(user: AuthUser): ReportsRepository;
 }

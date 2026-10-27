@@ -27,6 +27,13 @@ import {
   type SavedTripsRepository,
 } from '../../shared/catalog';
 import type {
+  AccountSummary,
+  ContentReport,
+  ReportAction,
+  ReportInput,
+  ReportReview,
+  ReportsRepository,
+  ReportStatus,
   AdminRepository,
   ApplicationReview,
   ApplicationsRepository,
@@ -79,6 +86,7 @@ export class MemoryDatabase {
   readonly participations = new Map<string, MemoryParticipation>();
   readonly applications: MemoryApplication[] = [];
   readonly creator = new MemoryCreatorData();
+  readonly reports: Array<ReportReview & { reporterId: string }> = [];
   readonly users = new Map<string, MemoryUser>();
   /** token → utente, per simulare l'autenticazione nei test. */
   readonly tokens = new Map<string, { id: string; email: string }>();
@@ -423,6 +431,85 @@ class MemoryAdminRepository implements AdminRepository {
     if (approve) this.db.user(item.userId).profile.role = 'coordinator';
     return review(this.db, item);
   }
+
+  private ownerOf(report: ReportInput): string | undefined {
+    if (report.targetKind === 'post') return this.db.creator.posts.get(report.targetId)?.authorId;
+    if (report.targetKind === 'published_trip') return this.db.published.get(report.targetId)?.coordinatorId;
+    return report.targetId;
+  }
+
+  async listReports(status?: ReportStatus) {
+    await this.guard();
+    return this.db.reports.filter((report) => !status || report.status === status).map(({ reporterId: _r, ...report }) => ({
+      ...report,
+      reportsOnTarget: this.db.reports.filter((other) => other.targetKind === report.targetKind && other.targetId === report.targetId).length,
+    }));
+  }
+
+  async resolveReport(id: string, action: ReportAction, note?: string) {
+    await this.guard();
+    const report = this.db.reports.find((item) => item.id === id);
+    if (!report) return null;
+    if (report.status !== 'open') throw new HttpError(422, 'Questa segnalazione è già stata valutata.');
+    if (action === 'hidden') {
+      if (report.targetKind === 'post') { const post = this.db.creator.posts.get(report.targetId); if (post) post.status = 'archived'; }
+      else if (report.targetKind === 'published_trip') { const trip = this.db.published.get(report.targetId); if (trip) trip.status = 'archived'; }
+      else throw new HttpError(422, 'Per un profilo usa la sospensione dell’account.');
+    }
+    if (action === 'suspended') {
+      const owner = this.ownerOf(report);
+      if (owner === this.userId) throw new HttpError(422, 'Non puoi sospendere il tuo account.');
+      if (owner && this.db.users.has(owner)) this.db.user(owner).profile.status = 'suspended';
+    }
+    const now = new Date().toISOString();
+    for (const item of this.db.reports) {
+      if (item.targetKind === report.targetKind && item.targetId === report.targetId && item.status === 'open') {
+        Object.assign(item, { status: action === 'dismiss' ? 'dismissed' : 'resolved', actionTaken: action === 'dismiss' ? 'none' : action, resolutionNote: note, decidedAt: now });
+      }
+    }
+    this.db.user(this.userId).audit.unshift({ action: `report.${action}`, entity: report.targetKind, entityId: report.targetId, createdAt: now });
+    return (await this.listReports()).find((item) => item.id === id) ?? null;
+  }
+
+  async listAccounts(query?: string) {
+    await this.guard();
+    const q = query?.trim().toLowerCase();
+    return [...this.db.users.values()].map(({ profile }): AccountSummary => ({ id: profile.id, email: profile.email, firstName: profile.firstName, lastName: profile.lastName, role: profile.role, status: profile.status, createdAt: profile.createdAt }))
+      .filter((account) => !q || `${account.email} ${account.firstName} ${account.lastName}`.toLowerCase().includes(q));
+  }
+
+  async updateAccount(id: string, changes: { role?: AccountSummary['role']; status?: AccountSummary['status'] }) {
+    await this.guard();
+    if (id === this.userId) throw new HttpError(422, 'Non puoi modificare ruolo o stato del tuo account.');
+    const user = this.db.users.get(id);
+    if (!user) return null;
+    Object.assign(user.profile, Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)));
+    this.db.user(this.userId).audit.unshift({ action: 'account.update', entity: 'profile', entityId: id, metadata: changes, createdAt: new Date().toISOString() });
+    return (await this.listAccounts()).find((account) => account.id === id) ?? null;
+  }
+}
+
+/** Stesse regole del trigger SQL `content_reports_guard`. */
+class MemoryReportsRepository implements ReportsRepository {
+  constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
+
+  async create(input: ReportInput): Promise<ContentReport> {
+    const post = input.targetKind === 'post' ? this.db.creator.posts.get(input.targetId) : undefined;
+    const trip = input.targetKind === 'published_trip' ? this.db.published.get(input.targetId) : undefined;
+    const profile = input.targetKind === 'profile' ? this.db.users.get(input.targetId)?.profile : undefined;
+    const visible = (post && !post.deleted && (post.status === 'published' || (post.status === 'scheduled' && post.scheduledFor && Date.parse(post.scheduledFor) <= Date.now())))
+      || (trip && isPublic(trip))
+      || (profile && (profile.role === 'coordinator' || profile.role === 'admin'));
+    if (!visible) throw new HttpError(404, 'Elemento non trovato.');
+    if (input.targetKind === 'profile' && input.targetId === this.userId) throw new HttpError(422, 'Non puoi segnalare il tuo profilo.');
+    if (this.db.reports.some((item) => item.reporterId === this.userId && item.targetKind === input.targetKind && item.targetId === input.targetId && item.status === 'open')) {
+      throw new HttpError(409, 'Hai già segnalato questo contenuto: lo stiamo valutando.');
+    }
+    const report = { ...input, id: randomUUID(), reporterId: this.userId, status: 'open' as const, createdAt: new Date().toISOString(), reporterEmail: this.db.user(this.userId).profile.email, reportsOnTarget: 1 };
+    this.db.reports.push(report);
+    const { reporterId: _r, reporterEmail: _e, reportsOnTarget: _n, ...visibleReport } = report;
+    return visibleReport;
+  }
 }
 
 export function memoryDataStore(db: MemoryDatabase): DataStore {
@@ -435,6 +522,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     participation: (user) => new MemoryParticipationRepository(db, user.id),
     applications: (user) => new MemoryApplicationsRepository(db, user.id),
     admin: (user) => new MemoryAdminRepository(db, user.id),
+    reports: (user) => new MemoryReportsRepository(db, user.id),
     ...memoryCreator(db, db.creator),
   };
 }

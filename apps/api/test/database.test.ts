@@ -317,3 +317,26 @@ test('archivio dei media: si scrive solo nella propria cartella, si leggono solo
   await db.query(`insert into storage.objects (bucket_id, name) values ('creator-media', $1)`, [published]);
   assert.equal((await asAnon(() => db.query('select name from storage.objects where name = $1', [published]))).rows.length, 1);
 });
+
+test('moderazione: segnalazioni solo su contenuti visibili, decisioni solo dell’amministratore e tracciate (S-07, G-02…G-04)', async () => {
+  const post = (await db.query<{ id: string }>(`select id from public.creator_posts where status = 'published' limit 1`)).rows[0].id;
+  const draft = (await asUser(giulia, () => db.query<{ id: string }>(`insert into public.creator_posts (caption) values ('privata') returning id`))).rows[0].id;
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.content_reports (target_kind, target_id, reason) values ('post', $1, 'spam')`, [draft])), /non trovato/);
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.content_reports (target_kind, target_id, reason, status) values ('post', $1, 'spam', 'resolved')`, [post])), /permission denied/, 'chi segnala non decide l’esito');
+  const report = (await asUser(luca, () => db.query<{ id: string; status: string }>(`insert into public.content_reports (target_kind, target_id, reason) values ('post', $1, 'spam') returning id, status`, [post]))).rows[0];
+  assert.equal(report.status, 'open', 'la segnalazione nasce sempre aperta');
+  await assert.rejects(asUser(luca, () => db.query('select resolution_note from public.content_reports')), /permission denied/);
+  await assert.rejects(asUser(luca, () => db.query('select * from public.admin_content_reports()')), /amministratore/);
+
+  const admin = (await db.query<{ id: string }>(`select id from public.profiles where role = 'admin' limit 1`)).rows[0].id;
+  const queue = await asUser(admin, () => db.query<{ target_title: string; target_owner_id: string }>(`select target_title, target_owner_id from public.admin_content_reports('open')`));
+  assert.deepEqual(queue.rows[0], { target_title: 'Alba a Trastevere', target_owner_id: giulia });
+  await asUser(admin, () => db.query(`select public.admin_resolve_report($1, 'hidden', 'Verificato')`, [report.id]));
+  assert.equal((await asAnon(() => db.query('select id from public.creator_posts where id = $1', [post]))).rows.length, 0, 'il contenuto rimosso non è più pubblico');
+  assert.equal((await asUser(admin, () => db.query(`select id from public.audit_log where action = 'report.hidden'`))).rows.length, 1);
+
+  await assert.rejects(asUser(luca, () => db.query(`select public.admin_update_account($1, null, 'suspended')`, [giulia])), /amministratore/);
+  await asUser(admin, () => db.query(`select public.admin_update_account($1, null, 'suspended', 'Test')`, [marco]));
+  assert.equal((await db.query<{ status: string }>('select status from public.profiles where id = $1', [marco])).rows[0].status, 'suspended');
+  await assert.rejects(asUser(admin, () => db.query(`select public.admin_update_account($1, 'traveler')`, [admin])), /tuo account/);
+});

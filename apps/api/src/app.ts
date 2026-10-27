@@ -14,6 +14,7 @@ import { weatherRouter } from './modules/weather/weather.routes';
 import { accountRouter } from './modules/account/account.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { postsRouter, studioRouter } from './modules/creator/creator.routes';
+import { reportsRouter } from './modules/reports/reports.routes';
 import { coordinatorRouter } from './modules/coordinator/coordinator.routes';
 import { publishedRouter } from './modules/published/published.routes';
 import { supabaseAuthProvider } from './infra/supabase/auth-provider';
@@ -54,6 +55,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   app.use('/api/admin', adminRouter(auth, store));
   app.use('/api/posts', postsRouter(auth, store));
   app.use('/api/studio', studioRouter(auth, store));
+  app.use('/api/reports', reportsRouter(auth, store));
   app.use('/api/itineraries', itineraryRouter());
   app.use('/api/geo', geoRouter(new GeoService(config.keys.geoapify, config.dataDir, deps.store ? null : supabaseGeoCacheStore(config), config.osm, deps.fetch)));
   app.use('/api/weather', weatherRouter());
