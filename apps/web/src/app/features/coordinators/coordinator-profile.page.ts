@@ -32,6 +32,7 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
         </header>
         @if (c.bio) {<p class="bio">{{ c.bio }}</p>}
         @if (c.interests.length) {<ul class="tags">@for (tag of c.interests; track tag) {<li>{{ tag }}</li>}</ul>}
+        <a class="report-link" routerLink="/segnala" [queryParams]="{ tipo: 'profilo', id: c.id }"><odys-icon name="alert-triangle" [size]="14" /> Segnala questo profilo</a>
 
         <h2>Prossimi viaggi</h2>
         <div class="grid">
@@ -68,6 +69,7 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
       li { padding: 4px 12px; border-radius: var(--radius-pill); background: var(--color-surface-muted); font-size: var(--text-sm); font-weight: 600; } }
     h2 { font-size: var(--text-xl); margin: var(--space-8) 0 var(--space-4); }
     .grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+    .report-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-muted); }
     .posts { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(min(45%, 200px), 1fr)); }
   `,
 })

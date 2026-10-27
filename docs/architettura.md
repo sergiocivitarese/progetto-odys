@@ -36,7 +36,8 @@ e ricalcolare i piani; il frontend la usa per le modifiche istantanee in bozza e
 | `lib/tripForm.ts` | Regole del modulo "Pianifica il mio viaggio". |
 | `lib/savedTrips.ts` | Salvataggio, migrazione dei piani vecchi, ordinamento. |
 | `lib/routeModel.ts`, `mapModel.ts`, `repositioning.ts` | Nodi, tratte, mappa, proposta di riposizionamento. |
-| `lib/weather.ts`, `geocoding.ts`, `routing.ts` | Adattatori dei provider (Open-Meteo, Geoapify, GraphHopper). |
+| `lib/weather.ts`, `geocoding.ts`, `routing.ts` | Adattatori dei provider: Open-Meteo; Geoapify o Photon (OpenStreetMap); GraphHopper o OSRM (OpenStreetMap). |
+| `lib/placeSuggestions.ts` | Suggerimenti di località mentre si digita (Photon o Geoapify) e collegamenti a OpenStreetMap. |
 | `lib/tripTransfer.ts` | Export/import JSON (compatibile con gli export Triply v5). |
 
 Regola: **nessun accesso a rete, storage o variabili d'ambiente** decide qualcosa qui dentro; chi usa il
@@ -57,11 +58,14 @@ Ogni area funzionale è un **modulo** in `src/modules/<nome>/` con un router Exp
 | `coordinator` | `GET /api/coordinator/status`, `POST /guidelines`, `GET/POST /trips`, `GET/PUT /trips/:id`, `POST /trips/:id/(publish|schedule|unpublish|cancel|archive)` | Area coordinatore: offerte, linee guida, stati di pubblicazione |
 | `trips` | `GET/POST /api/trips`, `GET/PUT/PATCH/DELETE /api/trips/:id`, `/import`, `/:id/export`, `/:id/versions`, `/:id/versions/:v/restore` | Viaggi dell'utente con storico delle versioni |
 | `itinerary` | `POST /api/itineraries/generate`, `/dates/*`, `/budget`, `/origin/*`, `/finalize`, `/reposition` | Generazione e ricalcoli |
-| `geo` | `GET /api/geo/search`, `POST /api/geo/enrich`, `/confirm` | Geocoding Geoapify con cache su file |
+| `geo` | `GET /api/geo/suggest`, `/search`, `POST /api/geo/enrich`, `/confirm` | Suggerimenti e conferma delle posizioni (Photon/Geoapify) con cache |
 | `weather` | `POST /api/weather/refresh` | Meteo Open-Meteo per giornata |
-| `routing` | `POST /api/routes/calculate` | Percorso online GraphHopper di una tratta |
+| `routing` | `POST /api/routes/calculate` | Percorso online di una tratta (GraphHopper o OSRM) |
 | `maps` | `GET /api/maps/static` | Proxy mappa statica MapTiler |
 | `catalog` | `GET /api/config`, `/group-trips`, `/places/:id` | Configurazione pubblica e contenuti demo |
+| `creator` | `GET /api/posts`, `/posts/:id`, `/posts/saved`, `PUT/DELETE /posts/:id/(like|save)`; `/api/studio/posts…` (bacheca, media, stati) | Creator Studio e feed Esplora |
+| `reports` | `POST /api/reports` | Segnalazioni degli utenti |
+| `admin` | `/api/admin/applications`, `/reports`, `/accounts` | Candidature, moderazione, ruoli e stato degli account |
 
 Composizione in `src/app.ts`. Errori: lancia `new HttpError(status, 'messaggio leggibile')` e il
 gestore centrale risponde `{ "error": "..." }` (il frontend lo mostra all'utente).

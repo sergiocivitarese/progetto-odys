@@ -24,7 +24,7 @@ import { ButtonComponent, IconComponent } from '../../../shared/ui';
             <a role="menuitem" routerLink="/studio" (click)="open.set(false)"><odys-icon name="upload" [size]="16" /> Creator Studio</a>
           }
           @if (account.isAdmin()) {
-            <a role="menuitem" routerLink="/admin/candidature" (click)="open.set(false)"><odys-icon name="users" [size]="16" /> Candidature</a>
+            <a role="menuitem" routerLink="/admin" (click)="open.set(false)"><odys-icon name="shield" [size]="16" /> Amministrazione</a>
           }
           <button type="button" role="menuitem" (click)="signOut()"><odys-icon name="log-out" [size]="16" /> Esci</button>
         </div>

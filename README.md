@@ -45,9 +45,10 @@ Senza Supabase l'app parte lo stesso: si può esplorare e pianificare, ma non ac
 
 ### Provider opzionali
 
-Copia `apps/api/.env.example` in `apps/api/.env` e aggiungi le chiavi che vuoi attivare
-(Geoapify per il geocoding, GraphHopper per i percorsi, MapTiler per la cartografia).
-Senza chiavi l'app funziona con i fallback locali dichiarati; il meteo (Open-Meteo) non richiede chiavi.
+Senza nessuna chiave l'app usa servizi gratuiti: Photon (OpenStreetMap) per suggerimenti e posizioni,
+OSRM sui server OpenStreetMap per i percorsi, le tile OpenStreetMap per la mappa e Open-Meteo per il meteo.
+Sono pensati per un uso moderato: con molto traffico copia `apps/api/.env.example` in `apps/api/.env`
+e aggiungi le chiavi (Geoapify, GraphHopper) oppure gli indirizzi di istanze proprie (`PHOTON_URL`, `OSRM_URL`).
 Le chiavi restano **solo sul server**: il browser non le vede mai.
 
 ## Script
@@ -55,7 +56,7 @@ Le chiavi restano **solo sul server**: il browser non le vede mai.
 | Comando | Cosa fa |
 |---|---|
 | `npm run dev` | avvia backend e frontend insieme |
-| `npm test` | test del dominio (61), dello schema del database (12) e dell'API (9) |
+| `npm test` | test del dominio (65) e di database e API (34) |
 | `npm run db:migrate` | applica le migrazioni SQL al database Supabase |
 | `npm run typecheck` | controllo dei tipi di dominio e API |
 | `npm run build` | build di produzione (API + web) |

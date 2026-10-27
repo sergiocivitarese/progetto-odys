@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { apiErrorMessage } from '../../core/api/api-client';
 import { CatalogApi, type ApplicationReview, type ApplicationStatus } from '../../core/api/catalog.api';
 import { ButtonComponent, ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
+import { AdminNavComponent } from './admin-nav.component';
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = { pending: 'In attesa', approved: 'Approvata', rejected: 'Rifiutata' };
 
@@ -13,7 +14,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = { pending: 'In attesa',
  */
 @Component({
   selector: 'odys-admin-applications-page',
-  imports: [DatePipe, FormsModule, ButtonComponent, ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent],
+  imports: [DatePipe, FormsModule, AdminNavComponent, ButtonComponent, ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
@@ -22,6 +23,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = { pending: 'In attesa',
         <h1>Candidature dei coordinatori</h1>
         <p class="muted">Approva solo profili completi e con esperienza verificabile: l’approvazione attiva subito il ruolo di coordinatore.</p>
       </header>
+      <odys-admin-nav />
 
       <div class="filters" role="group" aria-label="Filtra per stato">
         @for (option of filters; track option.value) {
