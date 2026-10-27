@@ -18,6 +18,7 @@ import type {
 import { dbError, userClient } from './client';
 import { supabaseCatalog } from './supabase-catalog';
 import { supabaseCommunity } from './supabase-community';
+import { supabaseCreator } from './supabase-creator';
 
 interface TripRow {
   id: string;
@@ -221,5 +222,6 @@ export function supabaseDataStore(config: AppConfig): DataStore {
     coordinator: catalog.coordinator,
     saved: catalog.saved,
     ...supabaseCommunity(config),
+    ...supabaseCreator(config),
   };
 }

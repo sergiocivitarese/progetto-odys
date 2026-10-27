@@ -267,3 +267,53 @@ test('l’amministratore valuta la candidatura: l’approvazione attiva il ruolo
   assert.equal(audit.rows.length, 1);
   await assert.rejects(asUser(admin, () => db.query('select public.admin_decide_coordinator_application($1, false)', [id])), /già stata valutata/);
 });
+
+// ---------------------------------------------------------------------------
+// Creator Studio (migrazione 0006)
+// ---------------------------------------------------------------------------
+
+test('Creator Studio: bozze private, pubblicazione validata, like solo su post visibili (C-20…C-23, S-02, U-20)', async () => {
+  // Giulia è coordinatrice (test precedenti); Luca è un viaggiatore.
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.creator_posts (caption) values ('ciao')`)), /row-level security/);
+  const { rows } = await asUser(giulia, () => db.query<{ id: string }>(`insert into public.creator_posts (caption) values ('Alba a Trastevere') returning id`));
+  const post = rows[0].id;
+  assert.equal((await asAnon(() => db.query('select id from public.creator_posts where id = $1', [post]))).rows.length, 0, 'la bozza non è pubblica');
+
+  await assert.rejects(asUser(giulia, () => db.query(`update public.creator_posts set status = 'published' where id = $1`, [post])), /almeno una foto/);
+  const key = `${giulia}/${post}/m1/original.jpg`;
+  await assert.rejects(asUser(giulia, () => db.query(`insert into public.creator_post_media (post_id, kind, mime_type, original_key) values ($1, 'image', 'image/jpeg', $2)`, [post, `${luca}/${post}/x.jpg`])), /Percorso/);
+  await asUser(giulia, () => db.query(`insert into public.creator_post_media (post_id, kind, mime_type, original_key) values ($1, 'image', 'image/jpeg', $2)`, [post, key]));
+  await assert.rejects(asUser(giulia, () => db.query(`update public.creator_posts set status = 'published' where id = $1`, [post])), /caricamento/);
+  await asUser(giulia, () => db.query(`update public.creator_post_media set status = 'ready' where post_id = $1`, [post]));
+  await assert.rejects(asUser(giulia, () => db.query(`update public.creator_posts set status = 'published' where id = $1`, [post])), /diritti/);
+  await asUser(giulia, () => db.query(`update public.creator_posts set rights_confirmed_at = now() where id = $1`, [post]));
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.creator_post_likes (post_id) values ($1)`, [post])), /row-level security/, 'niente like sulle bozze');
+
+  await asUser(giulia, () => db.query(`update public.creator_posts set status = 'scheduled', scheduled_for = now() + interval '1 hour' where id = $1`, [post]));
+  assert.equal((await asAnon(() => db.query('select id from public.creator_posts where id = $1', [post]))).rows.length, 0, 'programmato: privato fino all’ora');
+  await asUser(giulia, () => db.query(`update public.creator_posts set status = 'published' where id = $1`, [post]));
+  const visible = await asAnon(() => db.query<{ published_at: string }>('select published_at from public.creator_posts where id = $1', [post]));
+  assert.ok(visible.rows[0].published_at);
+  assert.equal((await asAnon(() => db.query('select id from public.creator_post_media where post_id = $1', [post]))).rows.length, 1);
+
+  await asUser(luca, () => db.query(`insert into public.creator_post_likes (post_id) values ($1)`, [post]));
+  const counts = await asAnon(() => db.query<{ likes: number }>('select likes from public.creator_post_like_counts($1)', [[post]]));
+  assert.equal(counts.rows[0].likes, 1);
+  assert.equal((await asUser(sara, () => db.query('select * from public.creator_post_likes'))).rows.length, 0, 'i like altrui non sono leggibili');
+
+  // Un altro coordinatore non modifica il post; nessuno lo collega a un viaggio altrui.
+  const foreign = await asUser(marco, () => db.query(`update public.creator_posts set caption = 'x' where id = $1 returning id`, [post]));
+  assert.equal(foreign.rows.length, 0);
+  const marcoTrip = (await db.query<{ id: string }>(`insert into public.published_trips (coordinator_id, title, itinerary) values ($1, 'Di Marco', '{"days":[]}') returning id`, [marco])).rows[0].id;
+  await assert.rejects(asUser(giulia, () => db.query(`update public.creator_posts set published_trip_id = $2 where id = $1`, [post, marcoTrip])), /tuoi viaggi/);
+});
+
+test('archivio dei media: si scrive solo nella propria cartella, si leggono solo i file dei post visibili (M-06)', async () => {
+  const own = `${giulia}/${crypto.randomUUID()}/m/original.jpg`;
+  await asUser(giulia, () => db.query(`insert into storage.objects (bucket_id, name) values ('creator-media', $1)`, [own]));
+  await assert.rejects(asUser(giulia, () => db.query(`insert into storage.objects (bucket_id, name) values ('creator-media', $1)`, [`${luca}/x/y.jpg`])), /row-level security/);
+  assert.equal((await asAnon(() => db.query('select name from storage.objects where name = $1', [own]))).rows.length, 0, 'file di una bozza: non leggibile dal pubblico');
+  const published = (await db.query<{ original_key: string }>(`select m.original_key from public.creator_post_media m join public.creator_posts p on p.id = m.post_id where p.status = 'published' limit 1`)).rows[0].original_key;
+  await db.query(`insert into storage.objects (bucket_id, name) values ('creator-media', $1)`, [published]);
+  assert.equal((await asAnon(() => db.query('select name from storage.objects where name = $1', [published]))).rows.length, 1);
+});

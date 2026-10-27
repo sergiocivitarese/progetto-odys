@@ -13,6 +13,7 @@ import type {
   TripVersion,
 } from '../../shared/data';
 import { HttpError } from '../../shared/http';
+import { MemoryCreatorData, memoryCreator } from './memory-creator';
 import {
   COORDINATOR_GUIDELINES_VERSION,
   displayName,
@@ -77,6 +78,7 @@ export class MemoryDatabase {
   readonly published = new Map<string, MemoryPublished>();
   readonly participations = new Map<string, MemoryParticipation>();
   readonly applications: MemoryApplication[] = [];
+  readonly creator = new MemoryCreatorData();
   readonly users = new Map<string, MemoryUser>();
   /** token → utente, per simulare l'autenticazione nei test. */
   readonly tokens = new Map<string, { id: string; email: string }>();
@@ -433,6 +435,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     participation: (user) => new MemoryParticipationRepository(db, user.id),
     applications: (user) => new MemoryApplicationsRepository(db, user.id),
     admin: (user) => new MemoryAdminRepository(db, user.id),
+    ...memoryCreator(db, db.creator),
   };
 }
 

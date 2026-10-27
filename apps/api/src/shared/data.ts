@@ -2,6 +2,7 @@ import type { Itinerary, SavedTrip } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { CatalogRepository, CoordinatorRepository, SavedTripsRepository } from './catalog';
 import type { CommunityStore } from './community';
+import type { CreatorStore } from './creator';
 
 /*
  * Contratti dell'archivio dati. Implementazioni:
@@ -105,7 +106,7 @@ export interface AccountRepository {
 }
 
 /** Fabbrica dei repository per l'utente della richiesta. */
-export interface DataStore extends CommunityStore {
+export interface DataStore extends CommunityStore, CreatorStore {
   trips(user: AuthUser): TripsRepository;
   account(user: AuthUser): AccountRepository;
   /** Catalogo pubblico: leggibile anche senza accesso. */

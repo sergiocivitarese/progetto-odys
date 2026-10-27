@@ -317,3 +317,71 @@ test('suggerimenti OpenStreetMap: pubblici, con attribuzione e messi in cache', 
   const tooShort = await call<{ suggestions: unknown[] }>('GET', '/geo/suggest?q=L');
   assert.deepEqual(tooShort.data.suggestions, []);
 });
+
+test('Creator Studio: bozza privata, media, pubblicazione, feed, like e salvataggi (C-19…C-29, U-05, U-19…U-21)', async () => {
+  const author = 'token-creator';
+  const authorId = db.addUser(author, undefined, 'creator@example.com');
+  Object.assign(db.user(authorId).profile, { role: 'coordinator', firstName: 'Livia', lastName: 'Monti' });
+  const fan = 'token-fan';
+  db.addUser(fan, undefined, 'fan@example.com');
+
+  // Riservato ai coordinatori che hanno accettato le linee guida.
+  assert.equal((await call('GET', '/studio/posts', undefined, fan)).status, 403);
+  assert.equal((await call('GET', '/studio/posts', undefined, author)).status, 428);
+  await call('POST', '/coordinator/guidelines', {}, author);
+
+  const draft = await call<{ id: string; status: string; media: unknown[] }>('POST', '/studio/posts', { caption: 'Tramonto sul Tago', location: { label: 'Lisbon, Portogallo', latitude: 38.7, longitude: -9.1, osmId: 'relation/5400890' } }, author);
+  assert.deepEqual([draft.status, draft.data.status], [201, 'draft']);
+  const id = draft.data.id;
+
+  // La bozza è privata (S-02, C-21) e non si pubblica senza media e senza diritti (C-23, M-05).
+  assert.equal((await call('GET', `/posts/${id}`)).status, 404);
+  assert.match((await call<{ error: string }>('POST', `/studio/posts/${id}/publish`, {}, author)).data.error, /almeno una foto/);
+  assert.equal((await call('POST', `/studio/posts/${id}/media`, { mimeType: 'application/pdf', sizeBytes: 10 }, author)).status, 422);
+  assert.equal((await call('POST', `/studio/posts/${id}/media`, { mimeType: 'video/mp4', sizeBytes: 1000, durationMs: 90_000 }, author)).status, 422);
+  const photo = await call<{ id: string; originalKey: string; displayKey: string; thumbnailKey: string; status: string }>('POST', `/studio/posts/${id}/media`, { mimeType: 'image/jpeg', sizeBytes: 2_000_000, width: 3000, height: 4000, extension: 'jpg' }, author);
+  assert.equal(photo.data.status, 'uploading');
+  assert.ok(photo.data.originalKey.startsWith(`${authorId}/${id}/`), 'i file stanno nella cartella dell’autore e del post');
+  assert.match((await call<{ error: string }>('POST', `/studio/posts/${id}/publish`, {}, author)).data.error, /caricamento/);
+  await call('PATCH', `/studio/posts/${id}/media/${photo.data.id}`, { status: 'ready' }, author);
+  assert.match((await call<{ error: string }>('POST', `/studio/posts/${id}/publish`, {}, author)).data.error, /diritti/);
+  await call('PATCH', `/studio/posts/${id}`, { rightsConfirmed: true }, author);
+  assert.equal((await call('PATCH', `/studio/posts/${id}`, { linkAccess: 'paid' }, author)).status, 422);
+
+  // Programmazione (C-22): resta privato fino all'ora indicata.
+  assert.equal((await call('POST', `/studio/posts/${id}/schedule`, { scheduledFor: new Date(Date.now() - 60_000).toISOString() }, author)).status, 422);
+  const scheduled = await call<{ status: string; scheduledFor: string }>('POST', `/studio/posts/${id}/schedule`, { scheduledFor: new Date(Date.now() + 3_600_000).toISOString() }, author);
+  assert.equal(scheduled.data.status, 'scheduled');
+  assert.equal((await call('GET', `/posts/${id}`)).status, 404);
+
+  // Pubblicazione immediata (C-23): compare nel feed pubblico con URL firmati e autore (U-05, U-19).
+  const published = await call<{ status: string; publishedAt: string }>('POST', `/studio/posts/${id}/publish`, {}, author);
+  assert.equal(published.data.status, 'published');
+  assert.ok(published.data.publishedAt);
+  const feed = await call<Array<{ id: string; author: { displayName: string }; media: Array<{ urls: { display: string; thumbnail: string } }>; likes: number }>>('GET', '/posts');
+  const item = feed.data.find((post) => post.id === id)!;
+  assert.equal(item.author.displayName, 'Livia M.');
+  assert.match(item.media[0].urls.display, /display\.webp$/);
+  assert.match(item.media[0].urls.thumbnail, /thumbnail\.webp$/);
+
+  // Like e salvataggi solo con l'accesso (U-20); il contatore è pubblico.
+  assert.equal((await call('PUT', `/posts/${id}/like`)).status, 401);
+  assert.equal((await call('PUT', `/posts/${id}/like`, undefined, fan)).status, 204);
+  assert.equal((await call('PUT', `/posts/${id}/save`, undefined, fan)).status, 204);
+  const seen = await call<{ likes: number; liked: boolean; saved: boolean }>('GET', `/posts/${id}`, undefined, fan);
+  assert.deepEqual([seen.data.likes, seen.data.liked, seen.data.saved], [1, true, true]);
+  assert.equal((await call<{ likes: number }>('GET', `/posts/${id}`)).data.likes, 1);
+  const saved = await call<Array<{ id: string }>>('GET', '/posts/saved', undefined, fan);
+  assert.deepEqual(saved.data.map((post) => post.id), [id]);
+
+  // Media modificabili solo in bozza; eliminando un media si cancellano i file (M-04).
+  assert.equal((await call('DELETE', `/studio/posts/${id}/media/${photo.data.id}`, undefined, author)).status, 422);
+  await call('POST', `/studio/posts/${id}/unpublish`, {}, author);
+  assert.equal((await call('GET', `/posts/${id}`)).status, 404);
+  assert.equal((await call('DELETE', `/studio/posts/${id}/media/${photo.data.id}`, undefined, author)).status, 204);
+  assert.ok(db.creator.removedKeys.includes(photo.data.originalKey));
+
+  // Eliminazione morbida: esce da ogni vista.
+  assert.equal((await call('DELETE', `/studio/posts/${id}`, undefined, author)).status, 204);
+  assert.equal((await call<unknown[]>('GET', '/studio/posts', undefined, author)).data.length, 0);
+});
