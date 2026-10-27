@@ -2,7 +2,7 @@
   "name": "progetto-odys",
   "version": "0.1.0",
   "private": true,
-  "description": "Odys \u2014 piattaforma travel: frontend Angular, backend Node.js, dominio condiviso.",
+  "description": "Odys — piattaforma travel: frontend Angular, backend Node.js, dominio condiviso.",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "sharp": "^0.34.5",
     "tsx": "^4.19.0",
     "typescript": "~5.9.2"
   }
