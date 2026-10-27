@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.angular/
+out-tsc/
+apps/api/data/
+.env
+*.log
+.DS_Store
+.claude/settings.local.json
+consegna/

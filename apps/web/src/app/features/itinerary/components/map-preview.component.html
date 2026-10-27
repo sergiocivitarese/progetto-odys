@@ -1,0 +1,71 @@
+<section class="map" aria-label="Mappa">
+  <header class="map__head">
+    <span class="map__icon"><odys-icon name="map" /></span>
+    <div class="map__titles">
+      <h3>{{ viewMode() === 'day' ? 'Mappa del giorno' : 'Mappa del viaggio' }}</h3>
+      <p>{{ drawing().tiles.length ? 'Cartografia OpenStreetMap' : 'Vista locale di nodi e collegamenti' }}</p>
+    </div>
+    <span class="map__count" [attr.aria-label]="visible().markers.length + ' posizioni'">{{ visible().markers.length }}</span>
+  </header>
+
+  <div class="map__modes" role="group" aria-label="Vista mappa">
+    @for (item of modes; track item.mode) {
+      <button type="button" class="pill" [class.is-active]="viewMode() === item.mode" [attr.aria-pressed]="viewMode() === item.mode" (click)="viewMode.set(item.mode)">{{ item.label }}</button>
+    }
+  </div>
+  @if ((viewMode() === 'day' || viewMode() === 'activities') && itinerary().days.length > 1) {
+    <div class="map__modes" role="group" aria-label="Giorno">
+      @for (day of itinerary().days; track day.day) {
+        <button type="button" class="pill pill--small" [class.is-active]="selectedDay() === day.day" (click)="selectDay.emit(day.day)">G{{ day.day }}</button>
+      }
+    </div>
+  }
+
+  @if (visible().markers.length === 0) {
+    <div class="map__empty">
+      <odys-icon name="map-pin" [size]="22" />
+      <strong>{{ confirmedDestination() ? 'Nessuna posizione disponibile' : 'Nessuna destinazione confermata' }}</strong>
+      <p>{{ confirmedDestination()
+        ? 'Conserviamo i luoghi e le tratte senza inventare coordinate. Potrai aggiungerle quando saranno disponibili.'
+        : 'Il nome della destinazione resta nel piano, ma la sua posizione deve ancora essere verificata.' }}</p>
+    </div>
+  } @else {
+    <div class="map__canvas">
+      <svg viewBox="0 0 320 180" role="img" aria-label="Mappa delle posizioni">
+        @for (tile of drawing().tiles; track tile.key) {
+          <image class="tile" [attr.href]="tile.href" [attr.x]="tile.x" [attr.y]="tile.y" width="128" height="128" preserveAspectRatio="none" (error)="tilesFailed.set(true)" />
+        }
+        @for (line of drawing().lines; track line.id) {
+          <line [attr.x1]="line.x1" [attr.y1]="line.y1" [attr.x2]="line.x2" [attr.y2]="line.y2" class="line" [class.is-selected]="line.segmentId === selectedSegmentId()" (click)="selectSegment.emit(line.segmentId)" />
+        }
+        @for (marker of drawing().markers; track marker.id) {
+          <g class="marker" [class.is-selected]="marker.nodeId === selectedNodeId()" (click)="selectNode.emit(marker.nodeId)" tabindex="0" role="button" [attr.aria-label]="marker.label" (keydown.enter)="selectNode.emit(marker.nodeId)">
+            <circle [attr.cx]="marker.x" [attr.cy]="marker.y" [attr.r]="marker.nodeId === selectedNodeId() ? 11 : 9" />
+            @if (marker.sequence) {<text [attr.x]="marker.x" [attr.y]="marker.y + 3.5">{{ marker.sequence }}</text>}
+          </g>
+        }
+      </svg>
+    </div>
+    @if (selectedLabel()) {<p class="map__selected"><odys-icon name="map-pin" [size]="14" /> {{ selectedLabel() }}</p>}
+  }
+
+  <label class="map__search">
+    <odys-icon [name]="searching() ? 'loader' : 'search'" [size]="16" />
+    <span class="visually-hidden">Cerca un luogo da aggiungere</span>
+    <input type="search" placeholder="Cerca un luogo da aggiungere" [ngModel]="query()" (ngModelChange)="onQuery($event)" />
+  </label>
+  @if (searchMessage()) {<p class="map__hint">{{ searchMessage() }}</p>}
+  @if (results().length) {
+    <ul class="map__results">
+      @for (node of results(); track node.id) {
+        <li>
+          <span><strong>{{ node.label }}</strong><small>Fonte: {{ node.source ?? 'Fonte non disponibile' }}</small></span>
+          <button odysButton variant="accent" size="sm" icon="plus" (click)="add(node)">Aggiungi</button>
+        </li>
+      }
+    </ul>
+  }
+  <p class="map__attribution">
+    @if (drawing().tiles.length) {Mappa <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>} @else {{{ attribution() }}}
+  </p>
+</section>

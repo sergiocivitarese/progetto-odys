@@ -1,0 +1,140 @@
+<div class="page account">
+  <header class="head">
+    <span class="avatar" aria-hidden="true">{{ auth.initials() }}</span>
+    <div>
+      <p class="eyebrow">Il tuo account</p>
+      <h1>{{ account.profile() ? account.profile()!.firstName + ' ' + account.profile()!.lastName : auth.displayName() }}</h1>
+      <p class="muted">{{ auth.user()?.email }} · {{ trips.trips().length }} {{ trips.trips().length === 1 ? 'viaggio salvato' : 'viaggi salvati' }}</p>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Sezioni dell’account">
+    <a href="#profilo">Profilo</a>
+    <a href="#preferenze">Preferenze</a>
+    <a href="#idee">Idee salvate</a>
+    <a href="#attivita">Attività</a>
+    <a href="#sicurezza">Sicurezza</a>
+  </nav>
+
+  <div class="sections">
+    <section id="profilo" class="card">
+      <h2>Profilo</h2>
+      <form class="form" (submit)="saveProfile($event)" novalidate>
+        <div class="two">
+          <odys-text-field label="Nome" autocomplete="given-name" [(value)]="firstName" />
+          <odys-text-field label="Cognome" autocomplete="family-name" [(value)]="lastName" />
+        </div>
+        @if (account.isCoordinator()) {
+          <odys-text-field label="Frase di presentazione pubblica" placeholder="Es. Viaggi lenti nel Sud Europa, da 10 anni" hint="Compare sul tuo profilo pubblico di coordinatore e sui tuoi viaggi." [(value)]="headline" />
+        }
+        <odys-text-field label="Presentazione (facoltativa)" [multiline]="true" placeholder="Come ti piace viaggiare?" [hint]="account.isCoordinator() ? 'Visibile sul tuo profilo pubblico di coordinatore.' : ''" [(value)]="bio" />
+        <div class="group">
+          <p class="label">I tuoi interessi</p>
+          <div class="chips">
+            @for (item of interestsOptions; track item) {
+              <button odysChip [selected]="interests().includes(item)" (click)="toggleInterest(item)">{{ item }}</button>
+            }
+          </div>
+        </div>
+        @if (account.profile()?.birthDate) {
+          <p class="muted small">Data di nascita: {{ account.profile()!.birthDate | date: 'd MMMM y' }} · per correggerla contatta l’assistenza.</p>
+        }
+        @if (profileState(); as state) {<odys-notice [tone]="state.tone">{{ state.text }}</odys-notice>}
+        <button odysButton type="submit" icon="check" [loading]="savingProfile()">Salva profilo</button>
+      </form>
+    </section>
+
+    <section id="preferenze" class="card">
+      <h2>Preferenze</h2>
+      <div class="pref">
+        <div><p class="label">Tema dell’app</p><p class="muted small">Viene ricordato anche sugli altri dispositivi in cui accedi.</p></div>
+        <odys-theme-switch />
+      </div>
+    </section>
+
+    <section id="partecipazioni" class="card">
+      <h2>Le mie richieste di partecipazione</h2>
+      @for (request of participations(); track request.id) {
+        <div class="idea">
+          <span class="idea__cover" aria-hidden="true">{{ request.trip?.destination?.[0] ?? '·' }}</span>
+          <div>
+            @if (request.trip; as trip) {
+              <a [routerLink]="['/gruppi', trip.id]"><strong>{{ trip.title }}</strong></a>
+              <p class="muted small">{{ trip.destination }} · con {{ trip.coordinator.displayName }} · {{ price(trip) }}</p>
+            } @else {
+              <strong>Viaggio non più disponibile</strong>
+            }
+            <p class="small"><span class="request-status request-status--{{ request.status }}">{{ participationLabel(request.status) }}</span> · richiesta del {{ request.createdAt | date: 'd MMM y' }}</p>
+          </div>
+        </div>
+      } @empty {
+        <p class="muted">Non hai ancora chiesto di partecipare a un viaggio. <a routerLink="/gruppi">Esplora i viaggi di gruppo</a>.</p>
+      }
+    </section>
+
+    <section id="idee" class="card">
+      <h2>Idee salvate</h2>
+      @for (trip of visibleSavedPublished(); track trip.id) {
+        <div class="idea">
+          <span class="idea__cover" aria-hidden="true">{{ trip.destination[0] }}</span>
+          <div><a [routerLink]="['/gruppi', trip.id]"><strong>{{ trip.title }}</strong></a><p class="muted small">{{ trip.destination }} · con {{ trip.coordinator.displayName }} · {{ price(trip) }}</p></div>
+          <button odysButton variant="ghost" size="sm" icon="x" (click)="unsaveTrip(trip.id)" [attr.aria-label]="'Rimuovi ' + trip.title">Rimuovi</button>
+        </div>
+      }
+      @for (trip of savedGroupTrips(); track trip.id) {
+        <div class="idea">
+          <img [src]="trip.image" alt="" />
+          <div><strong>{{ trip.title }}</strong><p class="muted small">{{ trip.destination }} · {{ trip.duration }} · {{ trip.price }}</p></div>
+          <button odysButton variant="ghost" size="sm" icon="x" (click)="toggleIdea(trip.id)" [attr.aria-label]="'Rimuovi ' + trip.title">Rimuovi</button>
+        </div>
+      }
+      @if (!visibleSavedPublished().length && !savedGroupTrips().length) {
+        <p class="muted">Nessuna idea salvata. <a routerLink="/gruppi">Esplora i viaggi di gruppo</a>.</p>
+      }
+    </section>
+
+    <section id="attivita" class="card">
+      <h2>Attività recenti</h2>
+      <p class="muted small">Il registro delle azioni importanti sul tuo account: serve a te e all’assistenza in caso di dubbi.</p>
+      <ol class="activity">
+        @for (entry of activity(); track $index) {
+          <li><span>{{ actionLabel(entry.action) }}</span><time class="muted">{{ entry.createdAt | date: 'd MMM y, HH:mm' }}</time></li>
+        } @empty {
+          <li class="muted">Ancora nessuna attività.</li>
+        }
+      </ol>
+    </section>
+
+    <section id="sicurezza" class="card">
+      <h2>Sicurezza</h2>
+      <form class="form inline" (submit)="changePassword($event)" novalidate>
+        <odys-text-field label="Nuova password" type="password" icon="lock" autocomplete="new-password" hint="Almeno 8 caratteri, con lettere e numeri." [(value)]="newPassword" />
+        <button odysButton type="submit" variant="secondary" icon="check" [loading]="savingPassword()">Cambia password</button>
+      </form>
+      @if (passwordState(); as state) {<odys-notice [tone]="state.tone">{{ state.text }}</odys-notice>}
+      <div class="row-actions">
+        <button odysButton variant="secondary" icon="log-out" (click)="signOut()">Esci da Odys</button>
+      </div>
+      <div class="danger-zone">
+        <div>
+          <p class="label">Elimina account</p>
+          <p class="muted small">Cancella definitivamente l’account, i viaggi con il loro storico e le idee salvate. Non si può annullare.</p>
+        </div>
+        <button odysButton variant="danger" icon="trash" (click)="deleteOpen.set(true)" [disabled]="!config.config()?.accountDeletion">Elimina account</button>
+      </div>
+      @if (config.config() && !config.config()!.accountDeletion) {
+        <p class="muted small">L’eliminazione online non è ancora attiva su questo server: contatta l’assistenza.</p>
+      }
+    </section>
+  </div>
+</div>
+
+<odys-dialog [open]="deleteOpen()" title="Eliminare l’account?" (closed)="deleteOpen.set(false); deleteText.set('')">
+  <p>Verranno cancellati definitivamente l’account, <strong>{{ trips.trips().length }} viaggi</strong> con il loro storico e le idee salvate.</p>
+  <odys-text-field label="Per confermare scrivi ELIMINA" [(value)]="deleteText" />
+  @if (deleteError()) {<odys-notice tone="danger">{{ deleteError() }}</odys-notice>}
+  <ng-container dialog-actions>
+    <button odysButton variant="ghost" (click)="deleteOpen.set(false)">Annulla</button>
+    <button odysButton variant="danger" icon="trash" [disabled]="deleteText().trim() !== 'ELIMINA'" [loading]="deleting()" (click)="deleteAccount()">Elimina definitivamente</button>
+  </ng-container>
+</odys-dialog>

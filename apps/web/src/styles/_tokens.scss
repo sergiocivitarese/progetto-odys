@@ -1,0 +1,132 @@
+// =============================================================================
+// Odys design tokens
+// Palette dalla brand board: Ink, Off White, Odys Blue, Odys Lime, Odys Coral.
+// I componenti usano SOLO i token semantici (--color-*), mai i valori brand.
+// =============================================================================
+
+:root {
+  // --- Brand (primitivi) ------------------------------------------------------
+  --odys-ink: #111111;
+  --odys-off-white: #f8f7f3;
+  --odys-blue: #3157ff;
+  --odys-lime: #d8f64e;
+  --odys-coral: #ff695a;
+
+  // --- Semantici: tema chiaro ------------------------------------------------
+  --color-bg: var(--odys-off-white);
+  --color-surface: #ffffff;
+  --color-surface-muted: #efede6;
+  --color-surface-inverse: var(--odys-ink);
+  --color-brand-panel: var(--odys-ink);
+  --color-on-brand: var(--odys-off-white);   // testo sui pannelli di brand
+  --color-on-brand-muted: #c4c2bb;           // testo secondario sui pannelli (≥ 10:1)
+  --color-border: #dedad0;          // separatori e card
+  --color-border-strong: #99948a;   // campi e chip: contrasto ≥ 3:1 sul bianco
+  --color-text: var(--odys-ink);
+  --color-text-muted: #55534e;      // 7:1 su Off White
+  --color-text-inverse: var(--odys-off-white);
+  --color-text-inverse-muted: #b9b7b0;
+
+  --color-primary: var(--odys-blue);
+  --color-primary-hover: #2446e0;
+  --color-primary-soft: #e7ecff;
+  --color-on-primary: #ffffff;
+  --color-link: #2446e0;            // Odys Blue scurito per testo piccolo (≥ 5.9:1)
+
+  --color-accent: var(--odys-lime);
+  --color-accent-hover: #cbeb35;
+  --color-accent-soft: #f2fbcc;
+  --color-on-accent: var(--odys-ink);
+
+  --color-danger: var(--odys-coral);
+  --color-danger-soft: #ffe7e4;
+  --color-danger-text: #b8321f;
+  --color-on-danger: var(--odys-ink);
+
+  --color-focus: var(--odys-blue);
+  --color-overlay: rgb(17 17 17 / 0.55);
+
+  // --- Tipografia -----------------------------------------------------------
+  --font-brand: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --text-xs: 0.8125rem; // 13 — minimo per testi informativi
+  --text-sm: 0.875rem;  // 14
+  --text-md: 1rem;      // 16 — testo base
+  --text-lg: 1.125rem;  // 18
+  --text-xl: 1.375rem;  // 22
+  --text-2xl: 1.75rem;  // 28
+  --text-3xl: clamp(2rem, 1.4rem + 2.4vw, 3.25rem);
+  --leading-tight: 1.15;
+  --leading-body: 1.6;
+  --measure: 68ch;       // lunghezza massima di una riga di testo
+  --tracking-wide: 0.14em;
+
+  // --- Spaziatura (base 4px) ------------------------------------------------
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  // --- Forme, ombre, movimento ----------------------------------------------
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+  --border-width: 1px;
+
+  --shadow-sm: 0 1px 2px rgb(17 17 17 / 0.06);
+  --shadow-md: 0 8px 24px -12px rgb(17 17 17 / 0.18);
+  --shadow-lg: 0 24px 60px -24px rgb(17 17 17 / 0.35);
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  // --- Layout ---------------------------------------------------------------
+  --layout-max: 1180px;
+  --layout-gutter: var(--space-4);
+  --header-height: 64px;
+  --bottom-nav-height: 68px;
+
+  color-scheme: light;
+}
+
+// --- Semantici: tema scuro -----------------------------------------------------
+@mixin dark-tokens {
+  --color-bg: #0e0e0e;
+  --color-surface: #181818;
+  --color-surface-muted: #222220;
+  --color-surface-inverse: #f8f7f3;
+  --color-brand-panel: #1d1d1b;
+  --color-border: #2e2e2b;
+  --color-border-strong: #6a685f;
+  --color-text: var(--odys-off-white);
+  --color-text-muted: #b3b1a9;
+  --color-text-inverse: var(--odys-ink);
+  --color-text-inverse-muted: #55534e;
+  --color-primary-soft: #1c2447;
+  --color-link: #8fa4ff;
+  --color-accent-soft: #2b3210;
+  --color-danger-soft: #3a1c18;
+  --color-danger-text: #ff8a7e;
+  --color-focus: var(--odys-lime);
+  --shadow-md: 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { @include dark-tokens; }
+}
+:root[data-theme='dark'] { @include dark-tokens; }
+
+@media (min-width: 768px) {
+  :root { --layout-gutter: var(--space-6); }
+}

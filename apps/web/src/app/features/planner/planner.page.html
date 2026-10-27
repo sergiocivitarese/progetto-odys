@@ -1,0 +1,184 @@
+<div class="page">
+  <header class="head">
+    <p class="eyebrow">Nuovo itinerario</p>
+    <h1>Pianifica il mio viaggio</h1>
+    <p class="muted">Bastano destinazione e date: tutto il resto è facoltativo e puoi completarlo anche dopo.</p>
+  </header>
+
+  @if (error()) {
+    <odys-notice tone="danger" class="error">{{ error() }}</odys-notice>
+  }
+
+  <div class="layout">
+    <div class="sections">
+      <!-- 1. L'essenziale: destinazione e date -->
+      <odys-planner-section [step]="1" title="Dove e quando" [hint]="essentialsHint()" [open]="activeSection() === 'destination'" (toggle)="toggleSection('destination')">
+        <odys-place-field label="Destinazione" placeholder="Città, regione o paese" kind="place"
+          [value]="form().destination" (valueChange)="setDestinationText($event)" [selected]="form().destinationPoint" (pick)="pickDestination($event)"
+          hint="Scegli un suggerimento per avere subito posizione, mappa e meteo." />
+
+        <div class="two-cols">
+          <odys-text-field label="Partenza" type="date" icon="calendar" [value]="form().departure" (valueChange)="update('departure', $event)" />
+          <odys-text-field label="Rientro" type="date" icon="calendar" [value]="form().returnDate" (valueChange)="update('returnDate', $event)" />
+        </div>
+
+        @if (form().stops?.length || stopsVisible()) {
+          <div class="group">
+            <p class="group__label">Tappe intermedie</p>
+            @if (form().stops?.length) {
+              <ol class="stops">
+                @for (stop of form().stops; track stop; let i = $index) {
+                  <li><span>{{ i + 1 }}. {{ stop }}</span><button type="button" class="remove" (click)="removeStop(i)" [attr.aria-label]="'Rimuovi ' + stop"><odys-icon name="x" [size]="16" /></button></li>
+                }
+              </ol>
+            }
+            <odys-place-field label="Aggiungi una tappa" placeholder="Es. Porto" kind="place" icon="plus"
+              [(value)]="stopDraft" (pick)="addStop($event.label)" (submitText)="addStop($event)"
+              hint="Scegli un suggerimento o premi Invio per aggiungerla così com'è." />
+          </div>
+        } @else {
+          <button type="button" class="disclosure" (click)="stopsVisible.set(true)">
+            <odys-icon name="plus" [size]="16" /> Aggiungi tappe intermedie
+          </button>
+        }
+      </odys-planner-section>
+
+      <!-- 2. Stile di viaggio -->
+      <odys-planner-section [step]="2" title="Il tuo stile di viaggio" [hint]="styleHint()" [open]="activeSection() === 'interests'" (toggle)="toggleSection('interests')">
+        <div class="group">
+          <p class="group__label">Cosa ti interessa</p>
+          <div class="chips">
+            @for (item of interests; track item) {
+              <button odysChip [selected]="form().interests.includes(item)" (click)="toggleInterest(item)">{{ item }}</button>
+            }
+            @for (item of form().customInterests; track item) {
+              <button odysChip [selected]="true" (click)="removeCustomInterest(item)" [attr.aria-label]="'Rimuovi ' + item">{{ item }} ×</button>
+            }
+          </div>
+          <div class="inline-add">
+            <input #interestInput type="text" [ngModel]="customInterest()" (ngModelChange)="customInterest.set($event); error.set('')" (keydown.enter)="addInterest(interestInput)" placeholder="Altro interesse" aria-label="Nuovo interesse" />
+            <button odysButton variant="secondary" size="sm" icon="plus" (click)="addInterest(interestInput)">Aggiungi</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <p class="group__label">Il tuo ritmo</p>
+          <div class="chips">
+            @for (item of paceOptions; track item) {
+              <button odysChip [selected]="form().pace === item" (click)="update('pace', item)" class="capitalize">{{ item }}</button>
+            }
+          </div>
+        </div>
+
+        <div class="two-cols">
+          <odys-text-field label="Viaggiatori" icon="users" inputMode="numeric" placeholder="2" [value]="form().travelers" (valueChange)="update('travelers', $event)" />
+          <odys-text-field label="Budget per persona" icon="credit-card" placeholder="Es. 800€" [value]="form().budgetPerTraveler ?? ''" (valueChange)="update('budgetPerTraveler', $event)" />
+        </div>
+        <odys-text-field label="Esigenze particolari" [multiline]="true" placeholder="Es. niente sveglie presto, vegetariano…" hint="Facoltativo" [value]="form().constraints ?? ''" (valueChange)="update('constraints', $event)" />
+      </odys-planner-section>
+
+      <!-- 3. Arrivo e rientro (facoltativo) -->
+      <odys-planner-section [step]="3" title="Arrivo e rientro" [hint]="arrivalHint()" [open]="activeSection() === 'arrival'" (toggle)="toggleSection('arrival')">
+        <odys-place-field label="Parto da" placeholder="Es. Milano" kind="point" icon="navigation"
+          [value]="form().departurePoint?.label ?? ''" (valueChange)="setLocation('departurePoint', $event)" [selected]="form().departurePoint" (pick)="pickLocation('departurePoint', $event)" />
+
+        <div class="group">
+          <p class="group__label">Come arrivi</p>
+          <div class="chips">
+            @for (mode of arrivalModes; track mode) {
+              <button odysChip [selected]="form().arrivalTransport === mode" (click)="selectArrivalMode(mode)">{{ arrivalLabels[mode] }}</button>
+            }
+          </div>
+        </div>
+
+        <button type="button" class="option" [class.option--selected]="arrivalPointSelected()" (click)="toggleArrivalPoint()" [attr.aria-pressed]="arrivalPointSelected()">
+          <odys-icon [name]="form().arrivalTransport === 'aereo' ? 'plane' : form().arrivalTransport === 'treno' ? 'train' : form().arrivalTransport === 'traghetto' ? 'anchor' : 'navigation'" />
+          <span class="option__text"><strong>{{ pointFieldLabel() }}: {{ pointOption().label }}</strong><small>Includi l’arrivo nel primo giorno del piano</small></span>
+          @if (arrivalPointSelected()) {<odys-icon name="check-circle" class="option__check" />}
+        </button>
+
+        @if (form().arrivalPoint) {
+          <div class="panel">
+            <div class="group">
+              <p class="group__label">Quando arrivi?</p>
+              <div class="chips">
+                <button odysChip [selected]="!form().arrivalDate && form().arrivalDayOffset !== 1" (click)="selectArrivalDay('same-day')">Il giorno di partenza</button>
+                <button odysChip [selected]="!form().arrivalDate && form().arrivalDayOffset === 1" (click)="selectArrivalDay('next-day')">Il giorno dopo</button>
+                <button odysChip [selected]="!!form().arrivalDate" (click)="selectArrivalDay('specific')">Altra data</button>
+              </div>
+            </div>
+            @if (form().arrivalDate !== undefined) {
+              <odys-text-field label="Data di arrivo" type="date" icon="calendar" [value]="form().arrivalDate ?? ''" (valueChange)="update('arrivalDate', $event)" />
+            }
+            <odys-text-field label="Ora di arrivo" type="time" icon="clock" hint="Facoltativa: serve a posizionare la giornata" [value]="form().arrivalTime" (valueChange)="update('arrivalTime', $event)" />
+            <div class="group">
+              <p class="group__label">Dopo l’arrivo vai</p>
+              <div class="chips">
+                <button odysChip [selected]="form().arrivalDestinationKind === 'first-activity'" (click)="selectArrivalDestination('first-activity')">Alla prima attività</button>
+                <button odysChip [selected]="form().arrivalDestinationKind === 'lodging'" (click)="selectArrivalDestination('lodging')">All’alloggio</button>
+                <button odysChip [selected]="form().arrivalDestinationKind === 'custom'" (click)="selectArrivalDestination('custom')">Altrove</button>
+              </div>
+            </div>
+            @if (form().arrivalDestinationKind === 'custom') {
+              <odys-place-field label="Dove" placeholder="Es. Piazza del Comune" kind="point"
+                [value]="form().arrivalDestinationPoint?.label ?? ''" (valueChange)="setLocation('arrivalDestinationPoint', $event)" [selected]="form().arrivalDestinationPoint" (pick)="pickLocation('arrivalDestinationPoint', $event)" />
+            }
+          </div>
+        }
+
+        <button type="button" class="disclosure" (click)="returnDetailsVisible.set(!returnDetailsVisible())" [attr.aria-expanded]="returnDetailsVisible()">
+          Dettagli del rientro <odys-icon [name]="returnDetailsVisible() ? 'chevron-up' : 'chevron-down'" [size]="16" />
+        </button>
+        @if (returnDetailsVisible()) {
+          <div class="panel">
+            <div class="group">
+              <p class="group__label">Come rientri</p>
+              <div class="chips">
+                @for (mode of arrivalModes; track mode) {
+                  <button odysChip [selected]="form().returnTransport === mode" (click)="update('returnTransport', mode)">{{ arrivalLabels[mode] }}</button>
+                }
+              </div>
+            </div>
+            <odys-place-field label="Riparti da" placeholder="Aeroporto, stazione o porto" kind="point"
+              [value]="form().returnPoint?.label ?? ''" (valueChange)="setLocation('returnPoint', $event)" [selected]="form().returnPoint" (pick)="pickLocation('returnPoint', $event)" />
+            <odys-text-field label="Ora di partenza" type="time" icon="clock" hint="Facoltativa" [value]="form().departureTime" (valueChange)="update('departureTime', $event)" />
+          </div>
+        }
+      </odys-planner-section>
+
+      <!-- 4. Alloggio (facoltativo) -->
+      <odys-planner-section [step]="4" title="Alloggio" [hint]="form().lodging?.name || 'Facoltativo · puoi aggiungerlo dopo'" [open]="activeSection() === 'lodging'" (toggle)="toggleSection('lodging')">
+        <odys-place-field label="Dove dormi" placeholder="Nome dell’hotel o indirizzo" kind="point" icon="home"
+          [value]="form().lodging?.name ?? ''" (valueChange)="setLodgingName($event)" [selected]="lodgingNode()" (pick)="pickLodging($event)"
+          hint="Con la posizione dell’alloggio il piano calcola le tratte di ogni giorno." />
+        <div class="two-cols">
+          <odys-text-field label="Indirizzo" icon="map-pin" placeholder="Facoltativo" [value]="form().lodging?.address ?? ''" (valueChange)="updateLodging('address', $event)" />
+          <odys-text-field label="Zona" icon="map" placeholder="Facoltativo" [value]="form().lodging?.zone ?? ''" (valueChange)="updateLodging('zone', $event)" />
+        </div>
+      </odys-planner-section>
+    </div>
+
+    <aside class="summary" aria-label="Riepilogo del viaggio">
+      <p class="eyebrow summary__eyebrow">Il tuo viaggio</p>
+      <p class="summary__destination">{{ form().destination || 'Destinazione da scegliere' }}</p>
+      <dl class="summary__facts">
+        <div><dt>Durata</dt><dd>{{ duration() ? duration() + (duration() === 1 ? ' giorno' : ' giorni') : 'Scegli le date' }}</dd></div>
+        <div><dt>Tappe</dt><dd>{{ form().stops?.length || 'Nessuna' }}</dd></div>
+        <div><dt>Ritmo</dt><dd class="capitalize">{{ form().pace }}</dd></div>
+        <div><dt>Viaggiatori</dt><dd>{{ form().travelers || '—' }}</dd></div>
+      </dl>
+      <p class="summary__status" aria-live="polite">
+        @if (missing().length) {
+          Mancano: {{ missing().join(' e ') }}
+        } @else {
+          <odys-icon name="check-circle" [size]="16" /> Pronto: il resto è facoltativo
+        }
+      </p>
+      <div class="summary__actions">
+        <button odysButton variant="accent" size="lg" icon="zap" [block]="true" [loading]="generating()" (click)="submit()">Crea il mio itinerario</button>
+        <button odysButton variant="ghost" icon="bookmark" [block]="true" [loading]="savingLater()" [disabled]="generating()" (click)="saveAndCompleteLater()">Salva e completa più tardi</button>
+      </div>
+      <p class="summary__disclaimer">Nessuna prenotazione viene effettuata: il piano è una proposta da modificare.</p>
+    </aside>
+  </div>
+</div>

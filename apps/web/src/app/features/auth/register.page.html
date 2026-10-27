@@ -1,0 +1,46 @@
+<odys-auth-layout eyebrow="Nuovo account" [title]="sentTo() ? 'Controlla la tua email' : 'Crea il tuo account'" [subtitle]="sentTo() ? '' : 'Bastano un minuto e pochi dati. Esplorare e pianificare restano liberi anche senza account.'" claim="Salva i tuoi viaggi e ritrovali ovunque.">
+  @if (!auth.available() && auth.status() === 'ready') {
+    <odys-auth-unavailable />
+  } @else if (sentTo(); as address) {
+    <div class="sent">
+      <span class="sent__icon"><odys-icon name="mail" [size]="26" /></span>
+      <p>Ti abbiamo inviato un link di conferma a <strong>{{ address }}</strong>.</p>
+      <p class="muted">Apri l’email e premi il link: l’account si attiva e torni su Odys già collegato. Se non la trovi, controlla anche nella cartella spam.</p>
+      @if (resent()) {
+        <odys-notice tone="success">Email inviata di nuovo.</odys-notice>
+      } @else {
+        <button odysButton variant="secondary" icon="refresh" (click)="resend()">Invia di nuovo l’email</button>
+      }
+      @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+    </div>
+  } @else {
+    <form class="form" (submit)="submit($event)" novalidate>
+      <div class="two">
+        <odys-text-field label="Nome" autocomplete="given-name" [required]="true" [(value)]="firstName" />
+        <odys-text-field label="Cognome" autocomplete="family-name" [required]="true" [(value)]="lastName" />
+      </div>
+      <odys-text-field label="Data di nascita" type="date" icon="calendar" autocomplete="bday" [required]="true" hint="Devi avere almeno 18 anni." [(value)]="birthDate" />
+      <odys-text-field label="Email" type="email" icon="mail" autocomplete="email" [required]="true" placeholder="nome@esempio.it" [(value)]="email" />
+      <div class="two">
+        <odys-text-field label="Password" type="password" icon="lock" autocomplete="new-password" [required]="true" hint="Almeno 8 caratteri, con lettere e numeri." [(value)]="password" />
+        <odys-text-field label="Ripeti la password" type="password" icon="lock" autocomplete="new-password" [required]="true" [(value)]="passwordConfirm" />
+      </div>
+
+      <fieldset class="consents">
+        <legend class="visually-hidden">Consensi</legend>
+        <label class="check">
+          <input type="checkbox" name="terms" [ngModel]="acceptTerms()" (ngModelChange)="acceptTerms.set($event)" required />
+          <span>Ho letto e accetto i <a routerLink="/termini" target="_blank">Termini di servizio</a> e l’<a routerLink="/privacy" target="_blank">Informativa privacy</a>. <em>(obbligatorio)</em></span>
+        </label>
+        <label class="check">
+          <input type="checkbox" name="marketing" [ngModel]="marketing()" (ngModelChange)="marketing.set($event)" />
+          <span>Voglio ricevere idee di viaggio e novità da Odys. <em>(facoltativo, puoi cambiare idea quando vuoi)</em></span>
+        </label>
+      </fieldset>
+
+      @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+      <button odysButton type="submit" variant="accent" size="lg" [block]="true" [loading]="busy()">Crea account</button>
+    </form>
+    <p class="switch">Hai già un account? <a [routerLink]="['/accedi']" [queryParams]="{ ritorno: ritorno() || null }">Accedi</a></p>
+  }
+</odys-auth-layout>

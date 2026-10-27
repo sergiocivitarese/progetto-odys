@@ -1,0 +1,68 @@
+<div class="page">
+  <button type="button" class="back" (click)="location.back()"><odys-icon name="arrow-left" [size]="16" /> Indietro</button>
+
+  <section class="hero">
+    <span class="hero__icon"><odys-icon name="map-pin" [size]="24" /></span>
+    <p class="eyebrow hero__eyebrow">Guida luogo</p>
+    <h1>{{ place().title }}</h1>
+    <p class="hero__meta">{{ place().city ?? 'Località da definire' }} · {{ place().category }}</p>
+    <div class="hero__badges"><odys-status-badge [state]="geoState()" detail="Posizione" /></div>
+    <p class="hero__source">{{ place().source }} · aggiornato {{ place().updatedAt }}</p>
+  </section>
+
+  <div class="layout">
+    <div class="content">
+      <odys-section-header title="Perché visitarlo" />
+      <p class="lead">{{ place().whyRecommended }}</p>
+
+      <odys-section-header title="Una guida per orientarti" />
+      <h3>Storia</h3>
+      <p class="muted">Questo testo è una guida demo originale: propone un modo di leggere il luogo attraverso la sua posizione, le persone che lo attraversano e i dettagli che rendono utile fermarsi, senza riprodurre contenuti di terzi.</p>
+      <h3>Cosa osservare</h3>
+      <ul class="observe">
+        <li>Il rapporto tra il luogo e il quartiere</li>
+        <li>Luce, materiali e dettagli architettonici</li>
+        <li>Il ritmo della strada e le soste vicine</li>
+      </ul>
+
+      <button type="button" class="audio" (click)="audioOpen.set(!audioOpen())" [attr.aria-expanded]="audioOpen()">
+        <span class="audio__icon"><odys-icon name="sparkles" /></span>
+        <span><strong>Audioguida demo</strong><small>{{ audioOpen() ? 'Traccia demo pronta: osserva il luogo con calma e scegli ciò che ti incuriosisce.' : 'Apri una traccia demo per orientarti sul posto.' }}</small></span>
+      </button>
+    </div>
+
+    <aside class="side">
+      <section class="info">
+        <h2>Informazioni pratiche</h2>
+        <odys-info-row icon="clock" title="Durata consigliata" [value]="place().visitDuration ?? 'Da verificare'" />
+        <odys-info-row icon="calendar" title="Orari" [value]="place().openingHours ?? 'Da verificare'" />
+        <odys-info-row icon="credit-card" title="Costi" value="Da verificare" />
+        <odys-info-row icon="bookmark" title="Prenotazione" value="Da verificare" />
+        <odys-info-row icon="users" title="Accessibilità" value="Da verificare" />
+        <odys-info-row icon="navigation" title="Come arrivare" [value]="place().geoStatus === 'MISSING' ? 'Inserisci alloggio per calcolare' : 'Percorso demo da verificare'" />
+        <p class="note">Località: {{ place().city ?? 'Da definire' }} · Paese: {{ place().country ?? 'Da verificare' }} · Fuso: {{ place().timezone ?? 'Da verificare' }}. Nessun dato è presentato come reale.</p>
+      </section>
+
+      @if (message()) {<odys-notice [tone]="messageTone()">{{ message() }}</odys-notice>}
+      <button odysButton variant="accent" size="lg" icon="plus" [block]="true" [loading]="adding()" (click)="addToTrip()">Aggiungi al viaggio</button>
+      <button odysButton variant="secondary" icon="edit" [block]="true" (click)="editorOpen.set(!editorOpen())" [attr.aria-expanded]="editorOpen()">Modifica luogo</button>
+
+      @if (editorOpen()) {
+        <section class="editor">
+          <label for="place-query" class="label">Cerca per nome o indirizzo</label>
+          <div class="search">
+            <input id="place-query" type="search" placeholder="Es. Museo del Prado, Madrid" [ngModel]="query()" (ngModelChange)="query.set($event)" (keydown.enter)="search()" />
+            <button odysButton size="sm" icon="search" (click)="search()">Cerca</button>
+          </div>
+          @if (searchMessage()) {<p class="note">{{ searchMessage() }}</p>}
+          @for (node of results(); track node.id) {
+            <button type="button" class="candidate" (click)="select(node)">
+              <odys-icon name="map-pin" [size]="14" />
+              <span><strong>{{ node.label }}</strong><small>Fonte: {{ node.source ?? 'Fonte non disponibile' }}</small></span>
+            </button>
+          }
+        </section>
+      }
+    </aside>
+  </div>
+</div>

@@ -1,0 +1,102 @@
+<div class="page">
+  <a routerLink="/coordinatore" class="back"><odys-icon name="arrow-left" [size]="16" /> Area coordinatore</a>
+  <header class="head">
+    <div>
+      <p class="eyebrow">{{ isNew() ? 'Nuovo viaggio pubblicato' : 'Stato: ' + statusLabel() }}</p>
+      <h1>{{ title() || 'Viaggio senza titolo' }}</h1>
+    </div>
+    @if (isPublic() && existing()) {
+      <a odysButton variant="secondary" icon="arrow-up-right" [routerLink]="['/gruppi', existing()!.id]">Vedi pagina pubblica</a>
+    }
+  </header>
+
+  <odys-coordinator-access (accepted)="start()" />
+
+  @if (ready()) {
+    @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+    @if (message()) {<odys-notice tone="success">{{ message() }}</odys-notice>}
+
+    <div class="layout">
+      <form class="form" (submit)="$event.preventDefault(); save()" novalidate>
+        @if (isNew()) {
+          <section class="card">
+            <h2>1. Da quale itinerario parti?</h2>
+            @if (trips.trips().length) {
+              <label class="label" for="source">Uno dei tuoi viaggi salvati</label>
+              <select id="source" class="select" [ngModel]="sourceTripId()" (ngModelChange)="chooseSource($event)" name="source">
+                @for (trip of trips.trips(); track trip.id) {<option [value]="trip.id">{{ trip.title }} · {{ trip.itinerary.destination }}</option>}
+              </select>
+              <p class="hint">L’itinerario giorno per giorno viene copiato nell’offerta. Potrai aggiornarlo in seguito dal tuo viaggio.</p>
+            } @else {
+              <odys-notice tone="warning">Prima crea e salva un itinerario: <a routerLink="/pianifica">pianifica un viaggio</a>.</odys-notice>
+            }
+          </section>
+        }
+
+        <section class="card">
+          <h2>{{ isNew() ? '2. ' : '' }}Presentazione</h2>
+          <odys-text-field label="Titolo" [(value)]="title" placeholder="Es. Lisbona slow in piccolo gruppo" />
+          <odys-text-field label="Descrizione" [multiline]="true" hint="Almeno 20 caratteri: cosa si vive, per chi è pensato, il ritmo." [(value)]="summary" />
+          <odys-text-field label="Destinazione" icon="map-pin" [(value)]="destination" />
+          <odys-text-field label="Immagine di copertina (facoltativa)" placeholder="https://…" hint="Indirizzo https di un’immagine. Il caricamento delle foto arriverà con il Creator Studio." [(value)]="coverImageUrl" />
+        </section>
+
+        <section class="card">
+          <h2>{{ isNew() ? '3. ' : '' }}Date, posti e quota</h2>
+          <div class="two">
+            <odys-text-field label="Partenza" type="date" [(value)]="startDate" />
+            <odys-text-field label="Rientro" type="date" [(value)]="endDate" />
+          </div>
+          <div class="two">
+            <odys-text-field label="Quota a persona (€)" inputMode="decimal" placeholder="Es. 690" [(value)]="price" />
+            <odys-text-field label="Posti disponibili" inputMode="numeric" placeholder="Es. 12" [(value)]="capacity" />
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>{{ isNew() ? '4. ' : '' }}Cosa è incluso</h2>
+          <p class="hint">Una voce per riga. Indicare con chiarezza cosa è escluso (per esempio i voli) evita dubbi prima dell’iscrizione.</p>
+          <div class="two">
+            <odys-text-field label="Incluso" [multiline]="true" placeholder="Alloggio in camera doppia&#10;Coordinatore per tutto il viaggio" [(value)]="included" />
+            <odys-text-field label="Escluso" [multiline]="true" placeholder="Voli&#10;Pasti non indicati" [(value)]="excluded" />
+          </div>
+        </section>
+
+        <button odysButton type="submit" variant="secondary" icon="check" [loading]="busy()">{{ isNew() ? 'Salva come bozza' : 'Salva modifiche' }}</button>
+      </form>
+
+      @if (!isNew() && existing(); as trip) {
+        <aside class="side">
+          <section class="card">
+            <h2>Pubblicazione</h2>
+            <p class="muted small">Stato attuale: <strong>{{ statusLabel() }}</strong>@if (trip.publishedAt) { · pubblicato il {{ trip.publishedAt | date: 'd MMM y' }}}</p>
+            @if (trip.status === 'draft' || trip.status === 'scheduled') {
+              <button odysButton variant="accent" icon="zap" [block]="true" [loading]="busy()" (click)="act('publish')">Pubblica ora</button>
+              <div class="schedule">
+                <label class="label" for="when">Oppure programma la pubblicazione</label>
+                <input id="when" type="datetime-local" class="select" [ngModel]="scheduledFor()" (ngModelChange)="scheduledFor.set($event)" name="when" />
+                <button odysButton variant="secondary" icon="calendar" [block]="true" [disabled]="busy()" (click)="act('schedule')">Programma</button>
+              </div>
+            }
+            @if (trip.status === 'published' || trip.status === 'scheduled') {
+              @if (trip.effectiveStatus !== 'active' && trip.effectiveStatus !== 'completed') {
+                <button odysButton variant="ghost" icon="restore" [block]="true" [disabled]="busy()" (click)="act('unpublish')">Ritira e torna in bozza</button>
+              }
+              <button odysButton variant="ghost" icon="x" [block]="true" [disabled]="busy()" (click)="act('cancel')">Annulla il viaggio</button>
+            }
+            @if (trip.status !== 'archived') {
+              <button odysButton variant="ghost" icon="list" [block]="true" [disabled]="busy()" (click)="act('archive')">Archivia</button>
+            }
+          </section>
+          <section class="card">
+            <h2>Itinerario</h2>
+            <p class="muted small">{{ trip.itinerary.days.length }} giornate, copiate dal tuo viaggio. Se l’hai modificato, aggiorna l’offerta con l’ultima versione.</p>
+            <a odysButton variant="secondary" icon="users" [block]="true" [routerLink]="['/coordinatore', trip.id, 'partecipanti']">Partecipanti e richieste</a>
+            <button odysButton variant="secondary" icon="refresh" [block]="true" [disabled]="busy() || !trip.sourceTripId" (click)="refreshItinerary()">Aggiorna dal mio viaggio</button>
+            @if (trip.sourceTripId) {<a class="small" [routerLink]="['/itinerario', trip.sourceTripId]">Apri il viaggio di partenza</a>}
+          </section>
+        </aside>
+      }
+    </div>
+  }
+</div>

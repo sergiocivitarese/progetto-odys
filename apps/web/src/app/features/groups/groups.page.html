@@ -1,0 +1,66 @@
+<div class="page">
+  <header class="head">
+    <p class="eyebrow">Scopri insieme</p>
+    <h1>Viaggi di gruppo</h1>
+    <p class="muted">Itinerari creati e guidati da coordinatori verificati. Esplorali liberamente e salva quelli che ti ispirano.</p>
+  </header>
+
+  <div class="toolbar">
+    <label class="search">
+      <odys-icon name="search" [size]="18" />
+      <span class="visually-hidden">Cerca destinazioni, città o viaggi</span>
+      <input type="search" placeholder="Cerca una destinazione o un viaggio" [ngModel]="query()" (ngModelChange)="onQuery($event)" />
+    </label>
+    <div class="sort" role="group" aria-label="Ordina per">
+      <button odysChip [selected]="sort() === 'upcoming'" (click)="setSort('upcoming')">Partenze vicine</button>
+      <button odysChip [selected]="sort() === 'price'" (click)="setSort('price')">Quota più bassa</button>
+      <button odysChip [selected]="sort() === 'recent'" (click)="setSort('recent')">Novità</button>
+    </div>
+  </div>
+
+  @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+
+  @if (loading() && !trips().length) {
+    <div class="grid" aria-busy="true">@for (i of [1, 2, 3]; track i) {<div class="skeleton"></div>}</div>
+  } @else if (trips().length) {
+    <p class="count muted">{{ trips().length }} {{ trips().length === 1 ? 'viaggio disponibile' : 'viaggi disponibili' }}</p>
+    <div class="grid">
+      @for (trip of trips(); track trip.id) {
+        <odys-published-trip-card [trip]="trip" [saved]="account.savedTrips().has(trip.id)" (toggleSave)="toggleSaved($event)" />
+      }
+    </div>
+  } @else if (query()) {
+    <odys-empty-state icon="search" title="Nessun viaggio trovato" [description]="'Nessun viaggio corrisponde a “' + query() + '”. Prova con un’altra destinazione.'" />
+  } @else {
+    <odys-empty-state icon="users" title="Ancora nessun viaggio pubblicato" description="I coordinatori Odys stanno preparando le prime partenze. Nel frattempo puoi guardare alcuni esempi o pianificare il tuo viaggio." />
+    @if (examples().length) {
+      <h2 class="examples-title">Esempi dimostrativi</h2>
+      <div class="grid">
+        @for (trip of examples(); track trip.id) {
+          <article class="example">
+            <div class="example__media">
+              <img [src]="trip.image" [alt]="'Foto di ' + trip.destination" loading="lazy" />
+              <odys-status-badge state="simulato" detail="esempio" class="example__badge" />
+            </div>
+            <div class="example__body">
+              <p class="eyebrow">{{ trip.destination }}</p>
+              <h3>{{ trip.title }}</h3>
+              <p class="muted small">Creato da {{ trip.creator }} · {{ trip.duration }} · {{ trip.spots }} · {{ trip.price }}</p>
+              <button odysButton [variant]="account.savedIdeas().has(trip.id) ? 'accent' : 'secondary'" icon="bookmark" [block]="true" (click)="toggleExample(trip.id)" [attr.aria-pressed]="account.savedIdeas().has(trip.id)">
+                {{ account.savedIdeas().has(trip.id) ? 'Idea salvata' : 'Salva idea' }}
+              </button>
+            </div>
+          </article>
+        }
+      </div>
+    }
+  }
+
+  <section class="notice">
+    <span class="notice__icon"><odys-icon name="info" /></span>
+    <div>
+      <h2>Prima di partire insieme</h2>
+      <p>Per partecipare servono registrazione, maggiore età, verifica del profilo, approvazione del coordinatore e quota garantita. La prenotazione online arriverà nelle prossime versioni: per ora puoi salvare i viaggi e usarli come base per il tuo itinerario.</p>
+    </div>
+  </section>
+</div>

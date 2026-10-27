@@ -1,0 +1,41 @@
+<a class="skip-link" href="#main">Vai al contenuto</a>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <a routerLink="/" class="brand" aria-label="Odys, torna alla home">
+      <odys-logo [size]="30" />
+    </a>
+
+    <nav class="topnav" aria-label="Navigazione principale">
+      @for (item of nav; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: !!item.exact }" class="topnav__link">
+          {{ item.label }}
+        </a>
+      }
+    </nav>
+
+    <div class="topbar__actions">
+      <odys-theme-switch />
+      <button type="button" class="icon-button" (click)="onboarding.reopen()" aria-label="Come funziona Odys">
+        <odys-icon name="info" [size]="20" />
+      </button>
+      <a odysButton variant="accent" size="sm" icon="plus" routerLink="/pianifica" class="topbar__cta">Nuovo viaggio</a>
+      <odys-user-menu />
+    </div>
+  </div>
+</header>
+
+<main id="main" class="main">
+  <router-outlet />
+</main>
+
+<nav class="tabbar" aria-label="Navigazione principale">
+  @for (item of nav; track item.path) {
+    <a [routerLink]="item.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: !!item.exact }" class="tabbar__link" [class.tabbar__link--primary]="item.path === '/pianifica'">
+      <span class="tabbar__icon"><odys-icon [name]="item.icon" [size]="20" /></span>
+      <span class="tabbar__label">{{ item.label === 'Viaggi di gruppo' ? 'Gruppi' : item.label === 'I miei viaggi' ? 'Viaggi' : item.label }}</span>
+    </a>
+  }
+</nav>
+
+<odys-onboarding-dialog [open]="onboarding.visible()" (completed)="onOnboarding($event)" />

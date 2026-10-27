@@ -1,0 +1,98 @@
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import {
+  AlertCircle, AlertTriangle, Anchor, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bookmark, Calendar, Check,
+  CheckCircle2, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Cloud, CloudOff, Compass, Copy,
+  CreditCard, Download, Edit3, Home, Info, List, Loader2, LucideAngularModule, LucideIconData, Map, MapPin, Menu, Minus,
+  Navigation, Plane, Plus, RefreshCw, RotateCcw, Search, Share2, SlidersHorizontal, Sparkles, Square, Sun, Trash2, Upload,
+  Users, WifiOff, X, Zap, Moon, Monitor, Mail, Lock, LogOut, User, History, ShieldCheck, Footprints, Train, Bus, Car, Ship, Route, Star, Umbrella, Wind, Thermometer, Droplets,
+} from 'lucide-angular';
+
+/** Registro delle icone disponibili nell'app: aggiungi qui una nuova icona Lucide. */
+const ICONS = {
+  'alert-circle': AlertCircle,
+  'alert-triangle': AlertTriangle,
+  anchor: Anchor,
+  'arrow-down': ArrowDown,
+  'arrow-left': ArrowLeft,
+  'arrow-right': ArrowRight,
+  'arrow-up': ArrowUp,
+  'arrow-up-right': ArrowUpRight,
+  bookmark: Bookmark,
+  bus: Bus,
+  calendar: Calendar,
+  car: Car,
+  check: Check,
+  'check-circle': CheckCircle2,
+  'check-square': CheckSquare,
+  'chevron-down': ChevronDown,
+  'chevron-left': ChevronLeft,
+  'chevron-right': ChevronRight,
+  'chevron-up': ChevronUp,
+  clock: Clock,
+  cloud: Cloud,
+  'cloud-off': CloudOff,
+  compass: Compass,
+  copy: Copy,
+  'credit-card': CreditCard,
+  download: Download,
+  droplets: Droplets,
+  edit: Edit3,
+  footprints: Footprints,
+  home: Home,
+  info: Info,
+  list: List,
+  loader: Loader2,
+  map: Map,
+  'map-pin': MapPin,
+  menu: Menu,
+  minus: Minus,
+  mail: Mail,
+  lock: Lock,
+  'log-out': LogOut,
+  user: User,
+  history: History,
+  shield: ShieldCheck,
+  monitor: Monitor,
+  moon: Moon,
+  navigation: Navigation,
+  plane: Plane,
+  plus: Plus,
+  refresh: RefreshCw,
+  restore: RotateCcw,
+  route: Route,
+  search: Search,
+  share: Share2,
+  ship: Ship,
+  sliders: SlidersHorizontal,
+  sparkles: Sparkles,
+  square: Square,
+  star: Star,
+  sun: Sun,
+  thermometer: Thermometer,
+  train: Train,
+  trash: Trash2,
+  umbrella: Umbrella,
+  upload: Upload,
+  users: Users,
+  wind: Wind,
+  'wifi-off': WifiOff,
+  x: X,
+  zap: Zap,
+} satisfies Record<string, LucideIconData>;
+
+export type IconName = keyof typeof ICONS;
+
+@Component({
+  selector: 'odys-icon',
+  imports: [LucideAngularModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { 'aria-hidden': 'true', class: 'odys-icon' },
+  template: `<lucide-icon [img]="data()" [size]="size()" [strokeWidth]="strokeWidth()" />`,
+  styles: `:host { display: inline-flex; flex-shrink: 0; line-height: 0; }`,
+})
+export class IconComponent {
+  readonly name = input.required<IconName>();
+  readonly size = input(18);
+  readonly strokeWidth = input(2);
+  protected readonly data = computed(() => ICONS[this.name()]);
+}

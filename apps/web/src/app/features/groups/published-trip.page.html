@@ -1,0 +1,119 @@
+<div class="page">
+  <a routerLink="/gruppi" class="back"><odys-icon name="arrow-left" [size]="16" /> Viaggi di gruppo</a>
+
+  @if (loading()) {
+    <p class="muted"><odys-icon name="loader" /> Caricamento del viaggio…</p>
+  } @else if (error() || !trip()) {
+    <odys-empty-state icon="compass" title="Viaggio non disponibile" [description]="error() || 'Il viaggio potrebbe essere stato ritirato dal coordinatore.'" />
+  } @else if (trip(); as t) {
+    <section class="hero" [style.background-image]="t.coverImageUrl ? 'linear-gradient(180deg, rgb(17 17 17 / 0.15), rgb(17 17 17 / 0.85)), url(' + t.coverImageUrl + ')' : null">
+      <p class="eyebrow hero__eyebrow">{{ t.destination }} @if (t.effectiveStatus !== 'published') { · {{ statusLabel() }} }</p>
+      <h1>{{ t.title }}</h1>
+      <dl class="facts">
+        <div><dt>Date</dt><dd>{{ t.startDate ? (t.startDate | date: 'd MMM') : '—' }} → {{ t.endDate ? (t.endDate | date: 'd MMM y') : '—' }}</dd></div>
+        <div><dt>Durata</dt><dd>{{ t.durationDays ?? t.itinerary.days.length }} giorni</dd></div>
+        <div><dt>Posti</dt><dd>{{ t.capacity ?? '—' }}@if (t.seatsLeft !== undefined && t.effectiveStatus === 'published') { <small>· {{ t.seatsLeft }} liberi</small> }</dd></div>
+        <div><dt>Quota</dt><dd class="hero__price">{{ price() }}</dd></div>
+      </dl>
+    </section>
+
+    <div class="layout">
+      <div class="content">
+        <section>
+          <h2>Il viaggio</h2>
+          <p class="lead">{{ t.summary }}</p>
+        </section>
+
+        <section class="inclusions">
+          <div>
+            <h3><odys-icon name="check-circle" [size]="18" /> Incluso</h3>
+            <ul>@for (item of t.included; track item) {<li>{{ item }}</li>} @empty {<li class="muted">Da definire con il coordinatore</li>}</ul>
+          </div>
+          <div>
+            <h3><odys-icon name="x" [size]="18" /> Escluso</h3>
+            <ul>@for (item of t.excluded; track item) {<li>{{ item }}</li>} @empty {<li class="muted">Da definire con il coordinatore</li>}</ul>
+          </div>
+        </section>
+
+        <section>
+          <h2>Itinerario giorno per giorno</h2>
+          <ol class="days">
+            @for (day of t.itinerary.days; track day.day) {
+              <li class="day">
+                <span class="day__num" aria-hidden="true">{{ day.day }}</span>
+                <div class="day__body">
+                  <p class="eyebrow">{{ dayDate(day.date) }} · Giorno {{ day.day }}</p>
+                  <h3>{{ day.label }}</h3>
+                  <ul class="activities">
+                    @for (activity of day.activities; track $index) {
+                      <li>
+                        <span class="time">{{ activity.time }}</span>
+                        <div><strong>{{ activity.title }}</strong>@if (activity.detail) {<p class="muted small">{{ activity.detail }}</p>}</div>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              </li>
+            }
+          </ol>
+        </section>
+      </div>
+
+      <aside class="side">
+        <div class="box">
+          <p class="box__price">{{ price() }} <small>a persona</small></p>
+          @if (t.seatsLeft !== undefined && t.effectiveStatus === 'published') {
+            <p class="seats" [class.seats--low]="t.seatsLeft <= 3"><odys-icon name="users" [size]="16" /> {{ t.seatsLeft === 0 ? 'Posti esauriti' : t.seatsLeft === 1 ? 'Ultimo posto disponibile' : t.seatsLeft + ' posti disponibili su ' + t.capacity }}</p>
+          }
+          @if (hasActiveRequest() && participation(); as request) {
+            <odys-notice [tone]="request.status === 'confirmed' ? 'success' : 'info'" [title]="request.status === 'confirmed' ? 'Partecipazione confermata' : 'Richiesta di partecipazione inviata'">
+              @if (request.status === 'confirmed') {
+                Il coordinatore ha confermato il tuo posto. Ti contatterà all’email del tuo account per i prossimi passi.
+              } @else {
+                Inviata il {{ request.createdAt | date: 'd MMM y' }}: il coordinatore la valuterà e troverai l’esito nel tuo account.
+              }
+              <div class="inline-actions">
+                <a odysButton variant="secondary" size="sm" routerLink="/account" fragment="partecipazioni">Le mie richieste</a>
+                <button odysButton variant="ghost" size="sm" [loading]="requesting()" (click)="withdrawRequest()">{{ request.status === 'confirmed' ? 'Rinuncia al posto' : 'Ritira la richiesta' }}</button>
+              </div>
+            </odys-notice>
+          } @else if (isOwnTrip()) {
+            <a odysButton variant="accent" size="lg" icon="users" [block]="true" [routerLink]="['/coordinatore', t.id, 'partecipanti']">Gestisci i partecipanti</a>
+          } @else if (requestOpen()) {
+            <form class="request" (submit)="$event.preventDefault(); sendRequest()">
+              <label for="request-message">Messaggio per il coordinatore <span class="muted">(facoltativo)</span></label>
+              <textarea id="request-message" rows="3" maxlength="600" [ngModel]="requestMessage()" (ngModelChange)="requestMessage.set($event)" name="message" placeholder="Presentati in due righe o fai una domanda."></textarea>
+              <p class="muted small">Inviando la richiesta il coordinatore vedrà il tuo nome e questo messaggio; la tua email solo dopo la conferma. Non è previsto alcun pagamento online.</p>
+              <div class="inline-actions">
+                <button odysButton variant="accent" type="submit" icon="check" [loading]="requesting()">Invia la richiesta</button>
+                <button odysButton variant="ghost" type="button" (click)="requestOpen.set(false)">Annulla</button>
+              </div>
+            </form>
+          } @else {
+            <button odysButton variant="accent" size="lg" icon="lock" [block]="true" [disabled]="!bookable() || participation()?.status === 'declined'" (click)="openRequest()">{{ soldOut() ? 'Posti esauriti' : bookable() ? 'Blocca il tuo posto' : 'Iscrizioni chiuse' }}</button>
+            @if (participation()?.status === 'declined') {
+              <p class="muted small">La tua richiesta precedente non è stata accettata dal coordinatore.</p>
+            } @else if (bookable()) {
+              <p class="muted small">Invii una richiesta di partecipazione senza pagare: il posto è tuo quando il coordinatore la conferma.</p>
+            }
+          }
+          @if (requestError()) {<odys-notice tone="danger">{{ requestError() }}</odys-notice>}
+          <button odysButton [variant]="saved() ? 'accent' : 'secondary'" icon="bookmark" [block]="true" [attr.aria-pressed]="saved()" (click)="toggleSaved()">{{ saved() ? 'Idea salvata' : 'Salva idea' }}</button>
+          <button odysButton variant="ghost" icon="copy" [block]="true" [loading]="copying()" (click)="useAsBase()">Usa come base per il mio viaggio</button>
+          <p class="muted small">“Usa come base” crea una copia dell’itinerario tra i tuoi viaggi, da modificare come vuoi. L’originale resta del coordinatore.</p>
+          @if (message()) {<odys-notice tone="info">{{ message() }}</odys-notice>}
+        </div>
+
+        <a class="coordinator" [routerLink]="['/coordinatori', t.coordinator.id]">
+          <span class="avatar" aria-hidden="true">{{ t.coordinator.displayName[0] }}</span>
+          <span>
+            <small class="muted">Il tuo coordinatore</small>
+            <strong>{{ t.coordinator.displayName }}</strong>
+            @if (t.coordinator.headline) {<span class="muted small">{{ t.coordinator.headline }}</span>}
+          </span>
+          <odys-icon name="arrow-right" />
+        </a>
+      </aside>
+    </div>
+  }
+</div>

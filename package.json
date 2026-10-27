@@ -1,0 +1,29 @@
+{
+  "name": "progetto-odys",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Odys \u2014 piattaforma travel: frontend Angular, backend Node.js, dominio condiviso.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "package:demo": "tsx scripts/package-demo.mts",
+    "package:source": "tsx scripts/package-source.mts",
+    "dev:api": "npm run dev -w @odys/api",
+    "dev:web": "npm run start -w web",
+    "build": "npm run build -w @odys/api && npm run build -w web",
+    "test": "npm run test -w @odys/domain && npm run test -w @odys/api",
+    "typecheck": "npm run typecheck -w @odys/domain && npm run typecheck -w @odys/api",
+    "db:migrate": "npm run db:migrate -w @odys/api"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.9.2"
+  }
+}

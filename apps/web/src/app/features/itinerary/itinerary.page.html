@@ -1,0 +1,191 @@
+<div class="page">
+  @if (store.isSaved()) {
+    <a routerLink="/viaggi" class="back"><odys-icon name="arrow-left" [size]="16" /> I miei viaggi</a>
+  } @else {
+    <a routerLink="/pianifica" class="back"><odys-icon name="arrow-left" [size]="16" /> Nuovo piano</a>
+  }
+
+  @if (store.loading()) {
+    <div class="loading" aria-busy="true"><odys-icon name="loader" class="spin" [size]="22" /> Apertura del viaggio…</div>
+  } @else if (store.loadError()) {
+    <odys-empty-state icon="compass" title="Viaggio non disponibile" [description]="store.loadError()!" />
+    <div class="center"><a odysButton routerLink="/pianifica" icon="plus">Pianifica un viaggio</a></div>
+  } @else if (store.visiblePlan(); as plan) {
+    <header class="head">
+      <div>
+        <p class="eyebrow">{{ store.isEditing() ? 'Modifica itinerario' : 'Il tuo piano' }}</p>
+        <h1>{{ plan.destination }}</h1>
+        @if (store.trip(); as trip) {
+          @if (trip.title !== plan.destination) {<p class="muted">{{ trip.title }}</p>}
+        }
+      </div>
+      @if (!store.isSaved()) {<odys-status-badge state="da-definire" detail="non ancora salvato" />}
+    </header>
+
+    <div class="notices" aria-live="polite">
+      @switch (store.saveState()) {
+        @case ('saving') {<odys-notice tone="info" icon="loader">Salvataggio in corso…</odys-notice>}
+        @case ('saved') {<odys-notice tone="success">Salvataggio completato</odys-notice>}
+        @case ('error') {<odys-notice tone="danger">{{ store.saveError() }}</odys-notice>}
+      }
+      @if (store.message()) {<odys-notice tone="info">{{ store.message() }}</odys-notice>}
+      @if (store.pendingProviderRoute(); as pending) {
+        <odys-notice tone="info" title="Conferma percorso online">
+          Aggiorneremo solo questa tratta con dati GraphHopper ({{ pending.patch.duration }} · {{ pending.patch.distance }}). Mezzo, fonte, data di calcolo e geometria verranno conservati; le altre tratte resteranno invariate.
+          <div class="inline-actions">
+            <button odysButton size="sm" icon="check" (click)="store.confirmProviderRoute()">Usa percorso calcolato</button>
+            <button odysButton variant="ghost" size="sm" (click)="store.pendingProviderRoute.set(null)">Annulla</button>
+          </div>
+        </odys-notice>
+      }
+    </div>
+
+    <div class="layout" [class.layout--editing]="store.isEditing()">
+      <div class="area-hero">
+        <odys-itinerary-hero [plan]="plan" [weather]="store.selectedDay() ? store.weatherForDay(store.selectedDay()!.day) : undefined" (editBudget)="openEditor('budget')" />
+
+        @if (!store.isEditing()) {
+          <div class="actions">
+            <button odysButton icon="edit" (click)="store.startEditing()">Modifica itinerario</button>
+            <button odysButton variant="secondary" icon="calendar" (click)="openEditor('dates')">Modifica date</button>
+            <button odysButton variant="secondary" icon="home" (click)="openEditor('origin')">{{ plan.lodging?.name ? 'Aggiorna alloggio' : 'Aggiungi alloggio o punto di partenza' }}</button>
+            @if (store.isSaved()) {
+              <button odysButton variant="ghost" icon="history" (click)="openEditor('history'); store.loadVersions()">Cronologia{{ store.trip()?.currentVersion ? ' · v' + store.trip()!.currentVersion : '' }}</button>
+            }
+          </div>
+          @if (!store.isSaved()) {
+            <odys-notice tone="warning" title="Piano non ancora salvato" class="unsaved">
+              Salvalo per ritrovarlo nei tuoi viaggi, con la cronologia di ogni modifica. Se non hai ancora effettuato l’accesso ti chiederemo di farlo, poi torni qui.
+              <div class="inline-actions"><button odysButton variant="accent" size="sm" icon="bookmark" (click)="store.persist(plan)">Salva viaggio</button></div>
+            </odys-notice>
+          }
+        } @else {
+          <section class="edit-intro">
+            <div class="edit-intro__head">
+              <div><h2>Modalità modifica</h2><p class="muted">Le modifiche restano in bozza fino al salvataggio.</p></div>
+              <odys-icon name="edit" />
+            </div>
+            <p class="label">Spostamenti durante il viaggio</p>
+            <div class="chips">
+              @for (option of transportOptions; track option) {
+                <button odysChip [selected]="plan.transport === option" (click)="store.setTripTransport(option)">{{ transportLabels[option] }}</button>
+              }
+            </div>
+          </section>
+        }
+
+        @if (plan.days.length === 0) {
+          <odys-empty-state icon="calendar" title="Nessun itinerario generato" description="Questo viaggio è stato conservato, ma non ha ancora giornate da consultare." actionLabel="Modifica date" (action)="openEditor('dates')" />
+        }
+        @if (!store.isEditing() && destinationMapUrl(); as osm) {
+          <p class="osm-link"><odys-icon name="map-pin" [size]="16" /> {{ plan.destinationNode?.label }} · <a [href]="osm" target="_blank" rel="noopener noreferrer">vedi su OpenStreetMap<span class="visually-hidden"> (si apre in una nuova scheda)</span></a></p>
+        }
+        @if (!store.isEditing() && plan.destinationNode?.geoStatus !== 'CONFIRMED') {
+          <odys-notice tone="warning" title="Nessuna destinazione confermata">Il nome della destinazione resta nel piano. La posizione verrà mostrata solo dopo una verifica esplicita.</odys-notice>
+        }
+
+        @if (store.geoIssues().length && !store.isEditing()) {
+          <section class="panel">
+            <h2>Conferma i luoghi trovati</h2>
+            <p class="muted small">Non associamo automaticamente risultati ambigui. Scegli il luogo corretto o lascia la posizione da definire.</p>
+            @for (issue of store.geoIssues(); track issue.id) {
+              <div class="issue">
+                <strong>{{ issue.label }}</strong>
+                <p class="muted small">{{ issue.message }}</p>
+                @for (candidate of issue.candidates; track candidate.id) {
+                  <button type="button" class="candidate" (click)="store.confirmGeoIssue(issue, candidate)">
+                    <odys-icon name="map-pin" [size]="14" />
+                    <span><span>{{ candidate.label }}</span><small>Fonte: {{ candidate.source ?? 'Fonte non disponibile' }}</small></span>
+                    <odys-icon name="check" [size]="16" />
+                  </button>
+                }
+              </div>
+            }
+          </section>
+        }
+        @if (store.geoMessages().length && !store.isEditing()) {
+          <details class="panel panel--quiet">
+            <summary>Stato delle posizioni ({{ store.geoMessages().length }})</summary>
+            <p class="muted small">Conserviamo sempre il testo inserito: nessuna posizione viene inventata o associata a una città diversa.</p>
+            <ul>@for (message of store.geoMessages(); track message) {<li>{{ message }}</li>}</ul>
+          </details>
+        }
+      </div>
+
+      @if (!store.isEditing() && plan.days.length) {
+        <aside class="area-today">
+          <odys-today-panel [plan]="plan" />
+        </aside>
+      }
+
+      <div class="area-main">
+        <odys-section-header [title]="store.isEditing() ? 'Timeline' : 'Tutto l’itinerario'" [eyebrow]="plan.routeSummary">
+          <span>{{ plan.days.length }} {{ plan.days.length === 1 ? 'giorno' : 'giorni' }}</span>
+        </odys-section-header>
+
+        @if (!hasRoutes()) {
+          <odys-empty-state icon="navigation" title="Nessuna tratta ancora" description="Le attività restano nel loro ordine. Aggiungi un punto di partenza per preparare collegamenti locali da verificare." actionLabel="Aggiungi punto di partenza" (action)="openEditor('origin')" />
+        }
+
+        @if (plan.interurbanRoutes?.length) {
+          <section class="interurban">
+            <h3>Tratte tra località</h3>
+            @for (segment of plan.interurbanRoutes; track segment.id) {
+              <odys-route-card [segment]="segment" [selected]="store.selectedSegmentId() === segment.id"
+                (select)="store.selectedNodeId.set($event.toNodeId); store.selectedSegmentId.set($event.id)"
+                (toggleCompleted)="store.toggleSegment($event)" (calculate)="store.requestProviderRoute($event)" />
+            }
+          </section>
+        }
+
+        @if (!store.isEditing() && discoveryPlace(); as place) {
+          <a class="discover" [routerLink]="['/luogo', place.id]" [queryParams]="{ title: place.title, destination: plan.destination, viaggio: store.trip()?.id }">
+            <span class="discover__icon"><odys-icon name="compass" /></span>
+            <span><small class="eyebrow">Un luogo da scoprire</small><strong>{{ place.title }}</strong><span class="muted small">{{ place.whyRecommended }}</span></span>
+            <odys-icon name="arrow-right" />
+          </a>
+        }
+
+        <div class="days">
+          @for (day of plan.days; track day.day + '-' + day.date; let i = $index) {
+            <odys-day-section [plan]="plan" [day]="day" [dayIndex]="i" [editing]="store.isEditing()" />
+          }
+        </div>
+
+        @if (!store.isEditing()) {
+          <odys-section-header title="Prossimi passi" />
+          <ol class="steps">
+            @for (step of plan.nextSteps; track step; let i = $index) {<li><span>{{ i + 1 }}</span>{{ step }}</li>}
+          </ol>
+          <div class="actions">
+            <button odysButton variant="secondary" icon="bookmark" (click)="store.persist(plan)">Salva viaggio</button>
+            <button odysButton variant="ghost" icon="share" (click)="store.share()">Condividi</button>
+            <button odysButton variant="ghost" icon="download" (click)="store.exportJson()">Esporta JSON</button>
+          </div>
+        }
+      </div>
+    </div>
+
+    @if (store.isEditing()) {
+      <div class="edit-bar" role="region" aria-label="Azioni di modifica">
+        <div class="edit-bar__inner">
+          @if (confirmRestore()) {
+            <span class="edit-bar__text">Ripristinare il piano originale? Le modifiche in bozza verranno sostituite.</span>
+            <button odysButton variant="ghost" size="sm" (click)="confirmRestore.set(false)">Annulla</button>
+            <button odysButton variant="danger" size="sm" icon="restore" (click)="store.restoreOriginalDraft(); confirmRestore.set(false)">Ripristina</button>
+          } @else {
+            <button odysButton variant="ghost" size="sm" icon="restore" class="restore" (click)="confirmRestore.set(true)">Ripristina originale</button>
+            <span class="spacer"></span>
+            <button odysButton variant="secondary" size="sm" [disabled]="store.saveState() === 'saving'" (click)="store.cancelEditing()">Annulla modifiche</button>
+            <button odysButton variant="accent" size="sm" icon="check" [loading]="store.saveState() === 'saving'" (click)="store.saveChanges()">Salva modifiche</button>
+          }
+        </div>
+      </div>
+    }
+
+    <odys-date-editor-dialog [open]="editor() === 'dates'" [plan]="plan" (closed)="editor.set(null)" />
+    <odys-budget-editor-dialog [open]="editor() === 'budget'" [plan]="plan" (closed)="editor.set(null)" />
+    <odys-origin-editor-dialog [open]="editor() === 'origin'" [plan]="plan" (closed)="editor.set(null)" />
+    <odys-version-history-dialog [open]="editor() === 'history'" (closed)="editor.set(null)" />
+  }
+</div>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Odys — Plan. Discover. Experience.</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Odys: pianifica itinerari chiari, scopri viaggi di gruppo e parti con fiducia.">
+  <meta name="theme-color" content="#111111">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script>
+    // Applica il tema salvato prima del caricamento dell'app (evita il lampo di colore).
+    try {
+      var theme = localStorage.getItem('odys_theme_v1') || 'light';
+      if (theme !== 'system') document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,600;0,700;0,800;1,800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<div class="page">
+  <odys-home-hero />
+
+  <div class="toolbar">
+    <button odysButton variant="secondary" size="sm" icon="upload" (click)="openImport()">Importa viaggio JSON</button>
+  </div>
+  @if (avviso() === 'account-eliminato') {<odys-notice tone="success">Il tuo account e tutti i dati collegati sono stati eliminati.</odys-notice>}
+  @if (importMessage()) {<odys-notice tone="success">{{ importMessage() }}</odys-notice>}
+  @if (store.error()) {<odys-notice tone="danger" title="Viaggi non disponibili">{{ store.error() }}</odys-notice>}
+
+  <div class="layout">
+    <section aria-labelledby="saved-title" class="layout__main">
+      <odys-section-header title="Viaggi salvati" eyebrow="La tua raccolta">
+        @if (store.trips().length) {
+          <span>{{ store.trips().length }} {{ store.trips().length === 1 ? 'viaggio' : 'viaggi' }}</span>
+        }
+      </odys-section-header>
+
+      @if (auth.status() === 'ready' && !auth.isAuthenticated()) {
+        <div class="signin">
+          <span class="signin__icon"><odys-icon name="bookmark" [size]="22" /></span>
+          <div>
+            <h3>Salva i tuoi viaggi e ritrovali ovunque</h3>
+            <p class="muted">Pianificare è libero. Con un account gratuito i viaggi restano salvati, con la cronologia di ogni modifica.</p>
+          </div>
+          <div class="signin__actions">
+            @if (auth.available()) {
+              <a odysButton variant="accent" routerLink="/registrati">Crea un account</a>
+              <a odysButton variant="secondary" routerLink="/accedi">Accedi</a>
+            } @else {
+              <p class="muted small">Accesso non ancora attivo su questo server.</p>
+            }
+          </div>
+        </div>
+      } @else if (store.loading()) {
+        <div class="grid" aria-busy="true">
+          @for (i of [1, 2]; track i) {<div class="skeleton"></div>}
+        </div>
+      } @else if (store.trips().length) {
+        <div class="grid">
+          @for (trip of previewTrips(); track trip.id) {
+            <odys-trip-card [trip]="trip" (open)="openTrip($event)" (rename)="renaming.set($event)" (remove)="deleting.set($event)" />
+          }
+        </div>
+        @if (store.trips().length > previewTrips().length || store.trips().length > 1) {
+          <a odysButton variant="ghost" icon="list" routerLink="/viaggi" class="see-all">Vedi tutti i miei viaggi</a>
+        }
+      } @else {
+        <odys-empty-state
+          icon="bookmark"
+          title="Nessun viaggio salvato ancora"
+          description="Parti da un’idea e salvala per ritrovarla quando vuoi."
+          actionLabel="Crea il primo viaggio"
+          (action)="goToPlanner()"
+        />
+      }
+    </section>
+
+    <aside class="layout__aside" aria-label="Il tuo prossimo viaggio">
+      <odys-section-header title="Il tuo prossimo viaggio">
+        <span>{{ store.latest() ? 'Ultimo aggiornato' : 'Demo' }}</span>
+      </odys-section-header>
+      @if (store.latest(); as trip) {
+        <button type="button" class="next-trip" (click)="openTrip(trip)">
+          <span class="next-trip__label">
+            <odys-icon name="star" [size]="16" />
+            {{ trip.updatedAt ? ('Aggiornato ' + (trip.updatedAt | date: 'd MMM')) : 'Viaggio salvato' }}
+          </span>
+          <span class="next-trip__title">{{ trip.title }}</span>
+          <span class="next-trip__meta">{{ trip.itinerary.destination }} · {{ trip.itinerary.duration }} {{ trip.itinerary.duration === 1 ? 'giorno' : 'giorni' }}</span>
+          <span class="next-trip__meta">{{ trip.itinerary.departure || 'Date da definire' }} · {{ trip.itinerary.pace }}</span>
+          <span class="next-trip__cta">Riapri il piano <odys-icon name="arrow-right" [size]="16" /></span>
+        </button>
+      } @else if (!store.loading()) {
+        <odys-empty-state
+          icon="compass"
+          title="Nessun itinerario generato"
+          description="Crea un piano da una destinazione, le date e il tuo ritmo. I dettagli possono restare da definire."
+          actionLabel="Pianifica un viaggio"
+          (action)="goToPlanner()"
+        />
+      }
+
+      <a routerLink="/gruppi" class="groups-teaser">
+        <span class="groups-teaser__icon"><odys-icon name="users" [size]="20" /></span>
+        <span>
+          <strong>Trova la tua prossima compagnia</strong>
+          <small>Itinerari di gruppo demo creati da persone che viaggiano come te.</small>
+        </span>
+        <odys-icon name="arrow-right" />
+      </a>
+    </aside>
+  </div>
+</div>
+
+<odys-import-trip-dialog [open]="importOpen()" (closed)="importOpen.set(false)" (imported)="onImported($event)" />
+<odys-trip-management-dialogs [renaming]="renaming()" [deleting]="deleting()" (done)="closeManagement()" />

@@ -1,0 +1,108 @@
+<article class="editor">
+  <header class="editor__head">
+    <span class="eyebrow">Attività {{ activityIndex() + 1 }}</span>
+    <button odysButton variant="ghost" size="sm" icon="trash" class="danger" (click)="store.pendingDeletion.set({ dayIndex: dayIndex(), activityIndex: activityIndex(), title: activity().title })" [attr.aria-label]="'Elimina ' + activity().title">Elimina</button>
+  </header>
+
+  @if (deletionPending()) {
+    <odys-notice tone="danger" [title]="'Eliminare “' + activity().title + '”?'">
+      Rimuoveremo solo questa attività e aggiorneremo le tratte adiacenti al salvataggio. Le altre giornate resteranno invariate.
+      <div class="inline-actions">
+        <button odysButton variant="danger" size="sm" icon="trash" (click)="store.confirmDeletion()">Conferma eliminazione</button>
+        <button odysButton variant="ghost" size="sm" (click)="store.pendingDeletion.set(null)">Annulla</button>
+      </div>
+    </odys-notice>
+  }
+
+  <div class="grid">
+    <odys-text-field label="Titolo attività" [value]="activity().title" (valueChange)="patch({ title: $event })" />
+    <div class="place">
+      <odys-text-field label="Luogo da cercare" icon="map-pin" placeholder="Es. Museo, ristorante o piazza" [value]="activity().place?.title ?? ''" (valueChange)="store.setPlaceQuery(dayIndex(), activityIndex(), $event)" />
+      <button odysButton variant="secondary" size="sm" icon="search" (click)="store.searchActivityPlace(dayIndex(), activityIndex())">Cerca luogo</button>
+    </div>
+  </div>
+
+  @if (geoSearch(); as search) {
+    <div class="results">
+      <p class="hint">{{ search.message }}</p>
+      @for (candidate of search.candidates; track candidate.id) {
+        <button type="button" class="candidate" (click)="store.applyPlaceCandidate(dayIndex(), activityIndex(), candidate)" [attr.aria-label]="'Scegli ' + candidate.label">
+          <odys-icon name="map-pin" [size]="14" />
+          <span><strong>{{ candidate.label }}</strong><small>Fonte: {{ candidate.source ?? 'Fonte non disponibile' }}</small></span>
+          <odys-icon name="check" [size]="16" />
+        </button>
+      }
+    </div>
+  }
+  <p class="hint">Posizione: {{ statusLabels[status()] }}. Non chiediamo coordinate e non associamo risultati ambigui.</p>
+
+  <div class="grid grid--3">
+    <odys-text-field label="Orario" [value]="activity().time" placeholder="09:30" (valueChange)="patch({ time: $event })" />
+    <odys-text-field label="Durata (facoltativa)" [value]="activity().duration ?? ''" placeholder="Es. 90 min" (valueChange)="patch({ duration: $event || undefined })" />
+  </div>
+  <odys-text-field label="Descrizione" [multiline]="true" [value]="activity().detail" (valueChange)="patch({ detail: $event })" />
+  <odys-text-field label="Note (facoltative)" [value]="activity().notes ?? ''" placeholder="Promemoria personale" (valueChange)="patch({ notes: $event || undefined })" />
+
+  <div class="group">
+    <p class="label">Giorno</p>
+    <div class="chips">
+      @for (day of days(); track day.day; let i = $index) {
+        <button odysChip [selected]="i === dayIndex()" (click)="store.moveToDay(dayIndex(), activityIndex(), i)">Giorno {{ day.day }}</button>
+      }
+    </div>
+  </div>
+
+  <div class="inline-actions">
+    <button odysButton variant="secondary" size="sm" icon="arrow-up" [disabled]="activityIndex() === 0" (click)="store.moveWithinDay(dayIndex(), activityIndex(), activityIndex() - 1)">Sposta prima</button>
+    <button odysButton variant="secondary" size="sm" icon="arrow-down" [disabled]="isLast()" (click)="store.moveWithinDay(dayIndex(), activityIndex(), activityIndex() + 1)">Sposta dopo</button>
+    <button odysButton variant="ghost" size="sm" icon="route" (click)="store.inspectReposition(dayIndex(), activityIndex())">Valuta posizione nel giorno</button>
+  </div>
+
+  @if (proposal(); as suggestion) {
+    <odys-notice tone="info" title="Proposta di riposizionamento">
+      <p>{{ suggestion.reason }}</p>
+      <p>Attuale → posizione {{ suggestion.currentOrder }} · Suggerito → posizione {{ suggestion.suggestedOrder }}</p>
+      @if (suggestion.distanceDifferenceKm !== undefined) {<p>Riduzione del collegamento diretto: {{ suggestion.distanceDifferenceKm.toFixed(1) }} km. Durata stradale: non calcolata.</p>}
+      <p>Dati usati: {{ suggestion.usedData.length ? suggestion.usedData.join(' · ') : 'Nessuno' }}.</p>
+      <p>Dati mancanti: {{ suggestion.missingData.length ? suggestion.missingData.join(' · ') : 'Nessuno' }}.</p>
+      <div class="inline-actions">
+        @if (suggestion.status === 'CALCULABLE' && suggestion.suggestedIndex !== activityIndex()) {
+          <button odysButton size="sm" icon="check" (click)="store.acceptReposition()">Accetta riposizionamento</button>
+        }
+        @if (suggestion.status !== 'DISMISSED') {
+          <button odysButton variant="secondary" size="sm" icon="map-pin" (click)="store.keepReposition()">Mantieni posizione attuale</button>
+        }
+        <button odysButton variant="ghost" size="sm" (click)="store.reposition.set(null)">Annulla</button>
+      </div>
+    </odys-notice>
+  }
+
+  <div class="group">
+    <p class="label">Stato attività</p>
+    <div class="chips">
+      @for (option of statusOptions; track option) {
+        <button odysChip [selected]="status() === option" (click)="patch({ status: option })">{{ statusLabels[option] }}</button>
+      }
+    </div>
+  </div>
+  <div class="group">
+    <p class="label">Come arrivi?</p>
+    <div class="chips">
+      @for (option of transportOptions; track option) {
+        <button odysChip [selected]="activity().transport === option" (click)="patch({ transport: option })">{{ transportLabels[option] }}</button>
+      }
+    </div>
+  </div>
+  <div class="group">
+    <p class="label">Ambiente</p>
+    <div class="chips">
+      @for (option of settingOptions; track option) {
+        <button odysChip [selected]="activity().setting === option" (click)="patch({ setting: option })">{{ settingLabels[option] }}</button>
+      }
+    </div>
+  </div>
+  <label class="checkbox">
+    <input type="checkbox" [checked]="!!activity().requiresBooking" (change)="patch({ requiresBooking: !activity().requiresBooking })" />
+    Richiede prenotazione
+  </label>
+</article>
