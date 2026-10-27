@@ -125,6 +125,11 @@ export default class PublishedTripPage {
     }
   }
 
+  /** Orario in formato HH:MM; altrimenti la colonna mostra un trattino. */
+  protected clock(value: string | undefined): boolean {
+    return /^\d{1,2}:\d{2}$/.test(value ?? '');
+  }
+
   protected dayDate(value: string): string {
     return displayDayDate(value);
   }

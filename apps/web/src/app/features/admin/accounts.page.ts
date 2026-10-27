@@ -61,7 +61,7 @@ import { AdminNavComponent } from './admin-nav.component';
     </div>
   `,
   styles: `
-    .head { margin-bottom: var(--space-4); h1 { font-size: var(--text-3xl); } }
+    .head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); h1 { font-size: var(--text-3xl); } }
     .search { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); input { flex: 1; min-width: 220px; min-height: 44px; padding: 0 var(--space-4); border-radius: var(--radius-pill); border: var(--border-width) solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text); font: inherit; } }
     .table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: var(--border-width) solid var(--color-border); background: var(--color-surface); }
     table { width: 100%; border-collapse: collapse; min-width: 640px; }

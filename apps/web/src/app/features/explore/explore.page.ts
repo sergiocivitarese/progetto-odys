@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { apiErrorMessage } from '../../core/api/api-client';
 import { CreatorApi, type Post } from '../../core/api/creator.api';
 import { PostTileComponent } from '../../shared/travel/post-tile.component';
@@ -11,7 +11,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
  */
 @Component({
   selector: 'odys-explore-page',
-  imports: [RouterLink, PostTileComponent, ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent],
+  imports: [PostTileComponent, ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
@@ -32,21 +32,20 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
       </div>
       @if (loading()) {<p class="muted"><odys-icon name="loader" /> Caricamento…</p>}
       @if (more() && !loading()) {<button odysButton variant="secondary" class="more" (click)="load()">Mostra altri</button>}
-      <p class="muted small"><a routerLink="/gruppi">Cerchi un viaggio? Vai ai viaggi di gruppo</a></p>
     </div>
   `,
   styles: `
-    .head { margin-bottom: var(--space-6); h1 { font-size: var(--text-3xl); } }
+    .head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-6); h1 { font-size: var(--text-3xl); } }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
     .span { grid-column: 1 / -1; }
     .more { margin: var(--space-5) auto; display: flex; }
-    .small { margin-top: var(--space-5); font-size: var(--text-sm); }
     @media (min-width: 640px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); } }
     @media (min-width: 1024px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   `,
 })
 export default class ExplorePage implements OnInit {
   private readonly api = inject(CreatorApi);
+  private readonly router = inject(Router);
   protected readonly posts = signal<Post[]>([]);
   protected readonly loading = signal(false);
   protected readonly more = signal(false);
@@ -71,6 +70,6 @@ export default class ExplorePage implements OnInit {
   }
 
   protected goGroups(): void {
-    location.assign('/gruppi');
+    void this.router.navigate(['/gruppi']);
   }
 }

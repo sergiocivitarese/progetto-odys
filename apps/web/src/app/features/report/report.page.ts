@@ -51,7 +51,7 @@ const BACK: Record<ReportTarget, (id: string) => string[]> = {
   styles: `
     .narrow { max-width: 720px; }
     .back { display: inline-flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-4); color: var(--color-text-muted); text-decoration: none; }
-    h1 { font-size: var(--text-3xl); margin-bottom: var(--space-2); }
+    .eyebrow { margin-bottom: var(--space-2); } h1 { font-size: var(--text-3xl); margin-bottom: var(--space-2); }
     form { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-5); }
     fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
     legend, label { font-weight: 600; font-size: var(--text-sm); margin-bottom: var(--space-2); }

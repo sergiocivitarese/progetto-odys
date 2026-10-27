@@ -142,7 +142,7 @@ const CAPTION_MAX = 2200;
   `,
   styles: `
     .back { display: inline-flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-4); color: var(--color-text-muted); text-decoration: none; }
-    .head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); h1 { font-size: var(--text-3xl); } }
+    .head { display: flex; flex-wrap: wrap; align-items: flex-end; > div { display: flex; flex-direction: column; gap: var(--space-1); } justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); h1 { font-size: var(--text-3xl); } }
     .layout { display: grid; gap: var(--space-6); margin-top: var(--space-4); }
     .form { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
     .group { display: flex; flex-direction: column; gap: var(--space-2); }

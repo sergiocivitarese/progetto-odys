@@ -67,7 +67,7 @@ const ACTION_LABELS: Record<string, string> = { none: 'nessun intervento', hidde
     </div>
   `,
   styles: `
-    .head { margin-bottom: var(--space-4); h1 { font-size: var(--text-3xl); } }
+    .head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); h1 { font-size: var(--text-3xl); } }
     .filters { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
     .card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); margin-bottom: var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border); }
     .card__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); h2 { font-size: var(--text-xl); } h2 a { color: var(--color-text); } }

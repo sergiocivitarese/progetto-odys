@@ -1,9 +1,6 @@
 <div class="page">
   <odys-home-hero />
 
-  <div class="toolbar">
-    <button odysButton variant="secondary" size="sm" icon="upload" (click)="openImport()">Importa viaggio JSON</button>
-  </div>
   @if (avviso() === 'account-eliminato') {<odys-notice tone="success">Il tuo account e tutti i dati collegati sono stati eliminati.</odys-notice>}
   @if (importMessage()) {<odys-notice tone="success">{{ importMessage() }}</odys-notice>}
   @if (store.error()) {<odys-notice tone="danger" title="Viaggi non disponibili">{{ store.error() }}</odys-notice>}
@@ -14,6 +11,7 @@
         @if (store.trips().length) {
           <span>{{ store.trips().length }} {{ store.trips().length === 1 ? 'viaggio' : 'viaggi' }}</span>
         }
+        <button odysButton variant="secondary" size="sm" icon="upload" (click)="openImport()">Importa JSON</button>
       </odys-section-header>
 
       @if (auth.status() === 'ready' && !auth.isAuthenticated()) {
@@ -57,7 +55,7 @@
     </section>
 
     <aside class="layout__aside" aria-label="Il tuo prossimo viaggio">
-      <odys-section-header title="Il tuo prossimo viaggio">
+      <odys-section-header title="Il tuo prossimo viaggio" eyebrow="Riprendi da qui">
         <span>{{ store.latest() ? 'Ultimo aggiornato' : 'Demo' }}</span>
       </odys-section-header>
       @if (store.latest(); as trip) {

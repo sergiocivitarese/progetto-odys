@@ -12,7 +12,7 @@
       <dl class="facts">
         <div><dt>Date</dt><dd>{{ t.startDate ? (t.startDate | date: 'd MMM') : '—' }} → {{ t.endDate ? (t.endDate | date: 'd MMM y') : '—' }}</dd></div>
         <div><dt>Durata</dt><dd>{{ t.durationDays ?? t.itinerary.days.length }} giorni</dd></div>
-        <div><dt>Posti</dt><dd>{{ t.capacity ?? '—' }}@if (t.seatsLeft !== undefined && t.effectiveStatus === 'published') { <small>· {{ t.seatsLeft }} liberi</small> }</dd></div>
+        <div><dt>Posti</dt><dd>{{ t.capacity ?? '—' }}@if (t.seatsLeft !== undefined && t.effectiveStatus === 'published') { <small>&nbsp;· {{ t.seatsLeft }} liberi</small> }</dd></div>
         <div><dt>Quota</dt><dd class="hero__price">{{ price() }}</dd></div>
       </dl>
     </section>
@@ -47,7 +47,7 @@
                   <ul class="activities">
                     @for (activity of day.activities; track $index) {
                       <li>
-                        <span class="time">{{ activity.time }}</span>
+                        <span class="time" [attr.title]="clock(activity.time) ? null : 'Orario da definire'">{{ clock(activity.time) ? activity.time : '—' }}</span>
                         <div><strong>{{ activity.title }}</strong>@if (activity.detail) {<p class="muted small">{{ activity.detail }}</p>}</div>
                       </li>
                     }
@@ -99,7 +99,7 @@
           }
           @if (requestError()) {<odys-notice tone="danger">{{ requestError() }}</odys-notice>}
           <button odysButton [variant]="saved() ? 'accent' : 'secondary'" icon="bookmark" [block]="true" [attr.aria-pressed]="saved()" (click)="toggleSaved()">{{ saved() ? 'Idea salvata' : 'Salva idea' }}</button>
-          <button odysButton variant="ghost" icon="copy" [block]="true" [loading]="copying()" (click)="useAsBase()">Usa come base per il mio viaggio</button>
+          <button odysButton variant="ghost" icon="copy" [block]="true" [loading]="copying()" (click)="useAsBase()">Usa come base</button>
           <p class="muted small">“Usa come base” crea una copia dell’itinerario tra i tuoi viaggi, da modificare come vuoi. L’originale resta del coordinatore.</p>
           @if (message()) {<odys-notice tone="info">{{ message() }}</odys-notice>}
         </div>

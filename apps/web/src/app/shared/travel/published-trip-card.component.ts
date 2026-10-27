@@ -44,7 +44,7 @@ import { ButtonComponent } from '../ui';
   `,
   styles: `
     .card { display: flex; flex-direction: column; height: 100%; background: var(--color-surface); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-xl); overflow: hidden; }
-    .card__media { position: relative; display: block; aspect-ratio: 16 / 9; background: var(--color-surface-muted); }
+    .card__media { position: relative; display: block; aspect-ratio: 16 / 9; background: var(--color-surface-muted); text-decoration: none; }
     img { width: 100%; height: 100%; object-fit: cover; }
     .cover { display: flex; align-items: flex-end; height: 100%; padding: var(--space-4); background: var(--color-brand-panel);
       background-image: radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--odys-lime) 55%, transparent) 0 18%, transparent 19%), radial-gradient(circle at 15% 120%, var(--odys-blue) 0 35%, transparent 36%);
@@ -55,9 +55,9 @@ import { ButtonComponent } from '../ui';
     .creator { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--color-text-muted); font-size: var(--text-sm); text-decoration: none; align-self: flex-start;
       strong { color: var(--color-text); } &:hover strong { color: var(--color-link); } }
     .avatar { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--color-accent); color: var(--color-on-accent); font-weight: 800; font-size: var(--text-sm); }
-    .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); margin-top: auto; }
+    .meta { display: grid; grid-template-columns: 1.4fr 0.8fr 1fr; gap: var(--space-2); margin: auto 0 var(--space-3); padding-top: var(--space-2); }
     dt { font-size: var(--text-xs); color: var(--color-text-muted); }
-    dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+    dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .price { color: var(--color-link); }
   `,
 })
