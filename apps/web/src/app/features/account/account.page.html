@@ -72,6 +72,17 @@
       }
     </section>
 
+    <section id="contenuti-salvati" class="card">
+      <h2>Contenuti salvati</h2>
+      @if (savedPosts().length) {
+        <div class="saved-posts">
+          @for (post of savedPosts(); track post.id) {<odys-post-tile [post]="post" />}
+        </div>
+      } @else {
+        <p class="muted">Nessun contenuto salvato. <a routerLink="/esplora">Esplora i racconti dei coordinatori</a>.</p>
+      }
+    </section>
+
     <section id="idee" class="card">
       <h2>Idee salvate</h2>
       @for (trip of visibleSavedPublished(); track trip.id) {

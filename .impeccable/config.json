@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "apps/web/src/app/features/studio/post-editor.page.ts"
+        ],
+        "createdAt": "2026-10-27T18:18:53.076Z",
+        "reason": "Claude: falso positivo, l'<img> ha [src] associato e sta dentro @if che garantisce la miniatura"
+      }
+    ]
+  }
+}

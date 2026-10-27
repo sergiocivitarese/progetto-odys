@@ -20,6 +20,9 @@ import { ButtonComponent, IconComponent } from '../../../shared/ui';
           <a role="menuitem" routerLink="/account" (click)="open.set(false)"><odys-icon name="user" [size]="16" /> Il mio account</a>
           <a role="menuitem" routerLink="/viaggi" (click)="open.set(false)"><odys-icon name="bookmark" [size]="16" /> I miei viaggi</a>
           <a role="menuitem" routerLink="/coordinatore" (click)="open.set(false)"><odys-icon name="shield" [size]="16" /> {{ account.isCoordinator() ? 'Area coordinatore' : 'Diventa coordinatore' }}</a>
+          @if (account.isCoordinator()) {
+            <a role="menuitem" routerLink="/studio" (click)="open.set(false)"><odys-icon name="upload" [size]="16" /> Creator Studio</a>
+          }
           @if (account.isAdmin()) {
             <a role="menuitem" routerLink="/admin/candidature" (click)="open.set(false)"><odys-icon name="users" [size]="16" /> Candidature</a>
           }

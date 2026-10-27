@@ -143,6 +143,13 @@ export class AuthStore {
     this.session.set(null);
   }
 
+  /** Carica un file nell'archivio dei media (Supabase Storage) con i permessi dell'utente (M-06). */
+  async uploadMedia(path: string, file: Blob, contentType: string): Promise<void> {
+    await this.start();
+    const { error } = await this.requireClient().storage.from('creator-media').upload(path, file, { contentType, upsert: true, cacheControl: '31536000' });
+    if (error) throw new Error(error.message);
+  }
+
   private requireClient(): SupabaseClient {
     if (!this.client) throw new Error('Accesso non disponibile: il server non ha ancora Supabase configurato.');
     return this.client;

@@ -1,4 +1,6 @@
 import { DatePipe } from '@angular/common';
+import { CreatorApi, type Post } from '../../core/api/creator.api';
+import { PostTileComponent } from '../../shared/travel/post-tile.component';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnInit, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -48,7 +50,7 @@ const ACTION_LABELS: Record<string, string> = {
 /** Area personale (U-12): profilo, preferenze, idee salvate, attività, sicurezza. */
 @Component({
   selector: 'odys-account-page',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, DialogComponent, NoticeComponent, TextFieldComponent, ThemeSwitchComponent],
+  imports: [FormsModule, DatePipe, RouterLink, PostTileComponent, ButtonComponent, ChipComponent, DialogComponent, NoticeComponent, TextFieldComponent, ThemeSwitchComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account.page.html',
   styleUrl: './account.page.scss',
@@ -83,6 +85,8 @@ export default class AccountPage implements OnInit {
   protected readonly groupTrips = signal<GroupTrip[]>([]);
   protected readonly savedPublished = signal<PublishedTripSummary[]>([]);
   protected readonly participations = signal<MyParticipation[]>([]);
+  protected readonly savedPosts = signal<Post[]>([]);
+  private readonly creator = inject(CreatorApi);
   protected readonly visibleSavedPublished = computed(() => this.savedPublished().filter((trip) => this.account.savedTrips().has(trip.id)));
   protected readonly savedGroupTrips = computed(() => this.groupTrips().filter((trip) => this.account.savedIdeas().has(trip.id)));
 
@@ -111,6 +115,7 @@ export default class AccountPage implements OnInit {
     void this.config.ensureLoaded();
     const [activity, groups, saved, participations] = await Promise.allSettled([this.api.activity(), this.services.groupTrips(), this.catalog.savedTrips(), this.catalog.myParticipations()]);
     if (participations.status === 'fulfilled') this.participations.set(participations.value);
+    void this.creator.savedPosts().then((posts) => this.savedPosts.set(posts)).catch(() => undefined);
     if (activity.status === 'fulfilled') this.activity.set(activity.value);
     if (groups.status === 'fulfilled') this.groupTrips.set(groups.value);
     if (saved.status === 'fulfilled') this.savedPublished.set(saved.value);

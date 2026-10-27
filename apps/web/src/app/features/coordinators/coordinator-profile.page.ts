@@ -5,13 +5,15 @@ import { apiErrorMessage } from '../../core/api/api-client';
 import { CatalogApi, type CoordinatorCard, type PublishedTripSummary } from '../../core/api/catalog.api';
 import { AuthStore } from '../../core/auth/auth.store';
 import { AccountStore } from '../../core/state/account.store';
+import { CreatorApi, type Post } from '../../core/api/creator.api';
+import { PostTileComponent } from '../../shared/travel/post-tile.component';
 import { PublishedTripCardComponent } from '../../shared/travel/published-trip-card.component';
 import { EmptyStateComponent, IconComponent } from '../../shared/ui';
 
-/** Profilo pubblico del coordinatore (U-09, C-06…C-08): presentazione e viaggi pubblicati. */
+/** Profilo pubblico del coordinatore (U-09, C-06…C-08): presentazione, viaggi pubblicati e contenuti. */
 @Component({
   selector: 'odys-coordinator-profile-page',
-  imports: [DatePipe, RouterLink, PublishedTripCardComponent, EmptyStateComponent, IconComponent],
+  imports: [DatePipe, RouterLink, PublishedTripCardComponent, PostTileComponent, EmptyStateComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
@@ -39,6 +41,12 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
             <p class="muted">Nessun viaggio in programma al momento.</p>
           }
         </div>
+        @if (posts().length) {
+          <h2>Contenuti</h2>
+          <div class="posts">
+            @for (post of posts(); track post.id) {<odys-post-tile [post]="post" />}
+          </div>
+        }
         @if (past().length) {
           <h2>Viaggi svolti</h2>
           <div class="grid">
@@ -60,6 +68,7 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
       li { padding: 4px 12px; border-radius: var(--radius-pill); background: var(--color-surface-muted); font-size: var(--text-sm); font-weight: 600; } }
     h2 { font-size: var(--text-xl); margin: var(--space-8) 0 var(--space-4); }
     .grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+    .posts { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(min(45%, 200px), 1fr)); }
   `,
 })
 export default class CoordinatorProfilePage {
@@ -71,6 +80,8 @@ export default class CoordinatorProfilePage {
 
   protected readonly coordinator = signal<CoordinatorCard | null>(null);
   protected readonly trips = signal<PublishedTripSummary[]>([]);
+  protected readonly posts = signal<Post[]>([]);
+  private readonly creator = inject(CreatorApi);
   protected readonly error = signal('');
   protected readonly upcoming = computed(() => this.trips().filter((trip) => trip.effectiveStatus !== 'completed'));
   protected readonly past = computed(() => this.trips().filter((trip) => trip.effectiveStatus === 'completed'));
@@ -83,6 +94,7 @@ export default class CoordinatorProfilePage {
           const result = await this.catalog.coordinator(id);
           this.coordinator.set(result.coordinator);
           this.trips.set(result.trips);
+          this.posts.set(await this.creator.feed(id).catch(() => []));
         } catch (error) {
           this.error.set(apiErrorMessage(error, 'Profilo non disponibile.'));
         }

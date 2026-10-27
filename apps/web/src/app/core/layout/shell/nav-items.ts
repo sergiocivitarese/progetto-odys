@@ -13,4 +13,5 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'I miei viaggi', path: '/viaggi', icon: 'bookmark' },
   { label: 'Pianifica', path: '/pianifica', icon: 'plus' },
   { label: 'Viaggi di gruppo', path: '/gruppi', icon: 'users' },
+  { label: 'Esplora', path: '/esplora', icon: 'compass' },
 ];
