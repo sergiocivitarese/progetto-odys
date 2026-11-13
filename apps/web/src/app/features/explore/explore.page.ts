@@ -70,6 +70,6 @@ export default class ExplorePage implements OnInit {
   }
 
   protected goGroups(): void {
-    void this.router.navigate(['/gruppi']);
+    void this.router.navigate(['/cerca']);
   }
 }

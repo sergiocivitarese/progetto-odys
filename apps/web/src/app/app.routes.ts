@@ -9,6 +9,8 @@ import { authGuard, guestGuard } from './core/auth/auth.guard';
 export const routes: Routes = [
   { path: '', pathMatch: 'full', title: 'Esplora · Odys', loadComponent: () => import('./features/discover/discover.page') },
   { path: 'cerca', title: 'Cerca un viaggio · Odys', loadComponent: () => import('./features/discover/search.page') },
+  { path: 'prenota/:id', title: 'Blocca il tuo posto · Odys', canActivate: [authGuard], loadComponent: () => import('./features/booking/checkout.page') },
+  { path: 'prossimo-viaggio', title: 'Prossimo viaggio · Odys', canActivate: [authGuard], loadComponent: () => import('./features/booking/next-trip.page') },
   { path: 'salvati', title: 'Salvati · Odys', canActivate: [authGuard], loadComponent: () => import('./features/discover/saved.page') },
   { path: 'pianifica', title: 'Pianifica il viaggio · Odys', loadChildren: () => import('./features/planner/planner.routes') },
   { path: 'viaggi', title: 'I miei viaggi · Odys', canActivate: [authGuard], loadChildren: () => import('./features/trips/trips.routes') },

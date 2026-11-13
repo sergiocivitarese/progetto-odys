@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { apiErrorMessage } from '../../core/api/api-client';
-import { CatalogApi, PARTICIPATION_STATUS_LABELS, type Participant, type ParticipationStatus, type PublishedTrip } from '../../core/api/catalog.api';
+import { CatalogApi, formatAmount, PARTICIPATION_STATUS_LABELS, type Participant, type ParticipationStatus, type PublishedTrip } from '../../core/api/catalog.api';
 import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
 
 /**
@@ -20,7 +20,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
         <p class="eyebrow">Partecipanti</p>
         <h1>{{ trip()?.title ?? 'Viaggio' }}</h1>
         @if (trip(); as t) {
-          <p class="muted">{{ confirmed().length }} confermati su {{ t.capacity ?? '—' }} posti · {{ pending().length }} richieste in attesa</p>
+          <p class="muted">{{ confirmed().length }} confermati su {{ t.capacity ?? '—' }} posti · {{ pending().length }} richieste con acconto pagato</p>
         }
       </header>
 
@@ -28,7 +28,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
       @if (loading()) {
         <p class="muted"><odys-icon name="loader" /> Caricamento delle richieste…</p>
       } @else if (!participants().length && !error()) {
-        <odys-empty-state icon="users" title="Nessuna richiesta per ora" description="Quando un viaggiatore chiede di partecipare dalla pagina del viaggio, la richiesta compare qui." />
+        <odys-empty-state icon="users" title="Nessuna richiesta per ora" description="Quando un viaggiatore blocca il posto e paga l’acconto, la richiesta compare qui." />
       } @else {
         @for (group of groups(); track group.title) {
           @if (group.items.length) {
@@ -40,11 +40,12 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
                     <span class="avatar" aria-hidden="true">{{ person.firstName[0] }}</span>
                     <div class="row__main">
                       <strong>{{ person.firstName }} {{ person.lastName }}</strong>
-                      <span class="muted small">{{ label(person.status) }} · richiesta del {{ person.createdAt | date: 'd MMM y' }}</span>
+                      <span class="muted small">{{ label(person.status) }} · {{ person.createdAt | date: 'd MMM y' }}@if (person.age) { · {{ person.age }} anni}@if (person.sharedInterests) { · {{ person.sharedInterests }} {{ person.sharedInterests === 1 ? 'interesse' : 'interessi' }} in comune}</span>
+                      <span class="small">{{ payment(person) }}</span>
                       @if (person.email) {<a class="small" [href]="'mailto:' + person.email"><odys-icon name="mail" [size]="14" /> {{ person.email }}</a>}
                       @if (person.message) {<p class="message">“{{ person.message }}”</p>}
                     </div>
-                    @if (person.status !== 'withdrawn') {
+                    @if (person.status === 'pending' || person.status === 'confirmed' || person.status === 'declined') {
                       <div class="actions">
                         @if (person.status !== 'confirmed') {
                           <button odysButton variant="accent" size="sm" icon="check" [disabled]="busy() === person.id" (click)="decide(person, 'confirm')">Conferma</button>
@@ -86,7 +87,7 @@ export default class ParticipantsPage {
   protected readonly error = signal('');
   protected readonly busy = signal('');
   protected readonly pending = computed(() => this.participants().filter((item) => item.status === 'pending'));
-  protected readonly confirmed = computed(() => this.participants().filter((item) => item.status === 'confirmed'));
+  protected readonly confirmed = computed(() => this.participants().filter((item) => item.status === 'confirmed' || item.status === 'balance_paid'));
   protected readonly groups = computed(() => [
     { title: 'In attesa di risposta', items: this.pending() },
     { title: 'Confermati', items: this.confirmed() },
@@ -112,6 +113,15 @@ export default class ParticipantsPage {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /** Stato dei pagamenti per il coordinatore (CB-08). */
+  protected payment(person: Participant): string {
+    const deposit = formatAmount(person.depositCents, person.currency);
+    if (person.status === 'balance_paid') return `Saldato · ${formatAmount(person.priceCents, person.currency)}`;
+    const due = person.balanceDueDate ? ` entro il ${new Date(`${person.balanceDueDate}T00:00:00`).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}` : '';
+    if (person.status === 'confirmed') return `Acconto ${deposit} pagato · saldo ${formatAmount((person.priceCents ?? 0) - (person.depositCents ?? 0), person.currency)}${due}`;
+    return `Acconto ${deposit} pagato`;
   }
 
   protected label(status: ParticipationStatus): string {

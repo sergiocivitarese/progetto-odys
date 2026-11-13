@@ -53,7 +53,7 @@
     </section>
 
     <section id="partecipazioni" class="card">
-      <h2>Le mie richieste di partecipazione</h2>
+      <h2>Le mie prenotazioni</h2>
       @for (request of participations(); track request.id) {
         <div class="idea">
           <span class="idea__cover" aria-hidden="true">{{ request.trip?.destination?.[0] ?? '·' }}</span>
@@ -64,11 +64,11 @@
             } @else {
               <strong>Viaggio non più disponibile</strong>
             }
-            <p class="small"><span class="request-status request-status--{{ request.status }}">{{ participationLabel(request.status) }}</span> · richiesta del {{ request.createdAt | date: 'd MMM y' }}</p>
+            <p class="small"><span class="request-status request-status--{{ request.status }}">{{ participationLabel(request.status) }}</span> · {{ request.createdAt | date: 'd MMM y' }}</p>
           </div>
         </div>
       } @empty {
-        <p class="muted">Non hai ancora chiesto di partecipare a un viaggio. <a routerLink="/gruppi">Esplora i viaggi di gruppo</a>.</p>
+        <p class="muted">Non hai ancora prenotato un viaggio. <a routerLink="/">Esplora i viaggi</a>.</p>
       }
     </section>
 
@@ -100,7 +100,7 @@
         </div>
       }
       @if (!visibleSavedPublished().length && !savedGroupTrips().length) {
-        <p class="muted">Nessuna idea salvata. <a routerLink="/gruppi">Esplora i viaggi di gruppo</a>.</p>
+        <p class="muted">Nessuna idea salvata. <a routerLink="/">Esplora i viaggi</a>.</p>
       }
     </section>
 

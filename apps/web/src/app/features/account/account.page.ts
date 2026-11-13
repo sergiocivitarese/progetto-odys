@@ -33,7 +33,12 @@ const ACTION_LABELS: Record<string, string> = {
   'profile.update': 'Profilo aggiornato',
   'trip.copied': 'Viaggio creato da un viaggio pubblicato',
   'participation.request': 'Richiesta di partecipazione inviata',
-  'participation.withdraw': 'Richiesta di partecipazione ritirata',
+  'participation.withdraw': 'Prenotazione annullata',
+  'booking.reserve': 'Posto riservato',
+  'payment.deposit.start': 'Pagamento dell’acconto avviato',
+  'payment.balance.start': 'Pagamento del saldo avviato',
+  'payment.deposit': 'Acconto pagato',
+  'payment.balance': 'Saldo pagato',
   'participation.confirm': 'Partecipante confermato',
   'participation.decline': 'Richiesta di partecipazione rifiutata',
   'coordinator_application.submit': 'Candidatura a coordinatore inviata',
@@ -115,7 +120,8 @@ export default class AccountPage implements OnInit {
     if (this.avviso() === 'password') this.passwordState.set({ tone: 'success', text: 'Password aggiornata.' });
     void this.config.ensureLoaded();
     const [activity, groups, saved, participations] = await Promise.allSettled([this.api.activity(), this.services.groupTrips(), this.catalog.savedTrips(), this.catalog.myParticipations()]);
-    if (participations.status === 'fulfilled') this.participations.set(participations.value);
+    // Le riserve non pagate sono un checkout in corso, non prenotazioni.
+    if (participations.status === 'fulfilled') this.participations.set(participations.value.filter((item) => item.status !== 'reserved'));
     void this.creator.savedPosts().then((posts) => this.savedPosts.set(posts)).catch(() => undefined);
     if (activity.status === 'fulfilled') this.activity.set(activity.value);
     if (groups.status === 'fulfilled') this.groupTrips.set(groups.value);

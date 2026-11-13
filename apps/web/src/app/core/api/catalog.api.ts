@@ -48,6 +48,8 @@ export interface PublishedTripSummary {
   visibility: TripVisibility;
   ageMin?: number;
   ageMax?: number;
+  /** Iniziali di chi ha già un posto (solo nel dettaglio). */
+  participants?: string[];
   /** Posti liberi; assente se il conteggio non è disponibile. */
   seatsLeft?: number;
   /** Affinità con i tuoi interessi (solo con l'accesso e con interessi nel profilo). */
@@ -72,7 +74,8 @@ export interface PublishedTrip extends PublishedTripSummary {
   requests?: { pending: number; confirmed: number };
 }
 
-export type ParticipationStatus = 'pending' | 'confirmed' | 'declined' | 'withdrawn';
+/** Posto riservato → richiesta inviata (acconto pagato) → confermata → saldata. */
+export type ParticipationStatus = 'reserved' | 'pending' | 'confirmed' | 'balance_paid' | 'declined' | 'withdrawn';
 
 export interface ParticipationRequest {
   id: string;
@@ -81,6 +84,32 @@ export interface ParticipationRequest {
   message?: string;
   createdAt: string;
   decidedAt?: string;
+  reservedUntil?: string;
+  seatNumber?: number;
+  priceCents?: number;
+  depositCents?: number;
+  currency: string;
+  balanceDueDate?: string;
+}
+
+export interface Payment {
+  id: string;
+  requestId: string;
+  kind: 'deposit' | 'balance';
+  amountCents: number;
+  currency: string;
+  status: 'processing' | 'confirmed' | 'failed';
+  method: 'card' | 'wallet';
+  createdAt: string;
+  confirmedAt?: string;
+}
+
+/** Prenotazione con il suo viaggio e i pagamenti (checkout e Prossimo viaggio). */
+export interface Booking extends ParticipationRequest {
+  trip: PublishedTripSummary | null;
+  payments: Payment[];
+  /** Solo in Prossimo viaggio: altre prenotazioni attive oltre a questa. */
+  others?: number;
 }
 
 /** Richiesta dell'utente con il viaggio collegato (null se il viaggio non è più pubblico). */
@@ -94,6 +123,8 @@ export interface Participant extends ParticipationRequest {
   firstName: string;
   lastName: string;
   email?: string;
+  age?: number;
+  sharedInterests?: number;
 }
 
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
@@ -208,7 +239,13 @@ export class CatalogApi {
   unsaveTrip(id: string) { return this.api.delete(`/me/saved-trips/${encodeURIComponent(id)}`); }
 
   myParticipations() { return this.api.get<MyParticipation[]>('/me/participations'); }
-  requestParticipation(id: string, message?: string) { return this.api.post<ParticipationRequest>(`/catalog/trips/${encodeURIComponent(id)}/participation`, { message: message || undefined }); }
+  /** Blocca il posto (TB-08): riserva per il tempo del checkout. */
+  reserve(tripId: string) { return this.api.post<Booking>(`/bookings/trips/${encodeURIComponent(tripId)}`, {}); }
+  booking(id: string) { return this.api.get<Booking>(`/bookings/${encodeURIComponent(id)}`); }
+  pay(id: string, kind: Payment['kind'], method: Payment['method'] = 'card', acceptTerms = false) {
+    return this.api.post<Payment>(`/bookings/${encodeURIComponent(id)}/payments`, { kind, method, acceptTerms });
+  }
+  nextTrip() { return this.api.get<Booking | null>('/me/next-trip'); }
   withdrawParticipation(id: string) { return this.api.delete<ParticipationRequest>(`/catalog/trips/${encodeURIComponent(id)}/participation`); }
 
   coordinatorStatus() { return this.api.get<CoordinatorStatus>('/coordinator/status'); }
@@ -249,8 +286,10 @@ export const PUBLISHED_STATUS_LABELS: Record<PublishedTripStatus, string> = {
 };
 
 export const PARTICIPATION_STATUS_LABELS: Record<ParticipationStatus, string> = {
-  pending: 'In attesa di conferma',
+  reserved: 'Posto riservato',
+  pending: 'Richiesta inviata',
   confirmed: 'Confermata',
+  balance_paid: 'Saldata',
   declined: 'Non accettata',
   withdrawn: 'Ritirata',
 };
