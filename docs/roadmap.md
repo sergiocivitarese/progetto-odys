@@ -1,6 +1,6 @@
 # Roadmap di Odys
 
-Riferimento: `docs/riferimenti/odys-requisiti-business-funzionali.docx`.
+Riferimenti: `docs/riferimenti/odys-requisiti-business-funzionali.docx` (requisiti U-, C-, A-, G-…), `docs/riferimenti/odys-specifiche-per-ruolo.pdf` (28 ottobre 2026: requisiti per ruolo TB-, TP-, CB-, CP-, AG-) e `docs/riferimenti/odys-app-mobile.pdf` (mockup delle schermate).
 Si procede a fasi; ogni fase si chiude con una demo funzionante e i test verdi.
 
 | Fase | Contenuto | Requisiti | Stato |
@@ -10,9 +10,35 @@ Si procede a fasi; ogni fase si chiude con una demo funzionante e i test verdi.
 | 2 | **Catalogo e viaggi di gruppo**: viaggi pubblicati, ricerca e ordinamento, dettaglio, salvataggio come idea, "usa come base", **richiesta di partecipazione** con posti disponibili | U-01…U-09, U-14, U-16, U-17, U-21, P-06 | ✅ Completata · il checkout (U-15, U-18) è nella Fase 7 |
 | 3 | **Coordinatori**: candidatura online e approvazione dell'amministratore, linee guida versionate, profilo pubblico, offerte con validazioni e stati, **gestione partecipanti** | C-01…C-04, C-06…C-09, C-11…C-15 | ✅ Completata · verifica d'identità e documenti (C-02) da definire (§12) |
 | 4 | **Creator Studio**: post foto/video/caroselli, stati DRAFT/SCHEDULED/PUBLISHED/ARCHIVED, bozze private, programmazione con conto alla rovescia, media su Supabase Storage (originale, versione ottimizzata, miniatura), feed Esplora, like e salvataggi, itinerario collegato | C-19…C-29, U-05, U-19…U-21, M-01…M-07, S-02 | ✅ Completata · itinerari a pagamento (P-05) con i pagamenti; nessuna transcodifica video |
-| 5 | **Agenzie**: profilo organizzativo, team e permessi, catalogo multi-operatore | A-01…A-06 | Da fare |
+| 5 | **Agenzie**: profilo organizzativo, team e permessi, catalogo multi-operatore | A-01…A-06 | Sostituita dal blocco R5 delle specifiche per ruolo |
 | 6 | **Amministrazione e moderazione**: candidature, ruoli e stato degli account con registro, segnalazioni su post/viaggi/profili, coda di revisione, rimozione e sospensione | G-01…G-04, G-06, S-07 | ✅ Completata · cruscotto economico (G-05) con i pagamenti |
 | 7 | Rinviati su decisione del cliente: **pagamenti** (checkout, commissioni, abbonamenti, payout), **AI** (generazione assistita degli itinerari), **chat di gruppo**, **Split**, **analytics** | U-15, U-18, P-01…P-05, C-05, C-10, C-16…C-18, A-07, A-08, G-05, T-06 | In attesa di decisioni (§12 dell'analisi) |
+
+## Specifiche per ruolo (dal 28 ottobre 2026)
+Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora sulla webapp esistente, impaginata prima per il mobile; gli ID sono quelli del PDF e vanno usati nei commit.
+
+| Blocco | Contenuto | Requisiti | Stato |
+|---|---|---|---|
+| R0 | **Fondamenta**: piani e diritti decisi dal server, stile Orbit Route, barra di navigazione per ruolo | TP-10, AG-09 (predisposizione), elementi trasversali | In corso |
+| R1 | **Traveller Base**: Esplora, ricerca per intento, filtri, affinità, card e dettaglio, acconto (pagamento simulato), Prossimo viaggio, follower e recensioni | TB-01…TB-12 | In corso |
+| R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | Da fare |
+| R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | Da fare (candidatura, partecipanti e post esistono già) |
+| R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | Da fare (gli eventi si registrano già da R1) |
+| R5 | **Agenzia**: profilo, ruoli interni, catalogo multi-partenza, team, AI per i coordinatori, licenze a scaglioni, modalità ombrello | AG-01…AG-12 | Da fare (sostituisce la vecchia Fase 5) |
+| Fase 2 | Chat di gruppo, suggerimenti dai dati | TB-13, CP-07 | Rinviata |
+
+### Punti aperti del cliente e valore provvisorio usato nel codice
+| Punto aperto | Valore provvisorio |
+|---|---|
+| Il limite di 12 include il coordinatore? | No: 12 partecipanti, coordinatore escluso |
+| Split anche per i Base invitati? | Non ancora sviluppato |
+| Prezzi e durata degli abbonamenti, prova gratuita | Nessun prezzo: il piano lo assegna l'amministratore dalla pagina Account |
+| Scaglioni e prezzi delle licenze | Non ancora sviluppato |
+| Commissione Odys e come compare nel prezzo | Non calcolata: l'acconto e il prezzo sono quelli indicati dal coordinatore |
+| Algoritmo dell'affinità «X% per te» | Quota degli interessi del viaggio che l'utente condivide (`packages/domain/src/lib/affinity.ts`) |
+| Rimborso dell'acconto, richiesta non confermata | Nessun rimborso automatico: il pagamento è simulato |
+| Fornitore dei pagamenti | Simulato lato server dietro l'interfaccia `PaymentProvider`, da sostituire con quello reale |
+| Durata della riserva del posto nel checkout | 15 minuti |
 
 ## Dove siamo arrivati (27 ottobre 2026)
 - Supabase "Odys" (Europa): migrazioni 0001–0008 applicate. Il progetto gratuito va in pausa dopo giorni senza attività: se login e catalogo smettono di funzionare, riattivarlo dalla dashboard.
