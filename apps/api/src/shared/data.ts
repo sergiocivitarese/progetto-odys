@@ -1,4 +1,4 @@
-import type { Itinerary, SavedTrip } from '@odys/domain';
+import type { AccountEntitlements, Itinerary, SavedTrip } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { CatalogRepository, CoordinatorRepository, SavedTripsRepository } from './catalog';
 import type { CommunityStore } from './community';
@@ -113,4 +113,6 @@ export interface DataStore extends CommunityStore, CreatorStore {
   catalog(): CatalogRepository;
   coordinator(user: AuthUser): CoordinatorRepository;
   saved(user: AuthUser): SavedTripsRepository;
+  /** Piano effettivo e diritti dell'utente, decisi dal server. */
+  entitlements(user: AuthUser): Promise<AccountEntitlements>;
 }

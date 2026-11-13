@@ -427,3 +427,25 @@ test('moderazione: segnalazione, coda dell’amministratore, rimozione del conte
   assert.equal((await call('PATCH', `/admin/accounts/${adminId}`, { role: 'traveler' }, adminToken)).status, 422);
   assert.equal((await call('PATCH', `/admin/accounts/${ownerId}`, { role: 'superuser' }, adminToken)).status, 400);
 });
+
+test('piani e diritti: il server dice cosa è sbloccato e solo l’amministratore assegna un piano (TP-10)', async () => {
+  const token = 'token-piani';
+  const id = db.addUser(token, undefined, 'piani@example.com');
+  const adminToken = 'token-admin-piani';
+  Object.assign(db.user(db.addUser(adminToken, undefined, 'admin.piani@example.com')).profile, { role: 'admin' });
+
+  assert.equal((await call('GET', '/me/entitlements')).status, 401);
+  const base = await call<{ plan: string; planLabel: string; entitlements: string[] }>('GET', '/me/entitlements', undefined, token);
+  assert.deepEqual(base.data, { plan: 'traveller_base', planLabel: 'Traveller Base', entitlements: ['trips.book'] });
+
+  assert.equal((await call('PUT', `/admin/accounts/${id}/plan`, { plan: 'traveller_premium' }, token)).status, 403);
+  assert.equal((await call('PUT', `/admin/accounts/${id}/plan`, { plan: 'oro' }, adminToken)).status, 400);
+  const updated = await call<{ plan: string }>('PUT', `/admin/accounts/${id}/plan`, { plan: 'traveller_premium' }, adminToken);
+  assert.equal(updated.data.plan, 'traveller_premium');
+  const premium = await call<{ plan: string; entitlements: string[] }>('GET', '/me/entitlements', undefined, token);
+  assert.ok(premium.data.entitlements.includes('ai.generate') && premium.data.entitlements.includes('split.use'));
+
+  const revoked = await call<{ plan: string }>('PUT', `/admin/accounts/${id}/plan`, { plan: null }, adminToken);
+  assert.equal(revoked.data.plan, 'traveller_base');
+  assert.ok((await call<{ entitlements: string[] }>('GET', '/me/entitlements', undefined, adminToken)).data.entitlements.includes('admin.moderate'));
+});

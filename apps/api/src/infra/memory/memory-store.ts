@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { migrateItinerary } from '@odys/domain';
+import { describeEntitlements, migrateItinerary, type SubscriptionPlan } from '@odys/domain';
 import type { AuthProvider } from '../../shared/auth';
 import type {
   AccountRepository,
@@ -65,6 +65,8 @@ interface MemoryUser {
   savedTrips: Set<string>;
   consents: Set<string>;
   audit: AuditEntry[];
+  /** Piani attivi (abbonamenti, licenze o assegnati dall'amministratore). */
+  plans: SubscriptionPlan[];
 }
 
 interface MemoryPublished extends PublishedTrip {
@@ -100,6 +102,7 @@ export class MemoryDatabase {
       savedTrips: new Set(),
       consents: new Set(),
       audit: [],
+      plans: [],
     });
     return id;
   }
@@ -474,7 +477,7 @@ class MemoryAdminRepository implements AdminRepository {
   async listAccounts(query?: string) {
     await this.guard();
     const q = query?.trim().toLowerCase();
-    return [...this.db.users.values()].map(({ profile }): AccountSummary => ({ id: profile.id, email: profile.email, firstName: profile.firstName, lastName: profile.lastName, role: profile.role, status: profile.status, createdAt: profile.createdAt }))
+    return [...this.db.users.values()].map(({ profile, plans }): AccountSummary => ({ id: profile.id, email: profile.email, firstName: profile.firstName, lastName: profile.lastName, role: profile.role, status: profile.status, createdAt: profile.createdAt, plan: describeEntitlements(profile.role, plans).plan }))
       .filter((account) => !q || `${account.email} ${account.firstName} ${account.lastName}`.toLowerCase().includes(q));
   }
 
@@ -485,6 +488,17 @@ class MemoryAdminRepository implements AdminRepository {
     if (!user) return null;
     Object.assign(user.profile, Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)));
     this.db.user(this.userId).audit.unshift({ action: 'account.update', entity: 'profile', entityId: id, metadata: changes, createdAt: new Date().toISOString() });
+    return (await this.listAccounts()).find((account) => account.id === id) ?? null;
+  }
+
+  async setPlan(id: string, plan: SubscriptionPlan | null, note?: string) {
+    await this.guard();
+    const user = this.db.users.get(id);
+    if (!user) return null;
+    const from = describeEntitlements(user.profile.role, user.plans).plan;
+    user.plans = plan ? [plan] : [];
+    const to = describeEntitlements(user.profile.role, user.plans).plan;
+    this.db.user(this.userId).audit.unshift({ action: 'account.plan', entity: 'profile', entityId: id, metadata: { from, to, note }, createdAt: new Date().toISOString() });
     return (await this.listAccounts()).find((account) => account.id === id) ?? null;
   }
 }
@@ -519,6 +533,11 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     catalog: () => new MemoryCatalogRepository(db),
     coordinator: (user) => new MemoryCoordinatorRepository(db, user.id),
     saved: (user) => new MemorySavedTripsRepository(db, user.id),
+    async entitlements(user) {
+      const data = db.user(user.id);
+      if (data.profile.status !== 'active') return { ...describeEntitlements('traveler', []), entitlements: [] };
+      return describeEntitlements(data.profile.role, data.plans);
+    },
     participation: (user) => new MemoryParticipationRepository(db, user.id),
     applications: (user) => new MemoryApplicationsRepository(db, user.id),
     admin: (user) => new MemoryAdminRepository(db, user.id),

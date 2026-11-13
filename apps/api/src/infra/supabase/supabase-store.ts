@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { asSavedTrip, type Itinerary } from '@odys/domain';
+import { asSavedTrip, PLAN_LABELS, type AccountEntitlements, type Entitlement, type Itinerary, type PlanTier } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
 import type { AuthUser } from '../../shared/auth';
 import type {
@@ -221,6 +221,14 @@ export function supabaseDataStore(config: AppConfig): DataStore {
     catalog: catalog.catalog,
     coordinator: catalog.coordinator,
     saved: catalog.saved,
+    async entitlements(user): Promise<AccountEntitlements> {
+      const { data, error } = await userClient(config, user.accessToken).rpc('my_entitlements');
+      if (error) throw dbError(error);
+      const row = (data as Array<{ plan: PlanTier; entitlements: string[] }>)[0];
+      // Account sospeso o senza profilo: nessun diritto.
+      if (!row) return { plan: 'traveller_base', planLabel: PLAN_LABELS.traveller_base, entitlements: [] };
+      return { plan: row.plan, planLabel: PLAN_LABELS[row.plan], entitlements: row.entitlements as Entitlement[] };
+    },
     ...supabaseCommunity(config),
     ...supabaseCreator(config),
   };

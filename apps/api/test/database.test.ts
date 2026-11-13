@@ -340,3 +340,42 @@ test('moderazione: segnalazioni solo su contenuti visibili, decisioni solo dell�
   assert.equal((await db.query<{ status: string }>('select status from public.profiles where id = $1', [marco])).rows[0].status, 'suspended');
   await assert.rejects(asUser(admin, () => db.query(`select public.admin_update_account($1, 'traveler')`, [admin])), /tuo account/);
 });
+
+test('piani e diritti: la tabella SQL coincide con il dominio, il piano lo assegna solo l’amministratore (TP-10)', async () => {
+  const { PLAN_ENTITLEMENTS, describeEntitlements } = await import('@odys/domain');
+  const table = await db.query<{ plan: keyof typeof PLAN_ENTITLEMENTS; entitlement: string }>('select plan, entitlement from public.plan_entitlements');
+  for (const plan of Object.keys(PLAN_ENTITLEMENTS) as Array<keyof typeof PLAN_ENTITLEMENTS>) {
+    assert.deepEqual(table.rows.filter((row) => row.plan === plan).map((row) => row.entitlement).sort(), [...PLAN_ENTITLEMENTS[plan]].sort(), plan);
+  }
+
+  const sara = await signUp('sara.piani@example.com', { ...adult, first_name: 'Sara' });
+  const mine = () => asUser(sara, () => db.query<{ plan: string; entitlements: string[] }>('select plan, entitlements from public.my_entitlements()'));
+  assert.deepEqual((await mine()).rows[0], { plan: 'traveller_base', entitlements: ['trips.book'] });
+
+  // L'utente non si assegna un piano da solo, né scrivendo la tabella né con la funzione.
+  await assert.rejects(asUser(sara, () => db.query(`insert into public.subscriptions (user_id, plan) values ($1, 'traveller_premium')`, [sara])), /permission denied/);
+  await assert.rejects(asUser(sara, () => db.query(`select public.admin_set_plan($1, 'traveller_premium')`, [sara])), /amministratore/);
+
+  const admin = (await db.query<{ id: string }>(`select id from public.profiles where role = 'admin' limit 1`)).rows[0].id;
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, 'traveller_premium', 'Demo')`, [sara]));
+  assert.deepEqual((await mine()).rows[0].entitlements, [...describeEntitlements('traveler', ['traveller_premium']).entitlements].sort());
+  assert.equal((await asUser(admin, () => db.query(`select id from public.audit_log where action = 'account.plan'`))).rows.length, 1);
+  assert.equal((await asUser(admin, () => db.query<{ plan: string }>(`select plan from public.admin_accounts('sara.piani')`))).rows[0].plan, 'traveller_premium');
+
+  // Coordinatore con licenza: Premium finché è attiva; alla revoca torna Base dal momento successivo (AG-09).
+  await db.query(`update public.profiles set role = 'coordinator' where id = $1`, [sara]);
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, 'coordinator_premium')`, [sara]));
+  assert.equal((await mine()).rows[0].plan, 'coordinator_premium');
+  assert.ok((await mine()).rows[0].entitlements.includes('analytics.coordinator'));
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, null)`, [sara]));
+  assert.equal((await mine()).rows[0].plan, 'coordinator_base');
+  assert.ok((await asUser(sara, () => db.query<{ ok: boolean }>(`select public.has_entitlement('trips.sell') as ok`))).rows[0].ok);
+
+  // Un account sospeso non ha diritti.
+  await db.query(`update public.profiles set status = 'suspended' where id = $1`, [sara]);
+  assert.equal((await mine()).rows.length, 0);
+});
+
+test('un viaggio ha al massimo 12 posti, coordinatore escluso', async () => {
+  await assert.rejects(db.query(`insert into public.published_trips (coordinator_id, title, itinerary, capacity) values ($1, 'Troppi posti', '{"days":[]}', 13)`, [giulia]), /published_trips_capacity_max/);
+});

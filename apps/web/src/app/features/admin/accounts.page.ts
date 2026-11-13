@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { PLAN_LABELS, type SubscriptionPlan } from '@odys/domain';
 import { apiErrorMessage } from '../../core/api/api-client';
 import { ACCOUNT_STATUS_LABELS, ModerationApi, ROLE_LABELS, type AccountRole, type AccountStatus, type AccountSummary } from '../../core/api/moderation.api';
 import { ButtonComponent, IconComponent, NoticeComponent } from '../../shared/ui';
@@ -30,7 +31,7 @@ import { AdminNavComponent } from './admin-nav.component';
         <div class="table-wrap">
           <table>
             <caption class="visually-hidden">Account trovati</caption>
-            <thead><tr><th scope="col">Persona</th><th scope="col">Ruolo</th><th scope="col">Stato</th><th scope="col">Dal</th><th scope="col"><span class="visually-hidden">Azioni</span></th></tr></thead>
+            <thead><tr><th scope="col">Persona</th><th scope="col">Ruolo</th><th scope="col">Stato</th><th scope="col">Piano</th><th scope="col">Dal</th><th scope="col"><span class="visually-hidden">Azioni</span></th></tr></thead>
             <tbody>
               @for (account of accounts(); track account.id) {
                 <tr>
@@ -47,16 +48,26 @@ import { AdminNavComponent } from './admin-nav.component';
                       @for (status of statuses; track status) {<option [value]="status">{{ statusLabels[status] }}</option>}
                     </select>
                   </td>
+                  <td>
+                    <span class="plan">{{ planLabels[account.plan] }}</span>
+                    <label class="visually-hidden" [for]="'plan-' + account.id">Assegna un piano a {{ account.firstName }}</label>
+                    <select [id]="'plan-' + account.id" [disabled]="busy() === account.id" (change)="assignPlan(account, $any($event.target))">
+                      <option value="" selected>Assegna…</option>
+                      <option value="none">Nessun piano a pagamento</option>
+                      <option value="traveller_premium">Traveller Premium</option>
+                      <option value="coordinator_premium">Coordinatore Premium</option>
+                    </select>
+                  </td>
                   <td class="small">{{ account.createdAt | date: 'd MMM y' }}</td>
                   <td>@if (changed(account)) {<button odysButton variant="accent" size="sm" [disabled]="busy() === account.id" (click)="save(account)">Salva</button>}</td>
                 </tr>
               } @empty {
-                <tr><td colspan="5" class="muted">Nessun account trovato.</td></tr>
+                <tr><td colspan="6" class="muted">Nessun account trovato.</td></tr>
               }
             </tbody>
           </table>
         </div>
-        <p class="muted small">Ogni modifica di ruolo o stato viene registrata. Un account sospeso perde le funzioni da coordinatore finché non viene riattivato.</p>
+        <p class="muted small">Ogni modifica di ruolo o stato viene registrata. Un account sospeso perde le funzioni da coordinatore finché non viene riattivato. Il piano si assegna da qui finché non sono attivi i pagamenti degli abbonamenti: il Coordinatore Premium vale solo per chi ha il ruolo di coordinatore.</p>
       }
     </div>
   `,
@@ -64,7 +75,8 @@ import { AdminNavComponent } from './admin-nav.component';
     .head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-4); h1 { font-size: var(--text-3xl); } }
     .search { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); input { flex: 1; min-width: 220px; min-height: 44px; padding: 0 var(--space-4); border-radius: var(--radius-pill); border: var(--border-width) solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text); font: inherit; } }
     .table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: var(--border-width) solid var(--color-border); background: var(--color-surface); }
-    table { width: 100%; border-collapse: collapse; min-width: 640px; }
+    table { width: 100%; border-collapse: collapse; min-width: 820px; }
+    .plan { display: block; font-weight: 700; margin-bottom: var(--space-1); white-space: nowrap; }
     th, td { padding: var(--space-3) var(--space-4); text-align: left; border-bottom: var(--border-width) solid var(--color-border); vertical-align: middle; }
     th { font-size: var(--text-sm); color: var(--color-text-muted); }
     select { min-height: 40px; padding: 0 var(--space-2); border-radius: var(--radius-sm); border: var(--border-width) solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text); font: inherit; }
@@ -78,6 +90,7 @@ export default class AdminAccountsPage implements OnInit {
   protected readonly statuses: AccountStatus[] = ['active', 'suspended', 'disabled'];
   protected readonly roleLabels = ROLE_LABELS;
   protected readonly statusLabels = ACCOUNT_STATUS_LABELS;
+  protected readonly planLabels = PLAN_LABELS;
   protected readonly accounts = signal<AccountSummary[]>([]);
   protected readonly drafts = signal<Record<string, { role: AccountRole; status: AccountStatus }>>({});
   protected readonly query = signal('');
@@ -107,6 +120,24 @@ export default class AdminAccountsPage implements OnInit {
   protected changed(account: AccountSummary): boolean { const d = this.drafts()[account.id]; return !!d && (d.role !== account.role || d.status !== account.status); }
   protected edit(account: AccountSummary, change: Partial<{ role: AccountRole; status: AccountStatus }>): void {
     this.drafts.update((current) => ({ ...current, [account.id]: { ...this.draft(account), ...change } }));
+  }
+
+  protected async assignPlan(account: AccountSummary, select: HTMLSelectElement): Promise<void> {
+    const choice = select.value;
+    select.value = '';
+    if (!choice) return;
+    this.busy.set(account.id);
+    try {
+      const updated = await this.api.setPlan(account.id, choice === 'none' ? null : choice as SubscriptionPlan, '');
+      this.accounts.update((list) => list.map((item) => item.id === updated.id ? updated : item));
+      this.messageTone.set('success');
+      this.message.set(`${updated.firstName} ora è ${PLAN_LABELS[updated.plan]}.`);
+    } catch (error) {
+      this.messageTone.set('danger');
+      this.message.set(apiErrorMessage(error, 'Piano non assegnato.'));
+    } finally {
+      this.busy.set('');
+    }
   }
 
   protected async save(account: AccountSummary): Promise<void> {

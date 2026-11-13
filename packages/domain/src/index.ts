@@ -17,5 +17,6 @@ export * from './lib/offlineMap';
 export * from './lib/savedTrips';
 export * from './lib/itineraryEditing';
 export * from './lib/tripForm';
+export * from './lib/entitlements';
 export * from './data/places';
 export * from './data/demo';

@@ -1,3 +1,4 @@
+import type { PlanTier, SubscriptionPlan } from '@odys/domain';
 import type { AuthUser } from './auth';
 
 /*
@@ -116,6 +117,8 @@ export interface AccountSummary {
   role: 'traveler' | 'coordinator' | 'agency' | 'admin';
   status: 'active' | 'suspended' | 'disabled';
   createdAt: string;
+  /** Profilo effettivo (piano e ruolo). */
+  plan: PlanTier;
 }
 
 /** Segnalazioni inviate dagli utenti (S-07). */
@@ -131,6 +134,8 @@ export interface AdminRepository {
   resolveReport(id: string, action: ReportAction, note?: string): Promise<ReportReview | null>;
   listAccounts(query?: string): Promise<AccountSummary[]>;
   updateAccount(id: string, changes: { role?: AccountSummary['role']; status?: AccountSummary['status'] }, note?: string): Promise<AccountSummary | null>;
+  /** Assegna (o revoca, con null) un piano: per demo e collaudo finché mancano i pagamenti. */
+  setPlan(id: string, plan: SubscriptionPlan | null, note?: string): Promise<AccountSummary | null>;
 }
 
 /** Fabbriche dei repository di questa area, per l'utente della richiesta. */

@@ -56,6 +56,9 @@ export function accountRouter(auth: AuthProvider, store: DataStore): Router {
     }));
   }));
 
+  // Piano e diritti: il client li chiede qui, non li deduce (TP-10).
+  router.get('/entitlements', handle(async (_req, res) => res.json(await store.entitlements(currentUser(res)))));
+
   router.get('/activity', handle(async (_req, res) => res.json(await repo(res).listActivity(100))));
 
   // Viaggi pubblicati salvati (U-08): l'idea resta dell'autore e si aggiorna con lui.

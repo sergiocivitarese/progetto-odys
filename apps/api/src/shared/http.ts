@@ -2,7 +2,8 @@ import type { ErrorRequestHandler, NextFunction, Request, RequestHandler, Respon
 
 /** Errore applicativo con codice HTTP e messaggio leggibile dall'utente. */
 export class HttpError extends Error {
-  constructor(readonly status: number, message: string) {
+  /** `extra` arriva al client accanto al messaggio (es. `code: 'upgrade_required'`). */
+  constructor(readonly status: number, message: string, readonly extra?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -21,7 +22,7 @@ export function requireObject<T = Record<string, unknown>>(value: unknown, messa
 
 export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof HttpError) {
-    res.status(error.status).json({ error: error.message });
+    res.status(error.status).json({ ...error.extra, error: error.message });
     return;
   }
   if (error?.type === 'entity.too.large') {

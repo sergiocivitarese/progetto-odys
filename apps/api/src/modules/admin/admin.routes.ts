@@ -1,3 +1,4 @@
+import type { SubscriptionPlan } from '@odys/domain';
 import { Router } from 'express';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
 import type { AccountSummary, ApplicationStatus, ReportAction, ReportStatus } from '../../shared/community';
@@ -9,6 +10,7 @@ const REPORT_STATUSES: ReportStatus[] = ['open', 'resolved', 'dismissed'];
 const REPORT_ACTIONS: ReportAction[] = ['dismiss', 'none', 'hidden', 'suspended'];
 const ROLES: AccountSummary['role'][] = ['traveler', 'coordinator', 'agency', 'admin'];
 const ACCOUNT_STATUSES: AccountSummary['status'][] = ['active', 'suspended', 'disabled'];
+const PLANS: SubscriptionPlan[] = ['traveller_premium', 'coordinator_premium', 'agency'];
 
 function note(value: unknown, field: string, max: number): string | undefined {
   if (value === undefined || value === null) return undefined;
@@ -71,6 +73,15 @@ export function adminRouter(auth: AuthProvider, store: DataStore): Router {
     if (body.role !== undefined && !ROLES.includes(body.role as AccountSummary['role'])) throw new HttpError(400, 'Ruolo non valido.');
     if (body.status !== undefined && !ACCOUNT_STATUSES.includes(body.status as AccountSummary['status'])) throw new HttpError(400, 'Stato non valido.');
     const updated = await store.admin(currentUser(res)).updateAccount(String(req.params.id), { role: body.role as AccountSummary['role'] | undefined, status: body.status as AccountSummary['status'] | undefined }, note(body.note, 'nota', 600));
+    if (!updated) throw new HttpError(404, 'Account non trovato.');
+    res.json(updated);
+  }));
+
+  // Piano dell'account: finché mancano i pagamenti lo assegna l'amministratore (demo e collaudo).
+  router.put('/accounts/:id/plan', handle(async (req, res) => {
+    const body = requireObject<{ plan?: unknown; note?: unknown }>(req.body, 'Richiesta non valida.');
+    if (body.plan !== null && !PLANS.includes(body.plan as SubscriptionPlan)) throw new HttpError(400, 'Piano non valido.');
+    const updated = await store.admin(currentUser(res)).setPlan(String(req.params.id), body.plan as SubscriptionPlan | null, note(body.note, 'nota', 600));
     if (!updated) throw new HttpError(404, 'Account non trovato.');
     res.json(updated);
   }));

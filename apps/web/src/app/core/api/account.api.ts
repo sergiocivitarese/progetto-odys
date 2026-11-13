@@ -1,4 +1,5 @@
 import { inject, Injectable } from '@angular/core';
+import type { AccountEntitlements } from '@odys/domain';
 import { ApiClient } from './api-client';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
@@ -38,6 +39,7 @@ export class AccountApi {
   me() { return this.api.get<{ profile: Profile; preferences: Preferences }>('/me'); }
   updateProfile(patch: Partial<Pick<Profile, 'firstName' | 'lastName' | 'bio' | 'interests' | 'publicHeadline'>>) { return this.api.patch<Profile>('/me', patch); }
   updatePreferences(patch: { theme?: ThemePreference; onboardingCompleted?: boolean }) { return this.api.put<Preferences>('/me/preferences', patch); }
+  entitlements() { return this.api.get<AccountEntitlements>('/me/entitlements'); }
   activity() { return this.api.get<ActivityEntry[]>('/me/activity'); }
   savedIdeas() { return this.api.get<string[]>('/me/saved-ideas'); }
   saveIdea(id: string) { return this.api.put<void>(`/me/saved-ideas/${encodeURIComponent(id)}`, {}); }

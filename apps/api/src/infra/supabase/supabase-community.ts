@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PlanTier, SubscriptionPlan } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
 import type { AuthUser } from '../../shared/auth';
 import type {
@@ -249,6 +250,13 @@ class SupabaseAdminRepository implements AdminRepository {
     if (error) throw dbError(error);
     return (await this.listAccounts()).find((item) => item.id === id) ?? null;
   }
+
+  async setPlan(id: string, plan: SubscriptionPlan | null, note?: string): Promise<AccountSummary | null> {
+    if (!isUuid(id)) return null;
+    const { error } = await this.db.rpc('admin_set_plan', { p_user_id: id, p_plan: plan, p_note: note ?? null });
+    if (error) throw dbError(error);
+    return (await this.listAccounts()).find((item) => item.id === id) ?? null;
+  }
 }
 
 function toReportReview(row: Record<string, unknown>): ReportReview {
@@ -280,6 +288,7 @@ function toAccount(row: Record<string, unknown>): AccountSummary {
     role: row['role'] as AccountSummary['role'],
     status: row['status'] as AccountSummary['status'],
     createdAt: row['created_at'] as string,
+    plan: (row['plan'] as PlanTier | null) ?? 'traveller_base',
   };
 }
 

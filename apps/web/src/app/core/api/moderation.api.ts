@@ -1,4 +1,5 @@
 import { inject, Injectable } from '@angular/core';
+import type { PlanTier, SubscriptionPlan } from '@odys/domain';
 import { ApiClient } from './api-client';
 
 /* Segnalazioni (S-07) e strumenti dell'amministratore (G-02…G-04). */
@@ -36,6 +37,8 @@ export interface AccountSummary {
   role: AccountRole;
   status: AccountStatus;
   createdAt: string;
+  /** Profilo effettivo: ruolo più piani attivi. */
+  plan: PlanTier;
 }
 
 export const REPORT_REASONS: Array<{ value: ReportReason; label: string }> = [
@@ -64,5 +67,9 @@ export class ModerationApi {
   accounts(query?: string) { return this.api.get<AccountSummary[]>('/admin/accounts', { q: query || undefined }); }
   updateAccount(id: string, changes: { role?: AccountRole; status?: AccountStatus }, note: string) {
     return this.api.patch<AccountSummary>(`/admin/accounts/${encodeURIComponent(id)}`, { ...changes, note: note || undefined });
+  }
+  /** Assegna o revoca (null) un piano: finché mancano i pagamenti serve per demo e collaudo. */
+  setPlan(id: string, plan: SubscriptionPlan | null, note: string) {
+    return this.api.put<AccountSummary>(`/admin/accounts/${encodeURIComponent(id)}/plan`, { plan, note: note || undefined });
   }
 }
