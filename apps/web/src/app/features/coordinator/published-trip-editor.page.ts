@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MAX_TRIP_PARTICIPANTS, TRIP_INTERESTS } from '@odys/domain';
 import { apiErrorMessage } from '../../core/api/api-client';
-import { CatalogApi, PUBLISHED_STATUS_LABELS, type CoordinatorAction, type PublishedTrip, type PublishedTripForm, type TripVisibility } from '../../core/api/catalog.api';
+import { CatalogApi, PUBLISHED_STATUS_LABELS, type CoordinatorAction, type PlaceStory, type PublishedTrip, type PublishedTripForm, type TripVisibility } from '../../core/api/catalog.api';
 import { TripsStore } from '../../core/state/trips.store';
 import { ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent } from '../../shared/ui';
 import { CoordinatorAccessComponent } from './coordinator-access.component';
@@ -57,6 +57,8 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   protected readonly visibility = signal<TripVisibility>('public');
   protected readonly ageMin = signal('');
   protected readonly ageMax = signal('');
+  /** Storia dei luoghi (TP-08): le tappe sono tre righe «data — cosa è successo». */
+  protected readonly stories = signal<PlaceStory[]>([]);
   protected readonly interestOptions = TRIP_INTERESTS;
   protected readonly maxSeats = MAX_TRIP_PARTICIPANTS;
   protected readonly visibilities: Array<{ value: TripVisibility; label: string; hint: string }> = [
@@ -125,6 +127,24 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     this.visibility.set(trip.visibility);
     this.ageMin.set(trip.ageMin !== undefined ? String(trip.ageMin) : '');
     this.ageMax.set(trip.ageMax !== undefined ? String(trip.ageMax) : '');
+    this.stories.set(structuredClone(trip.placeStories ?? []).map((story) => ({ ...story, milestones: [0, 1, 2].map((index) => story.milestones[index] ?? { when: '', text: '' }) })));
+  }
+
+  protected addStory(): void {
+    this.stories.update((list) => [...list, { id: `storia-${Date.now()}`, day: 1, title: '', intro: '', body: '', milestones: [0, 1, 2].map(() => ({ when: '', text: '' })) }]);
+  }
+
+  protected removeStory(id: string): void {
+    this.stories.update((list) => list.filter((story) => story.id !== id));
+  }
+
+  /** Aggiorna un campo di una storia (o di una sua tappa) senza mutare l'elenco. */
+  protected editStory(id: string, change: Partial<PlaceStory>, milestone?: { index: number; when?: string; text?: string }): void {
+    this.stories.update((list) => list.map((story) => {
+      if (story.id !== id) return story;
+      const milestones = milestone ? story.milestones.map((step, index) => (index === milestone.index ? { when: milestone.when ?? step.when, text: milestone.text ?? step.text } : step)) : story.milestones;
+      return { ...story, ...change, milestones };
+    }));
   }
 
   protected toggleInterest(item: string): void {
@@ -154,6 +174,8 @@ export default class PublishedTripEditorPage implements AfterViewInit {
       visibility: this.visibility(),
       ageMin: this.ageMin().trim() ? Number(this.ageMin()) : null,
       ageMax: this.ageMax().trim() ? Number(this.ageMax()) : null,
+      // Le storie lasciate vuote non si inviano.
+      placeStories: this.stories().filter((story) => story.title.trim() || story.body.trim()).map((story) => ({ ...story, day: Number(story.day) || 1 })),
     };
   }
 

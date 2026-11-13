@@ -667,3 +667,31 @@ test('generatore di itinerari: solo Premium, rigenera senza salvare, «Salva e a
   assert.equal(accepted.data.title, 'Costiera Amalfitana in 4 giorni');
   assert.equal((await call<Trip[]>('GET', '/trips', undefined, premiumToken)).data.length, 1);
 });
+
+test('storia dei luoghi: la scrive il coordinatore, la legge chi ha il Premium (TP-08, TP-10)', async () => {
+  const coordToken = 'token-storie-coord';
+  const coordId = db.addUser(coordToken, undefined, 'storie@example.com');
+  Object.assign(db.user(coordId).profile, { role: 'coordinator', firstName: 'Sara', lastName: 'Colombo' });
+  await call('POST', '/coordinator/guidelines', {}, coordToken);
+  const baseToken = 'token-storie-base';
+  db.addUser(baseToken);
+  const premiumToken = 'token-storie-premium';
+  db.user(db.addUser(premiumToken)).plans = ['traveller_premium'];
+
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Ravello' } });
+  const own = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coordToken);
+  const year = new Date().getFullYear() + 1;
+  const created = await call<{ id: string }>('POST', '/coordinator/trips', { sourceTripId: own.data.id, title: 'Costiera', summary: 'Quattro giorni tra Amalfi, Ravello e Positano.', price: 650, capacity: 12, startDate: `${year}-05-15`, endDate: `${year}-05-18` }, coordToken);
+  const story = { day: 3, title: 'Villa Cimbrone', intro: 'Un viale di glicini che finisce nel vuoto.', body: 'La tenuta nasce nell’XI secolo per una famiglia nobile del borgo.', milestones: [{ when: 'XI secolo', text: 'Tenuta di una famiglia nobile.' }, { when: '1904', text: 'Lord Grimthorpe ridisegna i giardini.' }, { when: 'Oggi', text: 'Hotel con giardino aperto.' }, { when: 'Extra', text: 'Quarta tappa ignorata.' }] };
+  assert.equal((await call('PUT', `/coordinator/trips/${created.data.id}`, { placeStories: [{ ...story, body: 'corto' }] }, coordToken)).status, 400);
+  const saved = await call<{ placeStories: Array<{ title: string; milestones: unknown[]; source: string }> }>('PUT', `/coordinator/trips/${created.data.id}`, { placeStories: [story] }, coordToken);
+  assert.deepEqual([saved.data.placeStories[0].title, saved.data.placeStories[0].milestones.length, saved.data.placeStories[0].source], ['Villa Cimbrone', 3, 'coordinator']);
+  await call('POST', `/coordinator/trips/${created.data.id}/publish`, {}, coordToken);
+
+  type Detail = { placeStories?: Array<{ title: string }>; placeStoriesCount: number };
+  const anonymous = await call<Detail>('GET', `/catalog/trips/${created.data.id}`);
+  assert.deepEqual([anonymous.data.placeStories, anonymous.data.placeStoriesCount], [undefined, 1]);
+  assert.equal((await call<Detail>('GET', `/catalog/trips/${created.data.id}`, undefined, baseToken)).data.placeStories, undefined);
+  assert.equal((await call<Detail>('GET', `/catalog/trips/${created.data.id}`, undefined, premiumToken)).data.placeStories?.[0].title, 'Villa Cimbrone');
+  assert.equal((await call<Detail>('GET', `/catalog/trips/${created.data.id}`, undefined, coordToken)).data.placeStories?.length, 1);
+});

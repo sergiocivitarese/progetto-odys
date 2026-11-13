@@ -82,7 +82,26 @@ export interface PublishedTripSummary {
 
 export type TripVisibility = 'public' | 'followers' | 'invite';
 
+/** Storia di un luogo del viaggio (TP-08): solo testo, scritta dal coordinatore. */
+export interface PlaceStory {
+  id: string;
+  /** Giorno dell'itinerario a cui appartiene. */
+  day: number;
+  title: string;
+  /** Frase d'apertura. */
+  intro: string;
+  /** Testo storico. */
+  body: string;
+  /** «La storia in 3 tappe»: date chiave. */
+  milestones: Array<{ when: string; text: string }>;
+  source: 'coordinator' | 'generated';
+}
+
 export interface PublishedTrip extends PublishedTripSummary {
+  /** Storie dei luoghi: complete per chi ha il diritto `trips.insights`, altrimenti assenti. */
+  placeStories?: PlaceStory[];
+  /** Quante storie ha il viaggio (sempre presente nel dettaglio pubblico). */
+  placeStoriesCount?: number;
   included: string[];
   excluded: string[];
   itinerary: Itinerary;
@@ -146,6 +165,7 @@ export interface PublishedTripInput {
   visibility?: TripVisibility;
   ageMin?: number | null;
   ageMax?: number | null;
+  placeStories?: PlaceStory[];
 }
 
 /** Operazioni del coordinatore sui propri viaggi pubblicati (C-09…C-14). */

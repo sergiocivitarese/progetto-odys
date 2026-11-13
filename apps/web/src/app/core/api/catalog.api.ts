@@ -89,7 +89,21 @@ export interface PlaceSuggestion {
   trips: number;
 }
 
+/** Storia di un luogo (TP-08): solo testo, scritta dal coordinatore. */
+export interface PlaceStory {
+  id: string;
+  day: number;
+  title: string;
+  intro: string;
+  body: string;
+  milestones: Array<{ when: string; text: string }>;
+  source?: 'coordinator' | 'generated';
+}
+
 export interface PublishedTrip extends PublishedTripSummary {
+  /** Presenti solo per chi ha il diritto di leggerle (Premium) o coordina il viaggio. */
+  placeStories?: PlaceStory[];
+  placeStoriesCount?: number;
   included: string[];
   excluded: string[];
   itinerary: Itinerary;
@@ -229,6 +243,7 @@ export interface PublishedTripForm {
   visibility?: TripVisibility;
   ageMin?: number | null;
   ageMax?: number | null;
+  placeStories?: PlaceStory[];
 }
 
 export type CoordinatorAction = 'publish' | 'schedule' | 'unpublish' | 'cancel' | 'archive';

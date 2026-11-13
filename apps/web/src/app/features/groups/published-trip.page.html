@@ -75,6 +75,43 @@
           }
         </section>
 
+        @if (t.placeStoriesCount) {
+          <section aria-labelledby="stories-title">
+            <div class="section-head"><h2 id="stories-title">Storia dei luoghi</h2><span class="meta-line muted">{{ t.placeStoriesCount }} {{ t.placeStoriesCount === 1 ? 'luogo' : 'luoghi' }}</span></div>
+            @if (t.placeStories; as stories) {
+              <ul class="stories">
+                @for (story of stories; track story.id) {
+                  <li class="story">
+                    <button type="button" class="story__head" [attr.aria-expanded]="openStory() === story.id" (click)="openStory.set(openStory() === story.id ? '' : story.id)">
+                      <span class="story__icon"><odys-icon name="book" [size]="20" /></span>
+                      <span><strong>{{ story.title }}</strong><span>Giorno {{ story.day }} · lettura {{ readingMinutes(story) }} min</span></span>
+                      <odys-icon [name]="openStory() === story.id ? 'chevron-up' : 'chevron-down'" [size]="20" />
+                    </button>
+                    @if (openStory() === story.id) {
+                      <div class="story__body">
+                        @if (story.intro) {<p class="story__intro">{{ story.intro }}</p>}
+                        <p>{{ story.body }}</p>
+                        @if (story.milestones.length) {
+                          <p class="meta-line">La storia in {{ story.milestones.length }} tappe</p>
+                          <ol class="milestones">
+                            @for (step of story.milestones; track $index) {<li><strong>{{ step.when }}</strong>{{ step.text }}</li>}
+                          </ol>
+                        }
+                      </div>
+                    }
+                  </li>
+                }
+              </ul>
+            } @else {
+              <a class="locked" routerLink="/premium" [queryParams]="{ funzione: 'trips.insights' }">
+                <odys-icon name="lock" [size]="20" />
+                <span><strong>Con Traveller Premium</strong> leggi la storia dei luoghi che visiterai, tappa per tappa.</span>
+                <odys-icon name="chevron-right" [size]="18" />
+              </a>
+            }
+          </section>
+        }
+
         <section class="inclusions" aria-label="Cosa è incluso">
           <div class="inclusions__in">
             <h2><odys-icon name="check" [size]="18" [strokeWidth]="2.6" /> Incluso</h2>

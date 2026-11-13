@@ -92,6 +92,32 @@
           </div>
         </section>
 
+        @if (!isNew()) {
+          <section class="card">
+            <h2>Storia dei luoghi</h2>
+            <p class="hint">Per le attrazioni più importanti: una frase d’apertura, il racconto e fino a tre date chiave. La leggono i viaggiatori Premium nella pagina del viaggio. Solo testo.</p>
+            @for (story of stories(); track story.id) {
+              <div class="story-edit">
+                <div class="two">
+                  <label class="label">Luogo<input class="select" [name]="'st-title-' + story.id" maxlength="80" placeholder="Es. Villa Cimbrone" [ngModel]="story.title" (ngModelChange)="editStory(story.id, { title: $event })" /></label>
+                  <label class="label">Giorno<input class="select" type="number" min="1" max="60" [name]="'st-day-' + story.id" [ngModel]="story.day" (ngModelChange)="editStory(story.id, { day: $event })" /></label>
+                </div>
+                <label class="label">Frase d’apertura (facoltativa)<input class="select" [name]="'st-intro-' + story.id" maxlength="280" [ngModel]="story.intro" (ngModelChange)="editStory(story.id, { intro: $event })" /></label>
+                <label class="label">Testo storico<textarea class="select" rows="4" maxlength="1500" [name]="'st-body-' + story.id" [ngModel]="story.body" (ngModelChange)="editStory(story.id, { body: $event })"></textarea></label>
+                <p class="label">La storia in 3 tappe</p>
+                @for (step of story.milestones; track $index) {
+                  <div class="step-edit">
+                    <input class="select" [attr.aria-label]="'Data della tappa ' + ($index + 1)" maxlength="30" placeholder="Es. 1904" [name]="'st-when-' + story.id + $index" [ngModel]="step.when" (ngModelChange)="editStory(story.id, {}, { index: $index, when: $event })" />
+                    <input class="select" [attr.aria-label]="'Cosa è successo nella tappa ' + ($index + 1)" maxlength="160" placeholder="Cosa è successo" [name]="'st-text-' + story.id + $index" [ngModel]="step.text" (ngModelChange)="editStory(story.id, {}, { index: $index, text: $event })" />
+                  </div>
+                }
+                <button odysButton type="button" variant="ghost" size="sm" icon="trash" (click)="removeStory(story.id)">Togli questa storia</button>
+              </div>
+            }
+            <button odysButton type="button" variant="secondary" icon="plus" (click)="addStory()">Aggiungi un luogo</button>
+          </section>
+        }
+
         <button odysButton type="submit" variant="secondary" icon="check" [loading]="busy()">{{ isNew() ? 'Salva come bozza' : 'Salva modifiche' }}</button>
       </form>
 

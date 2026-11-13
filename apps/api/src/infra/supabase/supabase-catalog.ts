@@ -17,6 +17,7 @@ import {
   type SavedTripsRepository,
   type TripVisibility,
   type PublicReview,
+  type PlaceStory,
 } from '../../shared/catalog';
 import type { StoredTrip } from '../../shared/data';
 import { dbError, userClient } from './client';
@@ -39,6 +40,7 @@ interface PublishedRow {
   excluded: string[] | null;
   cover_image_url: string | null;
   itinerary?: Itinerary;
+  place_stories?: PlaceStory[] | null;
   scheduled_for: string | null;
   published_at: string | null;
   updated_at: string;
@@ -68,7 +70,7 @@ interface CoordinatorRow {
 }
 
 const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max';
-const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary`;
+const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary, place_stories`;
 
 function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
   if (!row) return { id, displayName: 'Coordinatore Odys', interests: [] };
@@ -124,6 +126,7 @@ function toDetail(row: PublishedRow, coordinator: CoordinatorCard): PublishedTri
     excluded: row.excluded ?? [],
     itinerary: row.itinerary as Itinerary,
     sourceTripId: row.source_trip_id ?? undefined,
+    placeStories: row.place_stories ?? [],
   };
 }
 
@@ -239,6 +242,7 @@ function inputToRow(input: Partial<PublishedTripInput>): Record<string, unknown>
   if (input.depositCents !== undefined) row['deposit_cents'] = input.depositCents;
   if (input.balanceDueDate !== undefined) row['balance_due_date'] = input.balanceDueDate || null;
   if (input.visibility !== undefined) row['visibility'] = input.visibility;
+  if (input.placeStories !== undefined) row['place_stories'] = input.placeStories;
   if (input.ageMin !== undefined) row['age_min'] = input.ageMin;
   if (input.ageMax !== undefined) row['age_max'] = input.ageMax;
   return row;

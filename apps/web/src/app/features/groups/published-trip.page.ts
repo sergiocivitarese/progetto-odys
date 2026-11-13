@@ -4,7 +4,7 @@ import { displayDayDate, MAX_TRIP_PARTICIPANTS } from '@odys/domain';
 import { apiErrorMessage } from '../../core/api/api-client';
 import {
   CatalogApi, formatAmount, formatDateRange, initialsOf, PARTICIPATION_STATUS_LABELS, PUBLISHED_STATUS_LABELS,
-  type MyParticipation, type PublishedTrip,
+  type MyParticipation, type PlaceStory, type PublishedTrip,
 } from '../../core/api/catalog.api';
 import { AuthStore } from '../../core/auth/auth.store';
 import { AccountStore } from '../../core/state/account.store';
@@ -46,6 +46,7 @@ export default class PublishedTripPage {
   protected readonly busy = signal(false);
   protected readonly copying = signal(false);
   protected readonly showDays = signal(false);
+  protected readonly openStory = signal('');
   protected readonly booking = signal<MyParticipation | null>(null);
 
   protected readonly saved = computed(() => this.account.savedTrips().has(this.id()));
@@ -149,6 +150,11 @@ export default class PublishedTripPage {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** Tempo di lettura a circa 200 parole al minuto. */
+  protected readingMinutes(story: PlaceStory): number {
+    return Math.max(1, Math.round(`${story.intro} ${story.body}`.split(/\s+/).length / 200));
   }
 
   protected dayDate(value: string): string {

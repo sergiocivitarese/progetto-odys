@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { MAX_TRIP_PARTICIPANTS, type Itinerary } from '@odys/domain';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
-import { COORDINATOR_GUIDELINES_VERSION, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
+import { COORDINATOR_GUIDELINES_VERSION, type PlaceStory, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
 import type { CoordinatorApplicationInput } from '../../shared/community';
 import type { DataStore } from '../../shared/data';
 import { handle, HttpError, requireObject } from '../../shared/http';
@@ -25,6 +25,24 @@ function date(value: unknown, field: string): string | undefined {
   if (value === undefined || value === '' || value === null) return value === undefined ? undefined : '';
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new HttpError(400, `Data ${field} non valida.`);
   return value;
+}
+
+/** Valida le storie dei luoghi scritte dal coordinatore (TP-08): solo testo, al massimo 3 tappe ciascuna. */
+function storiesFrom(value: unknown): PlaceStory[] {
+  if (!Array.isArray(value) || value.length > 30) throw new HttpError(400, 'Storie dei luoghi non valide (al massimo 30).');
+  return value.map((item, index) => {
+    const raw = requireObject<Record<string, unknown>>(item, 'Storia non valida.');
+    const title = (optionalText(raw['title'], 'titolo della storia', 80) ?? '').trim();
+    const body = (optionalText(raw['body'], 'testo storico', 1500) ?? '').trim();
+    if (title.length < 2 || body.length < 20) throw new HttpError(400, 'Ogni storia ha bisogno di un luogo e di un testo di almeno 20 caratteri.');
+    const day = Number(raw['day']);
+    if (!Number.isInteger(day) || day < 1 || day > 60) throw new HttpError(400, 'Indica il giorno a cui appartiene la storia.');
+    const milestones = (Array.isArray(raw['milestones']) ? raw['milestones'] : []).slice(0, 3).map((entry) => {
+      const step = requireObject<Record<string, unknown>>(entry, 'Tappa non valida.');
+      return { when: (optionalText(step['when'], 'data della tappa', 30) ?? '').trim(), text: (optionalText(step['text'], 'testo della tappa', 160) ?? '').trim() };
+    }).filter((step) => step.when && step.text);
+    return { id: typeof raw['id'] === 'string' && /^[\w-]{1,40}$/.test(raw['id']) ? raw['id'] : `storia-${index + 1}`, day, title, intro: (optionalText(raw['intro'], 'apertura', 280) ?? '').trim(), body, milestones, source: 'coordinator' };
+  });
 }
 
 /** Valida i dati inviati dal coordinatore (C-13 lato server, prima delle regole del database). */
@@ -76,6 +94,7 @@ function inputFrom(body: unknown, partial: boolean): Partial<PublishedTripInput>
     out[field] = age;
   }
   if (typeof out.ageMin === 'number' && typeof out.ageMax === 'number' && out.ageMin > out.ageMax) throw new HttpError(400, 'L’età minima supera la massima.');
+  if (raw['placeStories'] !== undefined) out.placeStories = storiesFrom(raw['placeStories']);
   if (!partial && (!out.title || out.title.length < 3)) throw new HttpError(400, 'Il titolo deve avere almeno 3 caratteri.');
   return Object.fromEntries(Object.entries(out).filter(([, value]) => value !== undefined)) as Partial<PublishedTripInput>;
 }
@@ -210,6 +229,7 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
       visibility: input.visibility,
       ageMin: input.ageMin,
       ageMax: input.ageMax,
+      placeStories: input.placeStories ?? [],
     });
     await store.account(user).record({ action: 'published_trip.create', entity: 'published_trip', entityId: created.id });
     res.status(201).json(created);

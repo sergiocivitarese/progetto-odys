@@ -22,3 +22,8 @@ odys-notice { margin-bottom: var(--space-4); }
   button { min-height: 44px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--color-text-muted); font-weight: 800; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast); }
   button.is-on { background: var(--odys-ink); color: #fff; }
 }
+
+.story-edit { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); margin-bottom: var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface-muted);
+  label { display: flex; flex-direction: column; gap: var(--space-1); }
+  textarea { padding-block: var(--space-3); resize: vertical; min-height: 96px; } }
+.step-edit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr); gap: var(--space-2); }
