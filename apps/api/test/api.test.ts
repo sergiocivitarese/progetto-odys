@@ -549,3 +549,39 @@ test('catalogo del Traveller: ricerca per intento, filtri, affinità, posti libe
   const events = db.events.filter((event) => event.tripId === yucatan.id).map((event) => event.kind).sort();
   assert.deepEqual(events, ['save', 'view']);
 });
+
+test('profilo coordinatore: Segui, recensioni solo dai partecipanti a viaggio concluso (TB-11, TB-12)', async () => {
+  const coordinatorToken = 'token-recensioni-coord';
+  const coordinatorId = db.addUser(coordinatorToken, undefined, 'marco.rec@example.com');
+  Object.assign(db.user(coordinatorId).profile, { role: 'coordinator', firstName: 'Marco', lastName: 'Rinaldi' });
+  const travelerToken = 'token-recensioni-giulia';
+  const travelerId = db.addUser(travelerToken, undefined, 'giulia.rec@example.com');
+  Object.assign(db.user(travelerId).profile, { firstName: 'Giulia', lastName: 'Bianchi' });
+
+  // Viaggio già concluso con Giulia confermata (dati inseriti direttamente nell'archivio).
+  const tripId = 'viaggio-concluso-lisbona';
+  db.published.set(tripId, {
+    id: tripId, coordinatorId, status: 'published', effectiveStatus: 'completed', title: 'Lisbona', summary: 'Fado e tram.', destination: 'Lisbona', country: 'Portogallo', region: '',
+    interests: [], visibility: 'public', startDate: '2026-03-12', endDate: '2026-03-17', currency: 'EUR', capacity: 12, priceCents: 89000, included: [], excluded: [],
+    itinerary: { days: [] } as unknown as Itinerary, updatedAt: new Date().toISOString(), coordinator: { id: coordinatorId, displayName: 'Marco R.', interests: [] },
+  });
+
+  assert.equal((await call('PUT', `/catalog/trips/${tripId}/review`, { coordinatorRating: 5, tripRating: 5 }, travelerToken)).status, 403);
+  db.participations.set('partecipazione-lisbona', { id: 'partecipazione-lisbona', tripId, userId: travelerId, status: 'balance_paid', currency: 'EUR', createdAt: '2026-01-10T10:00:00Z' });
+  assert.equal((await call('PUT', `/catalog/trips/${tripId}/review`, { coordinatorRating: 7, tripRating: 5 }, travelerToken)).status, 400);
+  const saved = await call<{ coordinatorRating: number; body: string }>('PUT', `/catalog/trips/${tripId}/review`, { coordinatorRating: 5, tripRating: 4, body: 'Gruppo perfetto, Marco sa dove portarti a cena.' }, travelerToken);
+  assert.deepEqual([saved.status, saved.data.coordinatorRating], [200, 5]);
+  assert.equal((await call<{ tripRating: number }>('GET', `/catalog/trips/${tripId}/review`, undefined, travelerToken)).data.tripRating, 4);
+
+  assert.equal((await call('PUT', `/catalog/coordinators/${coordinatorId}/follow`)).status, 401);
+  assert.equal((await call('PUT', `/catalog/coordinators/${travelerId}/follow`, {}, coordinatorToken)).status, 404, 'si seguono solo i coordinatori');
+  assert.equal((await call('PUT', `/catalog/coordinators/${coordinatorId}/follow`, {}, travelerToken)).status, 204);
+
+  type ProfileView = { coordinator: { rating: number; reviewsCount: number; followers: number; tripsCompleted: number }; reviews: Array<{ authorName: string; body: string }>; following: boolean };
+  const profile = await call<ProfileView>('GET', `/catalog/coordinators/${coordinatorId}`, undefined, travelerToken);
+  assert.deepEqual([profile.data.coordinator.rating, profile.data.coordinator.reviewsCount, profile.data.coordinator.followers, profile.data.coordinator.tripsCompleted], [5, 1, 1, 1]);
+  assert.deepEqual(profile.data.reviews.map((review) => review.authorName), ['Giulia B.']);
+  assert.equal(profile.data.following, true);
+  assert.equal((await call<ProfileView>('GET', `/catalog/coordinators/${coordinatorId}`)).data.following, false);
+  assert.equal((await call('DELETE', `/catalog/coordinators/${coordinatorId}/follow`, undefined, travelerToken)).status, 204);
+});

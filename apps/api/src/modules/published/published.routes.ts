@@ -103,7 +103,45 @@ export function publishedRouter(auth: AuthProvider, store: DataStore): Router {
     const id = String(req.params.id);
     const coordinator = await catalog.coordinator(id);
     if (!coordinator) throw new HttpError(404, 'Coordinatore non trovato.');
-    res.json({ coordinator, trips: await catalog.list({ coordinatorId: id, includeCompleted: true, sort: 'upcoming' }) });
+    const user = maybeUser(res);
+    const [trips, reviews, following] = await Promise.all([
+      catalog.list({ coordinatorId: id, includeCompleted: true, sort: 'upcoming' }),
+      catalog.reviews(id).catch(() => []),
+      user ? store.social(user).isFollowing(id).catch(() => false) : Promise.resolve(false),
+    ]);
+    res.json({ coordinator, trips, reviews, following });
+  }));
+
+  // Segui un coordinatore (TB-11): serve anche a vedere i viaggi «Solo follower».
+  router.put('/coordinators/:id/follow', requireAuth(auth), handle(async (req, res) => {
+    const user = currentUser(res);
+    await store.social(user).follow(String(req.params.id));
+    await store.account(user).record({ action: 'coordinator.follow', entity: 'profile', entityId: String(req.params.id) });
+    res.status(204).end();
+  }));
+  router.delete('/coordinators/:id/follow', requireAuth(auth), handle(async (req, res) => {
+    await store.social(currentUser(res)).unfollow(String(req.params.id));
+    res.status(204).end();
+  }));
+
+  // Recensione a fine viaggio (TB-12): solo chi ha partecipato, dopo il rientro.
+  router.get('/trips/:id/review', requireAuth(auth), handle(async (req, res) => {
+    res.json(await store.social(currentUser(res)).myReview(String(req.params.id)));
+  }));
+  router.put('/trips/:id/review', requireAuth(auth), handle(async (req, res) => {
+    const body = (req.body ?? {}) as { coordinatorRating?: unknown; tripRating?: unknown; body?: unknown };
+    const rating = (value: unknown) => {
+      const number = Number(value);
+      if (!Number.isInteger(number) || number < 1 || number > 5) throw new HttpError(400, 'Il voto va da 1 a 5 stelle.');
+      return number;
+    };
+    if (body.body !== undefined && typeof body.body !== 'string') throw new HttpError(400, 'Testo non valido.');
+    const text = typeof body.body === 'string' ? body.body.trim() : '';
+    if (text.length > 800) throw new HttpError(400, 'La recensione può avere al massimo 800 caratteri.');
+    const user = currentUser(res);
+    const review = await store.social(user).saveReview(String(req.params.id), { coordinatorRating: rating(body.coordinatorRating), tripRating: rating(body.tripRating), body: text });
+    await store.account(user).record({ action: 'review.save', entity: 'published_trip', entityId: review.tripId });
+    res.json(review);
   }));
 
   router.post('/trips/:id/copy', requireAuth(auth), handle(async (req, res) => {

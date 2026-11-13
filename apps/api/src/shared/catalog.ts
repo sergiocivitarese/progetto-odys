@@ -21,6 +21,27 @@ export interface CoordinatorCard {
   interests: string[];
   avatarUrl?: string;
   memberSince?: string;
+  /** Valutazione media e numero di recensioni (TB-12, CB-09). */
+  rating?: number;
+  reviewsCount?: number;
+  followers?: number;
+  /** Viaggi pubblicati e conclusi. */
+  tripsCompleted?: number;
+}
+
+/** Recensione pubblica sul profilo del coordinatore (TB-12). */
+export interface PublicReview {
+  id: string;
+  tripId: string;
+  tripTitle: string;
+  tripDestination: string;
+  tripEnd?: string;
+  authorName: string;
+  authorInitials: string;
+  coordinatorRating: number;
+  tripRating: number;
+  body: string;
+  createdAt: string;
 }
 
 export interface PublishedTripSummary {
@@ -99,6 +120,8 @@ export interface CatalogRepository {
   /** Registra la visualizzazione del dettaglio (CP-05); non deve mai bloccare la pagina. */
   recordView(id: string): Promise<void>;
   coordinator(id: string): Promise<CoordinatorCard | null>;
+  /** Recensioni pubbliche di un coordinatore, dalla più recente. */
+  reviews(coordinatorId: string): Promise<PublicReview[]>;
 }
 
 export interface PublishedTripInput {

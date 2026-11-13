@@ -28,6 +28,9 @@ import {
 } from '../../shared/catalog';
 import { holdsSeat, SEAT_RESERVATION_MINUTES } from '../../shared/community';
 import type {
+  Review,
+  ReviewInput,
+  SocialRepository,
   Payment,
   PaymentKind,
   PaymentMethod,
@@ -98,6 +101,7 @@ export class MemoryDatabase {
   /** follower → coordinatori seguiti. */
   readonly follows = new Map<string, Set<string>>();
   readonly payments: Payment[] = [];
+  readonly reviews: Array<Review & { authorId: string }> = [];
   /** Eventi dei viaggi (CP-05). */
   readonly events: Array<{ tripId: string; kind: 'view' | 'save' | 'request' | 'payment_confirmed'; userId?: string; createdAt: string }> = [];
   /** token → utente, per simulare l'autenticazione nei test. */
@@ -236,7 +240,16 @@ function seatsTaken(db: MemoryDatabase, tripId: string, exceptId?: string): numb
 
 function card(db: MemoryDatabase, id: string) {
   const profile = db.users.get(id)?.profile;
-  return { id, displayName: displayName(profile?.firstName, profile?.lastName?.[0]), headline: profile?.publicHeadline, bio: profile?.bio, interests: profile?.interests ?? [] };
+  const trips = [...db.published.values()].filter((trip) => trip.coordinatorId === id);
+  const reviews = db.reviews.filter((review) => trips.some((trip) => trip.id === review.tripId));
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    id, displayName: displayName(profile?.firstName, profile?.lastName?.[0]), headline: profile?.publicHeadline, bio: profile?.bio, interests: profile?.interests ?? [],
+    rating: reviews.length ? Math.round((reviews.reduce((sum, review) => sum + review.coordinatorRating, 0) / reviews.length) * 10) / 10 : undefined,
+    reviewsCount: reviews.length,
+    followers: [...db.follows.values()].filter((set) => set.has(id)).length,
+    tripsCompleted: trips.filter((trip) => isPublic(trip) && !!trip.endDate && trip.endDate < today).length,
+  };
 }
 
 function publicView(db: MemoryDatabase, trip: MemoryPublished): PublishedTrip {
@@ -280,6 +293,20 @@ class MemoryCatalogRepository implements CatalogRepository {
     const today = new Date().toISOString().slice(0, 10);
     if (this.userId && this.db.events.some((event) => event.tripId === id && event.kind === 'view' && event.userId === this.userId && event.createdAt.startsWith(today))) return;
     this.db.events.push({ tripId: id, kind: 'view', userId: this.userId, createdAt: new Date().toISOString() });
+  }
+  async reviews(coordinatorId: string) {
+    return this.db.reviews
+      .map((review) => ({ review, trip: this.db.published.get(review.tripId) }))
+      .filter((item) => item.trip?.coordinatorId === coordinatorId)
+      .sort((a, b) => b.review.createdAt.localeCompare(a.review.createdAt))
+      .map(({ review, trip }) => {
+        const author = this.db.user(review.authorId).profile;
+        return {
+          id: review.id, tripId: trip!.id, tripTitle: trip!.title, tripDestination: trip!.destination, tripEnd: trip!.endDate,
+          authorName: `${author.firstName} ${author.lastName[0] ?? ''}.`, authorInitials: `${author.firstName[0] ?? ''}${author.lastName[0] ?? ''}`.toUpperCase(),
+          coordinatorRating: review.coordinatorRating, tripRating: review.tripRating, body: review.body, createdAt: review.createdAt,
+        };
+      });
   }
   async coordinator(id: string) {
     const profile = this.db.users.get(id)?.profile;
@@ -636,6 +663,37 @@ class MemoryAdminRepository implements AdminRepository {
   }
 }
 
+/** Stesse regole del trigger SQL `trip_reviews_guard` e delle policy dei follower. */
+class MemorySocialRepository implements SocialRepository {
+  constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
+  async isFollowing(coordinatorId: string) { return !!this.db.follows.get(this.userId)?.has(coordinatorId); }
+  async follow(coordinatorId: string) {
+    const profile = this.db.users.get(coordinatorId)?.profile;
+    if (!profile || !['coordinator', 'admin'].includes(profile.role) || profile.status !== 'active') throw new HttpError(404, 'Elemento non trovato.');
+    if (coordinatorId === this.userId) throw new HttpError(422, 'Non puoi seguire te stesso.');
+    const set = this.db.follows.get(this.userId) ?? new Set<string>();
+    set.add(coordinatorId);
+    this.db.follows.set(this.userId, set);
+  }
+  async unfollow(coordinatorId: string) { this.db.follows.get(this.userId)?.delete(coordinatorId); }
+  async myReview(tripId: string) {
+    const found = this.db.reviews.find((review) => review.tripId === tripId && review.authorId === this.userId);
+    if (!found) return null;
+    const { authorId: _author, ...review } = found;
+    return { ...review };
+  }
+  async saveReview(tripId: string, input: ReviewInput) {
+    const took = [...this.db.participations.values()].some((item) => item.tripId === tripId && item.userId === this.userId && (item.status === 'confirmed' || item.status === 'balance_paid'));
+    if (!took) throw new HttpError(403, 'Può recensire il viaggio solo chi vi ha partecipato.');
+    const trip = this.db.published.get(tripId);
+    if (!trip?.endDate || trip.endDate >= new Date().toISOString().slice(0, 10)) throw new HttpError(422, 'Potrai lasciare la recensione al rientro dal viaggio.');
+    const existing = this.db.reviews.find((review) => review.tripId === tripId && review.authorId === this.userId);
+    if (existing) Object.assign(existing, input);
+    else this.db.reviews.push({ ...input, id: randomUUID(), tripId, authorId: this.userId, createdAt: new Date().toISOString() });
+    return (await this.myReview(tripId))!;
+  }
+}
+
 /** Stesse regole del trigger SQL `content_reports_guard`. */
 class MemoryReportsRepository implements ReportsRepository {
   constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
@@ -675,6 +733,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     applications: (user) => new MemoryApplicationsRepository(db, user.id),
     admin: (user) => new MemoryAdminRepository(db, user.id),
     reports: (user) => new MemoryReportsRepository(db, user.id),
+    social: (user) => new MemorySocialRepository(db, user.id),
     ...memoryCreator(db, db.creator),
   };
 }

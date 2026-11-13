@@ -188,10 +188,34 @@ export interface AdminRepository {
   setPlan(id: string, plan: SubscriptionPlan | null, note?: string): Promise<AccountSummary | null>;
 }
 
+export interface ReviewInput {
+  coordinatorRating: number;
+  tripRating: number;
+  body: string;
+}
+
+export interface Review extends ReviewInput {
+  id: string;
+  tripId: string;
+  createdAt: string;
+}
+
+/** Segui i coordinatori (TB-11) e recensioni a fine viaggio (TB-12). */
+export interface SocialRepository {
+  isFollowing(coordinatorId: string): Promise<boolean>;
+  follow(coordinatorId: string): Promise<void>;
+  unfollow(coordinatorId: string): Promise<void>;
+  /** La propria recensione di un viaggio, se c'è. */
+  myReview(tripId: string): Promise<Review | null>;
+  /** Crea o aggiorna la propria recensione: solo partecipanti e solo a viaggio concluso. */
+  saveReview(tripId: string, input: ReviewInput): Promise<Review>;
+}
+
 /** Fabbriche dei repository di questa area, per l'utente della richiesta. */
 export interface CommunityStore {
   participation(user: AuthUser): ParticipationRepository;
   applications(user: AuthUser): ApplicationsRepository;
   admin(user: AuthUser): AdminRepository;
   reports(user: AuthUser): ReportsRepository;
+  social(user: AuthUser): SocialRepository;
 }

@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { apiErrorMessage } from '../../core/api/api-client';
-import { CatalogApi, daysUntil, formatAmount, type Booking } from '../../core/api/catalog.api';
+import { CatalogApi, daysUntil, formatAmount, type Booking, type PublishedTripSummary } from '../../core/api/catalog.api';
+import { ReviewCardComponent } from './review-card.component';
 import { EntitlementsStore } from '../../core/state/entitlements.store';
 import { EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
 
@@ -18,13 +19,17 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
  */
 @Component({
   selector: 'odys-next-trip-page',
-  imports: [RouterLink, EmptyStateComponent, IconComponent, NoticeComponent],
+  imports: [RouterLink, EmptyStateComponent, IconComponent, NoticeComponent, ReviewCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page next">
       <h1>Prossimo viaggio</h1>
       @if (appena() === 'prenotato' && booking()) {<odys-notice tone="success" title="Acconto pagato">La tua richiesta è arrivata al coordinatore: di solito risponde entro 24 ore.</odys-notice>}
       @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+      @if (thanks()) {<odys-notice tone="success">Grazie! La tua recensione è sul profilo del coordinatore.</odys-notice>}
+      @for (trip of toReview(); track trip.id) {
+        <odys-review-card [trip]="trip" (saved)="reviewed($event)" />
+      }
 
       @if (loading()) {
         <div class="skeleton" aria-busy="true"></div>
@@ -80,7 +85,7 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
         }
 
         @if (b.others) {<p class="muted small">Hai altre {{ b.others }} prenotazioni attive: le trovi nel tuo <a routerLink="/account" fragment="partecipazioni">account</a>.</p>}
-      } @else if (!error()) {
+      } @else if (!error() && !toReview().length) {
         <odys-empty-state icon="bag" title="Nessun viaggio prenotato" description="Quando blocchi un posto pagando l’acconto, il viaggio compare qui con il conto alla rovescia e i prossimi passi." actionLabel="Trova un viaggio" (action)="router.navigate(['/'])" />
       }
     </div>
@@ -136,6 +141,9 @@ export default class NextTripPage implements OnInit {
   protected readonly loading = signal(true);
   protected readonly error = signal('');
   protected readonly paying = signal(false);
+  /** Viaggi conclusi a cui si è partecipato e ancora senza recensione (TB-12). */
+  protected readonly toReview = signal<PublishedTripSummary[]>([]);
+  protected readonly thanks = signal(false);
 
   protected readonly statusLabel = computed(() => STATUS[this.booking()?.status ?? ''] ?? '');
   protected readonly days = computed(() => daysUntil(this.booking()?.trip?.startDate));
@@ -166,6 +174,7 @@ export default class NextTripPage implements OnInit {
   });
 
   async ngOnInit(): Promise<void> {
+    void this.loadReviews();
     try {
       this.booking.set(await this.catalog.nextTrip());
     } catch (error) {
@@ -173,6 +182,24 @@ export default class NextTripPage implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private async loadReviews(): Promise<void> {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const done = (await this.catalog.myParticipations())
+        .filter((item) => (item.status === 'confirmed' || item.status === 'balance_paid') && item.trip?.endDate && item.trip.endDate < today)
+        .map((item) => item.trip!);
+      const missing = await Promise.all(done.map(async (trip) => ((await this.catalog.myReview(trip.id).catch(() => null)) ? null : trip)));
+      this.toReview.set(missing.filter((trip): trip is PublishedTripSummary => trip !== null));
+    } catch {
+      // Le recensioni sono un invito in più: senza risposta la pagina resta utilizzabile.
+    }
+  }
+
+  protected reviewed(tripId: string): void {
+    this.toReview.update((list) => list.filter((trip) => trip.id !== tripId));
+    this.thanks.set(true);
   }
 
   protected money(cents: number | undefined): string {

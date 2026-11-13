@@ -23,7 +23,7 @@ import type {
   ParticipationRequest,
   ParticipationStatus,
 } from '../../shared/community';
-import { holdsSeat, type Payment, type PaymentKind, type PaymentMethod } from '../../shared/community';
+import { holdsSeat, type Payment, type PaymentKind, type PaymentMethod, type Review, type ReviewInput, type SocialRepository } from '../../shared/community';
 import { dbError, userClient } from './client';
 
 interface RequestRow {
@@ -370,11 +370,61 @@ class SupabaseReportsRepository implements ReportsRepository {
   }
 }
 
+const REVIEW_COLUMNS = 'id, published_trip_id, coordinator_rating, trip_rating, body, created_at';
+
+function toTripReview(row: { id: string; published_trip_id: string; coordinator_rating: number; trip_rating: number; body: string; created_at: string }): Review {
+  return { id: row.id, tripId: row.published_trip_id, coordinatorRating: row.coordinator_rating, tripRating: row.trip_rating, body: row.body, createdAt: row.created_at };
+}
+
+class SupabaseSocialRepository implements SocialRepository {
+  constructor(private readonly db: SupabaseClient, private readonly user: AuthUser) {}
+
+  async isFollowing(coordinatorId: string): Promise<boolean> {
+    if (!isUuid(coordinatorId)) return false;
+    const { data, error } = await this.db.from('coordinator_follows').select('coordinator_id').eq('follower_id', this.user.id).eq('coordinator_id', coordinatorId).maybeSingle();
+    if (error) throw dbError(error);
+    return !!data;
+  }
+
+  async follow(coordinatorId: string): Promise<void> {
+    if (!isUuid(coordinatorId)) throw dbError({ code: 'P0002' });
+    const { error } = await this.db.from('coordinator_follows').upsert({ follower_id: this.user.id, coordinator_id: coordinatorId }, { ignoreDuplicates: true });
+    // La policy accetta solo coordinatori attivi: altrimenti l'elemento «non esiste».
+    if (error) throw dbError(error.code === '42501' || error.code === '23514' ? { code: 'P0002' } : error);
+  }
+
+  async unfollow(coordinatorId: string): Promise<void> {
+    if (!isUuid(coordinatorId)) return;
+    const { error } = await this.db.from('coordinator_follows').delete().eq('follower_id', this.user.id).eq('coordinator_id', coordinatorId);
+    if (error) throw dbError(error);
+  }
+
+  async myReview(tripId: string): Promise<Review | null> {
+    if (!isUuid(tripId)) return null;
+    const { data, error } = await this.db.from('trip_reviews').select(REVIEW_COLUMNS).eq('published_trip_id', tripId).eq('author_id', this.user.id).maybeSingle();
+    if (error) throw dbError(error);
+    return data ? toTripReview(data as Parameters<typeof toTripReview>[0]) : null;
+  }
+
+  async saveReview(tripId: string, input: ReviewInput): Promise<Review> {
+    if (!isUuid(tripId)) throw dbError({ code: 'P0002' });
+    const values = { coordinator_rating: input.coordinatorRating, trip_rating: input.tripRating, body: input.body };
+    const existing = await this.myReview(tripId);
+    const query = existing
+      ? this.db.from('trip_reviews').update(values).eq('id', existing.id)
+      : this.db.from('trip_reviews').insert({ ...values, published_trip_id: tripId });
+    const { data, error } = await query.select(REVIEW_COLUMNS).single();
+    if (error) throw dbError(error);
+    return toTripReview(data as Parameters<typeof toTripReview>[0]);
+  }
+}
+
 export function supabaseCommunity(config: AppConfig): CommunityStore {
   return {
     participation: (user) => new SupabaseParticipationRepository(userClient(config, user.accessToken), user),
     applications: (user) => new SupabaseApplicationsRepository(userClient(config, user.accessToken), user),
     admin: (user) => new SupabaseAdminRepository(userClient(config, user.accessToken), user),
     reports: (user) => new SupabaseReportsRepository(userClient(config, user.accessToken)),
+    social: (user) => new SupabaseSocialRepository(userClient(config, user.accessToken), user),
   };
 }

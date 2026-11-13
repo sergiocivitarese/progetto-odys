@@ -58,6 +58,30 @@ export interface PublishedTripSummary {
 
 export type TripVisibility = 'public' | 'followers' | 'invite';
 
+/** Recensione pubblica sul profilo del coordinatore (TB-12). */
+export interface PublicReview {
+  id: string;
+  tripId: string;
+  tripTitle: string;
+  tripDestination: string;
+  tripEnd?: string;
+  authorName: string;
+  authorInitials: string;
+  coordinatorRating: number;
+  tripRating: number;
+  body: string;
+  createdAt: string;
+}
+
+export interface Review {
+  id: string;
+  tripId: string;
+  coordinatorRating: number;
+  tripRating: number;
+  body: string;
+  createdAt: string;
+}
+
 export interface PlaceSuggestion {
   kind: 'country' | 'region' | 'city';
   label: string;
@@ -231,7 +255,13 @@ export class CatalogApi {
   /** «Chi cerca X guarda anche». */
   similar(q: string) { return this.api.get<Array<{ label: string; trips: number }>>('/catalog/similar', { q }); }
   get(id: string) { return this.api.get<PublishedTrip>(`/catalog/trips/${encodeURIComponent(id)}`); }
-  coordinator(id: string) { return this.api.get<{ coordinator: CoordinatorCard; trips: PublishedTripSummary[] }>(`/catalog/coordinators/${encodeURIComponent(id)}`); }
+  coordinator(id: string) { return this.api.get<{ coordinator: CoordinatorCard; trips: PublishedTripSummary[]; reviews: PublicReview[]; following: boolean }>(`/catalog/coordinators/${encodeURIComponent(id)}`); }
+  follow(id: string) { return this.api.put<void>(`/catalog/coordinators/${encodeURIComponent(id)}/follow`, {}); }
+  unfollow(id: string) { return this.api.delete(`/catalog/coordinators/${encodeURIComponent(id)}/follow`); }
+  myReview(tripId: string) { return this.api.get<Review | null>(`/catalog/trips/${encodeURIComponent(tripId)}/review`); }
+  saveReview(tripId: string, review: { coordinatorRating: number; tripRating: number; body: string }) {
+    return this.api.put<Review>(`/catalog/trips/${encodeURIComponent(tripId)}/review`, review);
+  }
   copy(id: string) { return this.api.post<StoredTrip>(`/catalog/trips/${encodeURIComponent(id)}/copy`, {}); }
 
   savedTrips() { return this.api.get<PublishedTripSummary[]>('/me/saved-trips'); }

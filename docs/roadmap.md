@@ -19,8 +19,8 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 
 | Blocco | Contenuto | Requisiti | Stato |
 |---|---|---|---|
-| R0 | **Fondamenta**: piani e diritti decisi dal server, stile Orbit Route, barra di navigazione per ruolo | TP-10, AG-09 (predisposizione), elementi trasversali | In corso |
-| R1 | **Traveller Base**: Esplora, ricerca per intento, filtri, affinità, card e dettaglio, acconto (pagamento simulato), Prossimo viaggio, follower e recensioni | TB-01…TB-12 | In corso |
+| R0 | **Fondamenta**: piani e diritti decisi dal server, stile Orbit Route, barra di navigazione per ruolo | TP-10, AG-09 (predisposizione), elementi trasversali | ✅ Fatto · da collaudare |
+| R1 | **Traveller Base**: Esplora, ricerca per intento, filtri, affinità, card e dettaglio, acconto (pagamento simulato), Prossimo viaggio, follower e recensioni | TB-01…TB-12 | ✅ Fatto · da collaudare con un account reale |
 | R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | Da fare |
 | R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | Da fare (candidatura, partecipanti e post esistono già) |
 | R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | Da fare (gli eventi si registrano già da R1) |
@@ -39,6 +39,7 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Rimborso dell'acconto, richiesta non confermata | Nessun rimborso automatico: il pagamento è simulato |
 | Fornitore dei pagamenti | Simulato lato server dietro l'interfaccia `PaymentProvider`, da sostituire con quello reale |
 | Durata della riserva del posto nel checkout | 15 minuti |
+| Conferma del pagamento simulato | La chiama il browser di chi paga (`confirm_simulated_payment`): **da togliere** quando arriva il fornitore reale, che conferma solo con il webhook (`confirm_payment`) |
 
 ## Dove siamo arrivati (27 ottobre 2026)
 - Supabase "Odys" (Europa): migrazioni 0001–0008 applicate. Il progetto gratuito va in pausa dopo giorni senza attività: se login e catalogo smettono di funzionare, riattivarlo dalla dashboard.

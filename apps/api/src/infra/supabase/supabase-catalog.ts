@@ -16,6 +16,7 @@ import {
   type PublishedTripSummary,
   type SavedTripsRepository,
   type TripVisibility,
+  type PublicReview,
 } from '../../shared/catalog';
 import type { StoredTrip } from '../../shared/data';
 import { dbError, userClient } from './client';
@@ -60,6 +61,10 @@ interface CoordinatorRow {
   interests: string[] | null;
   avatar_url: string | null;
   created_at: string;
+  rating: number | string | null;
+  reviews_count: number | null;
+  followers: number | null;
+  trips_completed: number | null;
 }
 
 const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max';
@@ -75,6 +80,10 @@ function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
     interests: row.interests ?? [],
     avatarUrl: row.avatar_url ?? undefined,
     memberSince: row.created_at,
+    rating: row.rating === null || row.rating === undefined ? undefined : Number(row.rating),
+    reviewsCount: row.reviews_count ?? 0,
+    followers: row.followers ?? 0,
+    tripsCompleted: row.trips_completed ?? 0,
   };
 }
 
@@ -176,6 +185,17 @@ class SupabaseCatalogRepository implements CatalogRepository {
     const { data, error } = await this.db.rpc('published_trips_seats_taken', { p_trip_ids: valid });
     if (error) throw dbError(error);
     return new Map((data as Array<{ trip_id: string; taken: number }>).map((row) => [row.trip_id, Number(row.taken)]));
+  }
+
+  async reviews(coordinatorId: string): Promise<PublicReview[]> {
+    if (!isUuid(coordinatorId)) return [];
+    const { data, error } = await this.db.rpc('coordinator_reviews', { p_coordinator_id: coordinatorId, p_limit: 20 });
+    if (error) throw dbError(error);
+    return (data as Array<Record<string, unknown>>).map((row) => ({
+      id: row['id'] as string, tripId: row['published_trip_id'] as string, tripTitle: row['trip_title'] as string, tripDestination: row['trip_destination'] as string,
+      tripEnd: (row['trip_end'] as string | null) ?? undefined, authorName: row['author_name'] as string, authorInitials: row['author_initials'] as string,
+      coordinatorRating: Number(row['coordinator_rating']), tripRating: Number(row['trip_rating']), body: row['body'] as string, createdAt: row['created_at'] as string,
+    }));
   }
 
   async participantInitials(id: string): Promise<string[]> {

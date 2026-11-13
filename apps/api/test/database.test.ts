@@ -466,3 +466,21 @@ test('catalogo: acconto e saldo validati, visibilità «Solo follower», eventi 
   await assert.rejects(asUser(piero, () => db.query('select * from public.trip_events')), /permission denied/);
   await assert.rejects(asUser(piero, () => db.query(`insert into public.trip_events (published_trip_id, kind) values ($1, 'view')`, [draft])), /permission denied/);
 });
+
+test('recensioni: solo chi ha partecipato e solo al rientro; il profilo mostra voto, recensioni e follower (TB-11, TB-12)', async () => {
+  // Luca ha il posto confermato su Roma lenta (test precedenti). Prima del rientro non può recensire.
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.trip_reviews (published_trip_id, coordinator_rating, trip_rating, body) values ($1, 5, 4, 'Bellissimo')`, [romaLenta])), /al rientro/);
+  // Viaggio concluso (date spostate dalla dashboard).
+  await db.query(`update public.published_trips set start_date = current_date - 10, end_date = current_date - 5, balance_due_date = current_date - 40 where id = $1`, [romaLenta]);
+  await assert.rejects(asUser(sara, () => db.query(`insert into public.trip_reviews (published_trip_id, coordinator_rating, trip_rating) values ($1, 1, 1)`, [romaLenta])), /solo chi vi ha partecipato/);
+  await asUser(luca, () => db.query(`insert into public.trip_reviews (published_trip_id, coordinator_rating, trip_rating, body) values ($1, 5, 4, '  Gruppo perfetto.  ')`, [romaLenta]));
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.trip_reviews (published_trip_id, coordinator_rating, trip_rating) values ($1, 3, 3)`, [romaLenta])), /duplicate key/);
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.trip_reviews (published_trip_id, coordinator_rating, trip_rating) values ($1, 6, 3)`, [romaLenta])), /check/);
+
+  const reviews = await asAnon(() => db.query<{ author_name: string; body: string; coordinator_rating: number }>('select author_name, body, coordinator_rating from public.coordinator_reviews($1)', [giulia]));
+  assert.deepEqual(reviews.rows, [{ author_name: 'Luca R.', body: 'Gruppo perfetto.', coordinator_rating: 5 }]);
+  await asUser(sara, () => db.query(`insert into public.coordinator_follows (coordinator_id) values ($1)`, [giulia]));
+  const profile = await asAnon(() => db.query<{ rating: string; reviews_count: number; followers: number; trips_completed: number }>('select rating, reviews_count, followers, trips_completed from public.coordinator_profiles where id = $1', [giulia]));
+  assert.deepEqual(profile.rows[0], { rating: '5.0', reviews_count: 1, followers: 1, trips_completed: 1 });
+  await assert.rejects(asAnon(() => db.query('select author_id from public.trip_reviews')), /permission denied/, 'chi ha scritto la recensione non è esposto ai visitatori');
+});
