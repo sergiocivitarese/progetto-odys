@@ -21,7 +21,7 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 |---|---|---|---|
 | R0 | **Fondamenta**: piani e diritti decisi dal server, stile Orbit Route, barra di navigazione per ruolo | TP-10, AG-09 (predisposizione), elementi trasversali | ✅ Fatto · da collaudare |
 | R1 | **Traveller Base**: Esplora, ricerca per intento, filtri, affinità, card e dettaglio, acconto (pagamento simulato), Prossimo viaggio, follower e recensioni | TB-01…TB-12 | ✅ Fatto · da collaudare con un account reale |
-| R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | Da fare |
+| R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | In corso · fatti Split (TP-09) e generatore con il motore locale (TP-01…TP-03); restano viaggio salvato, meteo, mappe e storia dei luoghi (TP-04…TP-08) |
 | R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | Da fare (candidatura, partecipanti e post esistono già) |
 | R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | Da fare (gli eventi si registrano già da R1) |
 | R5 | **Agenzia**: profilo, ruoli interni, catalogo multi-partenza, team, AI per i coordinatori, licenze a scaglioni, modalità ombrello | AG-01…AG-12 | Da fare (sostituisce la vecchia Fase 5) |
@@ -31,7 +31,8 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Punto aperto | Valore provvisorio |
 |---|---|
 | Il limite di 12 include il coordinatore? | No: 12 partecipanti, coordinatore escluso |
-| Split anche per i Base invitati? | Non ancora sviluppato |
+| Split anche per i Base invitati? | Solo chi ha il diritto `split.use` (Premium e coordinatori) apre la cassa; i Base del gruppo compaiono nelle quote ma non la vedono |
+| Fornitore AI del generatore | Nessuno: l'itinerario lo prepara il motore locale di Odys (`packages/domain/src/lib/tripGenerator.ts`), con costi indicativi dichiarati come tali |
 | Prezzi e durata degli abbonamenti, prova gratuita | Nessun prezzo: il piano lo assegna l'amministratore dalla pagina Account |
 | Scaglioni e prezzi delle licenze | Non ancora sviluppato |
 | Commissione Odys e come compare nel prezzo | Non calcolata: l'acconto e il prezzo sono quelli indicati dal coordinatore |

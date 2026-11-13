@@ -1,0 +1,104 @@
+@if (result(); as trip) {
+  <div class="page result">
+    <div class="top">
+      <button type="button" class="round" aria-label="Modifica i parametri" (click)="result.set(null)"><odys-icon name="chevron-left" [size]="22" /></button>
+      <button type="button" class="pill" [disabled]="loading()" (click)="generate(true)"><odys-icon [name]="loading() ? 'loader' : 'refresh'" [size]="18" [class.spin]="loading()" /> Rigenera</button>
+    </div>
+
+    <header class="hero">
+      <p class="meta-line"><odys-icon name="sparkles" [size]="14" /> Creato per te · {{ when() }}</p>
+      <h1>{{ trip.title }}</h1>
+      <ul class="tags">@for (item of trip.interests; track item) {<li>{{ item }}</li>}</ul>
+      <div class="budget">
+        <p><span>Spesa stimata</span><strong [class.over]="overBudget()">{{ money(trip.totalCents) }}</strong> / budget {{ money(trip.budgetCents) }}</p>
+        <span class="bar" aria-hidden="true"><span [style.width.%]="fill()" [class.over]="overBudget()"></span></span>
+      </div>
+    </header>
+
+    @if (overBudget()) {<odys-notice tone="warning">La stima supera il budget di {{ money(trip.totalCents - trip.budgetCents) }}: prova una durata più breve o alza il budget.</odys-notice>}
+    @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+
+    <ol class="days" [class.is-refreshing]="loading()">
+      @for (day of trip.days; track day.day) {
+        <li>
+          <span class="num">{{ day.day }}</span>
+          <span class="day__text"><strong>{{ day.title }}</strong><span>{{ day.places.join(', ') }}</span></span>
+          <span class="cost">{{ money(day.costCents) }}</span>
+        </li>
+      }
+    </ol>
+    <p class="muted small">Costi indicativi a persona (alloggio, pasti, attività), voli esclusi. L’itinerario è preparato dal motore di Odys: controlla orari e prenotazioni prima di partire.</p>
+
+    <div class="actions">
+      <button type="button" class="secondary" (click)="result.set(null)">Modifica</button>
+      <button type="button" class="primary" [disabled]="saving() || loading()" (click)="accept()"><odys-icon [name]="saving() ? 'loader' : 'check'" [size]="20" [class.spin]="saving()" /> {{ saving() ? 'Salvo…' : 'Salva e accetta' }}</button>
+    </div>
+  </div>
+} @else {
+  <form class="params" (submit)="$event.preventDefault(); generate()">
+    <div class="params__inner">
+      <p class="brandline"><odys-logo variant="mark" [size]="26" /><span class="meta-line">Generatore di itinerari</span><span class="badge">Premium</span></p>
+      <h1>Dimmi come viaggi. <span>Al percorso penso io.</span></h1>
+
+      <div class="where">
+        <odys-icon name="map-pin" [size]="20" />
+        <label class="visually-hidden" for="gen-destination">Meta</label>
+        <input id="gen-destination" name="destination" autocomplete="off" [placeholder]="surprise() ? 'Scelgo io la meta' : 'Dove vuoi andare?'" [disabled]="surprise()" [ngModel]="destination()" (ngModelChange)="destination.set($event)" />
+        <button type="button" class="surprise" [class.is-on]="surprise()" [attr.aria-pressed]="surprise()" (click)="useSurprise()">o sorprendimi</button>
+      </div>
+
+      <fieldset>
+        <div class="row"><legend>Quando</legend>
+          <span class="segmented" role="radiogroup" aria-label="Tipo di date">
+            <button type="button" role="radio" [attr.aria-checked]="mode() === 'precise'" [class.is-on]="mode() === 'precise'" (click)="mode.set('precise')">Precise</button>
+            <button type="button" role="radio" [attr.aria-checked]="mode() === 'flexible'" [class.is-on]="mode() === 'flexible'" (click)="mode.set('flexible')">Flessibili</button>
+          </span>
+        </div>
+        @if (mode() === 'flexible') {
+          <div class="grid6">
+            @for (month of months; track month.value) {
+              <button type="button" class="opt opt--lime" [class.is-on]="selectedMonths().includes(month.value)" [attr.aria-pressed]="selectedMonths().includes(month.value)" (click)="toggle('months', month.value)">{{ month.label }}</button>
+            }
+          </div>
+        } @else {
+          <div class="dates">
+            <label>Partenza<input type="date" name="departure" [ngModel]="departure()" (ngModelChange)="departure.set($event)" /></label>
+            <label>Ritorno<input type="date" name="returnDate" [min]="departure()" [ngModel]="returnDate()" (ngModelChange)="returnDate.set($event)" /></label>
+          </div>
+        }
+      </fieldset>
+
+      @if (mode() === 'flexible') {
+        <fieldset>
+          <legend>Durata</legend>
+          <div class="grid4">
+            @for (item of durations; track item.id) {
+              <button type="button" class="opt opt--white" [class.is-on]="duration() === item.id" [attr.aria-pressed]="duration() === item.id" (click)="duration.set(item.id)">{{ item.label }}</button>
+            }
+          </div>
+        </fieldset>
+      }
+
+      <div class="slider">
+        <div class="row"><label for="gen-budget">Budget a persona</label><output for="gen-budget">{{ budgetLabel() }}</output></div>
+        <input id="gen-budget" type="range" name="budget" min="200" max="1200" step="50" [ngModel]="budget()" (ngModelChange)="budget.set(+$event)" />
+        <div class="row meta-line"><span>€200</span><span>€1.200+</span></div>
+      </div>
+
+      <fieldset>
+        <legend>Interessi</legend>
+        <div class="wrap">
+          @for (item of interestOptions; track item) {
+            <button type="button" class="opt opt--blue" [class.is-on]="interests().includes(item)" [attr.aria-pressed]="interests().includes(item)" (click)="toggle('interests', item)">{{ item }}</button>
+          }
+        </div>
+      </fieldset>
+
+      @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
+
+      <button type="submit" class="go" [disabled]="!canGenerate() || loading()">
+        <odys-icon [name]="loading() ? 'loader' : 'sparkles'" [size]="22" [class.spin]="loading()" /> {{ loading() ? 'Preparo il percorso…' : 'Genera il mio itinerario' }}
+      </button>
+    </div>
+  </form>
+}

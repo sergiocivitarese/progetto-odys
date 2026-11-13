@@ -53,7 +53,7 @@ export function navigationFor(has: (entitlement: Entitlement) => boolean): Navig
       items: [
         { label: 'Esplora', path: '/', icon: 'compass', exact: true },
         { label: 'Viaggi', path: '/viaggi', icon: 'bag' },
-        { label: 'Crea con AI', path: '/pianifica', icon: 'sparkles', primary: true },
+        { label: 'Crea con AI', path: '/crea', icon: 'sparkles', primary: true },
         { label: 'Split', path: '/split', icon: 'chart-pie' },
         { label: 'Profilo', path: '/account', icon: 'user' },
       ],
