@@ -64,10 +64,10 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
         </section>
 
         <div class="tiles">
-          <a class="tile tile--dark" [routerLink]="['/gruppi', b.tripId]">
+          <a class="tile tile--dark" [routerLink]="['/gruppi', b.tripId, 'giorno', 1]">
             <odys-icon name="list" [size]="24" />
             <strong>Itinerario</strong>
-            <span>{{ b.trip!.durationDays ?? '—' }} giorni</span>
+            <span>{{ b.trip!.durationDays ?? '—' }} giorni, ora per ora</span>
           </a>
           @if (entitlements.has('split.use') && b.status !== 'pending') {
             <a class="tile" routerLink="/split" [queryParams]="{ viaggio: b.tripId }">

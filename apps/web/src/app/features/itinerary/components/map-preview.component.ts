@@ -11,6 +11,7 @@ import {
 } from '@odys/domain';
 import { ServicesApi } from '../../../core/api/services.api';
 import { ConfigStore } from '../../../core/state/config.store';
+import { fitMercator } from '../../../shared/travel/web-mercator';
 import { ButtonComponent, IconComponent } from '../../../shared/ui';
 
 const VIEW_W = 320;
@@ -81,39 +82,9 @@ export class MapPreviewComponent {
    */
   protected readonly drawing = computed(() => {
     const { markers, routeLinks } = this.visible();
-    const world = (longitude: number, latitude: number, zoom: number) => {
-      const size = TILE * 2 ** zoom;
-      const sin = Math.sin((Math.max(-85, Math.min(85, latitude)) * Math.PI) / 180);
-      return { x: ((longitude + 180) / 360) * size, y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * size };
-    };
-    // Lo zoom più alto che fa stare tutti i punti nel riquadro, con un margine.
-    let zoom = MAX_ZOOM;
-    if (markers.length > 1) {
-      for (; zoom > MIN_ZOOM; zoom--) {
-        const points = markers.map((marker) => world(marker.longitude, marker.latitude, zoom));
-        const width = Math.max(...points.map((p) => p.x)) - Math.min(...points.map((p) => p.x));
-        const height = Math.max(...points.map((p) => p.y)) - Math.min(...points.map((p) => p.y));
-        if (width <= VIEW_W - 2 * PADDING && height <= VIEW_H - 2 * PADDING) break;
-      }
-    }
-    const projected = markers.map((marker) => world(marker.longitude, marker.latitude, zoom));
-    const centerX = (Math.min(...projected.map((p) => p.x)) + Math.max(...projected.map((p) => p.x))) / 2;
-    const centerY = (Math.min(...projected.map((p) => p.y)) + Math.max(...projected.map((p) => p.y))) / 2;
-    const offsetX = VIEW_W / 2 - centerX;
-    const offsetY = VIEW_H / 2 - centerY;
-    const point = (longitude: number, latitude: number) => {
-      const p = world(longitude, latitude, zoom);
-      return { x: p.x + offsetX, y: p.y + offsetY };
-    };
-    const count = 2 ** zoom;
-    const tiles: Array<{ key: string; href: string; x: number; y: number }> = [];
-    for (let ty = Math.floor((centerY - VIEW_H / 2) / TILE); ty <= Math.floor((centerY + VIEW_H / 2) / TILE); ty++) {
-      if (ty < 0 || ty >= count) continue;
-      for (let tx = Math.floor((centerX - VIEW_W / 2) / TILE); tx <= Math.floor((centerX + VIEW_W / 2) / TILE); tx++) {
-        const wrapped = ((tx % count) + count) % count;
-        tiles.push({ key: `${zoom}/${tx}/${ty}`, href: `https://tile.openstreetmap.org/${zoom}/${wrapped}/${ty}.png`, x: tx * TILE + offsetX, y: ty * TILE + offsetY });
-      }
-    }
+    const view = fitMercator(markers.map((marker) => [marker.longitude, marker.latitude] as [number, number]), { width: VIEW_W, height: VIEW_H, padding: PADDING, tileSize: TILE, minZoom: MIN_ZOOM, maxZoom: MAX_ZOOM });
+    const point = (longitude: number, latitude: number) => view.project(longitude, latitude);
+    const tiles = view.tiles;
     const byId = new Map(markers.map((marker) => [marker.nodeId, marker]));
     return {
       tiles: this.tilesFailed() ? [] : tiles,

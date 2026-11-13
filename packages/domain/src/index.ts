@@ -16,6 +16,7 @@ export * from './lib/tripTransfer';
 export * from './lib/offlineMap';
 export * from './lib/savedTrips';
 export * from './lib/itineraryEditing';
+export * from './lib/dayAgenda';
 export * from './lib/tripForm';
 export * from './lib/entitlements';
 export * from './lib/affinity';

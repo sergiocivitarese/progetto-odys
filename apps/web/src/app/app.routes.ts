@@ -19,6 +19,8 @@ export const routes: Routes = [
   { path: 'viaggi', title: 'I miei viaggi · Odys', canActivate: [authGuard], loadChildren: () => import('./features/trips/trips.routes') },
   { path: 'itinerario', loadChildren: () => import('./features/itinerary/itinerary.routes') },
   { path: 'luogo', title: 'Luogo · Odys', loadChildren: () => import('./features/place/place.routes') },
+  // Il giorno per ore di un viaggio di gruppo (TP-05…TP-07): stessa pagina dei viaggi personali.
+  { path: 'gruppi/:id/giorno/:giorno', title: 'Giorno · Odys', data: { source: 'group' }, loadComponent: () => import('./features/itinerary/day.page') },
   { path: 'gruppi', title: 'Viaggi di gruppo · Odys', loadChildren: () => import('./features/groups/groups.routes') },
   { path: 'esplora', loadChildren: () => import('./features/explore/explore.routes') },
   { path: 'studio', canActivate: [authGuard], loadChildren: () => import('./features/studio/studio.routes') },

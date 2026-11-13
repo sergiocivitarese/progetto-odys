@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { displayDayDate, nodeIdForActivity, timelineEntries, weatherAlerts, type DayPlan, type Itinerary } from '@odys/domain';
-import { ButtonComponent, EmptyStateComponent } from '../../../shared/ui';
+import { RouterLink } from '@angular/router';
+import { ButtonComponent, EmptyStateComponent, IconComponent } from '../../../shared/ui';
 import { ItineraryStore } from '../itinerary.store';
 import { ActivityCardComponent } from './activity-card.component';
 import { ActivityEditorComponent } from './activity-editor.component';
@@ -10,7 +11,7 @@ import { WeatherCardComponent } from './weather-card.component';
 /** Una giornata dell'itinerario: in consultazione mostra la timeline, in modifica gli editor. */
 @Component({
   selector: 'odys-day-section',
-  imports: [ActivityCardComponent, ActivityEditorComponent, RouteCardComponent, WeatherCardComponent, ButtonComponent, EmptyStateComponent],
+  imports: [RouterLink, IconComponent, ActivityCardComponent, ActivityEditorComponent, RouteCardComponent, WeatherCardComponent, ButtonComponent, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="day" [attr.aria-labelledby]="'day-' + day().day">
@@ -18,6 +19,9 @@ import { WeatherCardComponent } from './weather-card.component';
       <div class="content">
         <p class="eyebrow">{{ date() }} · Giorno {{ day().day }}</p>
         <h3 [id]="'day-' + day().day">{{ day().label }}</h3>
+        @if (!editing()) {
+          <a class="open-day" [routerLink]="['/itinerario', store.trip()?.id ?? 'bozza', 'giorno', day().day]"><odys-icon name="clock" [size]="15" /> Giorno per ore, meteo e mappa</a>
+        }
 
         @if (!editing()) {
           <div class="endpoints">
@@ -66,6 +70,7 @@ import { WeatherCardComponent } from './weather-card.component';
     .line { flex: 1; width: 2px; margin-top: var(--space-2); background: repeating-linear-gradient(var(--color-border-strong) 0 6px, transparent 6px 12px); }
     .content { display: flex; flex-direction: column; gap: var(--space-3); flex: 1; min-width: 0; padding-bottom: var(--space-8); }
     h3 { font-size: var(--text-xl); margin-top: -4px; }
+    .open-day { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 44px; font-weight: 700; font-size: var(--text-sm); }
     .endpoints { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-surface-muted); font-size: var(--text-sm); font-weight: 500;
       small { display: inline-block; min-width: 20px; color: var(--color-text-muted); font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; } }
     .alternatives { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); border: var(--border-width) solid var(--color-border); font-size: var(--text-sm);
