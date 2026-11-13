@@ -70,7 +70,8 @@ interface CoordinatorRow {
 }
 
 const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max';
-const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary, place_stories`;
+// `place_stories` non è tra le colonne leggibili: il testo esce solo dalla funzione che verifica il diritto (TP-08).
+const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary`;
 
 function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
   if (!row) return { id, displayName: 'Coordinatore Odys', interests: [] };
@@ -126,8 +127,18 @@ function toDetail(row: PublishedRow, coordinator: CoordinatorCard): PublishedTri
     excluded: row.excluded ?? [],
     itinerary: row.itinerary as Itinerary,
     sourceTripId: row.source_trip_id ?? undefined,
-    placeStories: row.place_stories ?? [],
   };
+}
+
+/** Storie dei luoghi: il database le restituisce solo a chi ne ha diritto (null per gli altri) e dice sempre quante sono. */
+async function withStories(db: SupabaseClient, trip: PublishedTrip): Promise<PublishedTrip> {
+  const [stories, count] = await Promise.all([
+    db.rpc('published_trip_place_stories', { p_published_trip_id: trip.id }),
+    db.rpc('published_trip_place_stories_count', { p_published_trip_id: trip.id }),
+  ]);
+  // Chi non ha fatto l'accesso non può nemmeno chiamare la funzione del testo: vale come «nessun diritto».
+  const list = stories.error ? null : (stories.data as PlaceStory[] | null);
+  return { ...trip, placeStories: list ?? undefined, placeStoriesCount: count.error ? list?.length ?? 0 : Number(count.data ?? 0) };
 }
 
 async function coordinatorCards(db: SupabaseClient, ids: string[]): Promise<Map<string, CoordinatorCard>> {
@@ -168,7 +179,7 @@ class SupabaseCatalogRepository implements CatalogRepository {
     if (!data) return null;
     const row = data as PublishedRow;
     const cards = await coordinatorCards(this.db, [row.coordinator_id]);
-    return toDetail(row, cards.get(row.coordinator_id)!);
+    return withStories(this.db, toDetail(row, cards.get(row.coordinator_id)!));
   }
 
   async getMany(ids: string[]): Promise<PublishedTripSummary[]> {
@@ -285,20 +296,20 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     if (!isUuid(id)) return null;
     const { data, error } = await this.db.from('published_trips').select(DETAIL_COLUMNS).eq('id', id).eq('coordinator_id', this.user.id).maybeSingle();
     if (error) throw dbError(error);
-    return data ? (await this.withCard([data as PublishedRow]))[0] : null;
+    return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
 
   async create(input: PublishedTripInput): Promise<PublishedTrip> {
     const { data, error } = await this.db.from('published_trips').insert({ ...inputToRow(input), coordinator_id: this.user.id, status: 'draft' }).select(DETAIL_COLUMNS).single();
     if (error) throw dbError(error);
-    return (await this.withCard([data as PublishedRow]))[0];
+    return withStories(this.db, (await this.withCard([data as PublishedRow]))[0]);
   }
 
   async update(id: string, patch: Partial<PublishedTripInput>): Promise<PublishedTrip | null> {
     if (!isUuid(id)) return null;
     const { data, error } = await this.db.from('published_trips').update(inputToRow(patch)).eq('id', id).eq('coordinator_id', this.user.id).select(DETAIL_COLUMNS).maybeSingle();
     if (error) throw dbError(error);
-    return data ? (await this.withCard([data as PublishedRow]))[0] : null;
+    return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
 
   async setStatus(id: string, status: PublishedTripStatus, scheduledFor?: string): Promise<PublishedTrip | null> {
@@ -306,7 +317,7 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     const changes: Record<string, unknown> = { status, scheduled_for: status === 'scheduled' ? scheduledFor ?? null : null };
     const { data, error } = await this.db.from('published_trips').update(changes).eq('id', id).eq('coordinator_id', this.user.id).select(DETAIL_COLUMNS).maybeSingle();
     if (error) throw dbError(error);
-    return data ? (await this.withCard([data as PublishedRow]))[0] : null;
+    return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
 }
 

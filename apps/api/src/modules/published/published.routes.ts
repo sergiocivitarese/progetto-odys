@@ -89,7 +89,7 @@ export function publishedRouter(auth: AuthProvider, store: DataStore): Router {
     // Storia dei luoghi (TP-08): il testo solo a chi ha il diritto o coordina il viaggio; agli altri il numero, per l'invito a Premium.
     const stories = trip.placeStories ?? [];
     const canRead = !!user && (trip.coordinator.id === user.id || (await store.entitlements(user).catch(() => null))?.entitlements.includes('trips.insights') === true);
-    res.json({ ...trip, ...detail, seatsLeft: taken ? detail.seatsLeft : undefined, participants, placeStories: canRead ? stories : undefined, placeStoriesCount: stories.length });
+    res.json({ ...trip, ...detail, seatsLeft: taken ? detail.seatsLeft : undefined, participants, placeStories: canRead && trip.placeStories ? stories : undefined, placeStoriesCount: trip.placeStoriesCount ?? stories.length });
   }));
 
   router.delete('/trips/:id/participation', requireAuth(auth), handle(async (req, res) => {

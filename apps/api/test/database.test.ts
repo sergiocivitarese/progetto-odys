@@ -505,3 +505,25 @@ test('Split: solo i membri del gruppo con il diritto scrivono; le quote devono t
   await asUser(luca, () => db.query('select public.delete_split_expense($1)', [expense]));
   assert.equal((await asUser(giulia, () => db.query('select id from public.split_expenses'))).rows.length, 0);
 });
+
+test('storia dei luoghi: la colonna non è leggibile dai client, il testo esce solo con il diritto (TP-08, TP-10)', async () => {
+  const story = JSON.stringify([{ id: 's1', day: 1, title: 'Colosseo', intro: '', body: 'Inaugurato nell’80 d.C. sotto Tito.', milestones: [], source: 'coordinator' }]);
+  const trip = (await asUser(giulia, () => db.query<{ id: string }>(
+    `insert into public.published_trips (title, summary, itinerary, start_date, end_date, capacity, price_cents, status, place_stories)
+     values ('Roma antica', 'Tre giorni tra Fori, Colosseo e Appia Antica.', $1, current_date + 60, current_date + 62, 12, 40000, 'published', $2::jsonb) returning id`,
+    [JSON.stringify(itinerary), story]))).rows[0].id;
+
+  // Nessun ruolo dell'app legge la colonna, nemmeno con select *; le altre colonne restano leggibili.
+  await assert.rejects(asAnon(() => db.query('select place_stories from public.published_trips where id = $1', [trip])), /permission denied/);
+  await assert.rejects(asUser(sara, () => db.query('select * from public.published_trips where id = $1', [trip])), /permission denied/);
+  assert.equal((await asAnon(() => db.query('select title from public.published_trips where id = $1', [trip]))).rows.length, 1);
+  assert.equal((await asAnon(() => db.query<{ n: number }>('select public.published_trip_place_stories_count($1) as n', [trip]))).rows[0].n, 1);
+
+  const read = (who: string) => asUser(who, () => db.query<{ stories: Array<{ title: string }> | null }>('select public.published_trip_place_stories($1) as stories', [trip]));
+  const marta = (await db.query<{ id: string }>(`select id from auth.users where email = 'marta@example.com'`)).rows[0].id;
+  assert.equal((await read(marta)).rows[0].stories, null, 'un Traveller Base non riceve il testo');
+  assert.equal((await read(luca)).rows[0].stories?.[0].title, 'Colosseo', 'Luca è Premium');
+  assert.equal((await read(giulia)).rows[0].stories?.length, 1, 'chi coordina il viaggio lo legge sempre');
+  // «Usa come base» funziona ancora senza leggere la colonna riservata.
+  assert.equal((await asUser(marta, () => db.query<{ title: string }>('select title from public.copy_published_trip($1)', [trip]))).rows[0].title, 'Roma antica');
+});
