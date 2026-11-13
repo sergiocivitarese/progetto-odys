@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard, guestGuard } from './core/auth/auth.guard';
+import { entitlementGuard } from './core/auth/entitlement.guard';
 
 /**
  * Mappa delle pagine. Ogni feature è caricata solo quando serve (lazy loading):
@@ -11,6 +12,7 @@ export const routes: Routes = [
   { path: 'cerca', title: 'Cerca un viaggio · Odys', loadComponent: () => import('./features/discover/search.page') },
   { path: 'prenota/:id', title: 'Blocca il tuo posto · Odys', canActivate: [authGuard], loadComponent: () => import('./features/booking/checkout.page') },
   { path: 'prossimo-viaggio', title: 'Prossimo viaggio · Odys', canActivate: [authGuard], loadComponent: () => import('./features/booking/next-trip.page') },
+  { path: 'split', title: 'Cassa comune · Odys', canActivate: [entitlementGuard('split.use')], loadComponent: () => import('./features/split/split.page') },
   { path: 'salvati', title: 'Salvati · Odys', canActivate: [authGuard], loadComponent: () => import('./features/discover/saved.page') },
   { path: 'pianifica', title: 'Pianifica il viaggio · Odys', loadChildren: () => import('./features/planner/planner.routes') },
   { path: 'viaggi', title: 'I miei viaggi · Odys', canActivate: [authGuard], loadChildren: () => import('./features/trips/trips.routes') },

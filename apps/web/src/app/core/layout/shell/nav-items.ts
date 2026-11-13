@@ -54,7 +54,7 @@ export function navigationFor(has: (entitlement: Entitlement) => boolean): Navig
         { label: 'Esplora', path: '/', icon: 'compass', exact: true },
         { label: 'Viaggi', path: '/viaggi', icon: 'bag' },
         { label: 'Crea con AI', path: '/pianifica', icon: 'sparkles', primary: true },
-        { label: 'Split', path: '/in-arrivo/split', icon: 'chart-pie' },
+        { label: 'Split', path: '/split', icon: 'chart-pie' },
         { label: 'Profilo', path: '/account', icon: 'user' },
       ],
     };

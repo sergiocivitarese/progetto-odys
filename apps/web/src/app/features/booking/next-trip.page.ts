@@ -69,11 +69,19 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
             <strong>Itinerario</strong>
             <span>{{ b.trip!.durationDays ?? '—' }} giorni</span>
           </a>
-          <span class="tile" aria-disabled="true">
-            <odys-icon name="message" [size]="24" />
-            <strong>Chat del gruppo</strong>
-            <span>In arrivo</span>
-          </span>
+          @if (entitlements.has('split.use') && b.status !== 'pending') {
+            <a class="tile" routerLink="/split" [queryParams]="{ viaggio: b.tripId }">
+              <odys-icon name="chart-pie" [size]="24" />
+              <strong>Cassa comune</strong>
+              <span>Dividi le spese</span>
+            </a>
+          } @else {
+            <span class="tile" aria-disabled="true">
+              <odys-icon name="message" [size]="24" />
+              <strong>Chat del gruppo</strong>
+              <span>In arrivo</span>
+            </span>
+          }
         </div>
 
         @if (!entitlements.has('ai.generate')) {

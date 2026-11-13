@@ -4,7 +4,6 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ButtonComponent, EmptyStateComponent } from '../../shared/ui';
 
 const SECTIONS: Record<string, { title: string; text: string }> = {
-  split: { title: 'Split delle spese', text: 'La cassa comune del viaggio: spese, quote e saldo tra i partecipanti. Arriva con il blocco Traveller Premium.' },
   dati: { title: 'I tuoi dati', text: 'Guadagni, funnel e post che vendono. Arrivano con il blocco Coordinatore Premium.' },
   messaggi: { title: 'Messaggi', text: 'La chat con i partecipanti arriva in una fase successiva.' },
   'dati-agenzia': { title: 'Dashboard di agenzia', text: 'Fatturato, riempimento e classifica dei coordinatori. Arriva con il blocco Agenzia.' },
