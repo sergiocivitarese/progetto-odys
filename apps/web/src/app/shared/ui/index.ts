@@ -10,3 +10,4 @@ export * from './notice.component';
 export * from './section-header.component';
 export * from './status-badge.component';
 export * from './text-field.component';
+export * from './ring-pin.component';

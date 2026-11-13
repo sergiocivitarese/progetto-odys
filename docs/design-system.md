@@ -3,6 +3,14 @@
 Fonte: brand board Odys (`docs/riferimenti/odys-brand-board.webp`), concept 5 "The Compass" come logo principale.
 Codice: `apps/web/src/styles/_tokens.scss` (token) e `apps/web/src/app/shared/ui/` (componenti).
 
+## Stile «Orbit Route» (dal 28 ottobre 2026)
+I valori di palette, carattere e forme vengono da `docs/riferimenti/odys-specifiche-per-ruolo.pdf` («Stile Orbit Route») e dai mockup `docs/riferimenti/odys-app-mobile.pdf`.
+- **Forme**: card con raggio 20–28 px (`--radius-lg`, `--radius-xl`), pulsanti a pillola, aree tattili di almeno 44 px.
+- **Logo**: anello aperto con punto corallo + «DYS» (`odys-logo`); l'anello è blu su chiaro e lime su scuro (`--logo-ring`).
+- **Puntatore mappa**: `odys-ring-pin`, anello aperto con punto corallo e numero della tappa; `active` lo riempie di lime.
+- **Navigazione**: su mobile barra a pillola staccata dal bordo; la voce attiva è lime con etichetta, il pulsante centrale è blu. Le voci dipendono dai diritti dell'utente (`core/layout/shell/nav-items.ts`); la barra dell'agenzia è blu con voce attiva bianca.
+- **Funzioni a pagamento**: chi non ne ha diritto arriva a `/premium`, mai a un errore (`entitlementGuard`).
+
 ## Principi
 1. **Coerenza prima della creatività**: i componenti usano solo token semantici (`--color-*`, `--space-*`), mai valori fissi.
 2. **Il dato dichiara il suo stato**: ogni informazione incerta mostra un badge (icona + testo, mai solo colore).
@@ -13,11 +21,11 @@ Codice: `apps/web/src/styles/_tokens.scss` (token) e `apps/web/src/app/shared/ui
 
 | Token brand | Valore | Uso |
 |---|---|---|
-| `--odys-ink` | `#111111` | Testo, pannelli di brand (hero, riepiloghi, mappa) |
-| `--odys-off-white` | `#F8F7F3` | Sfondo dell'app |
-| `--odys-blue` | `#3157FF` | Azione primaria, link, selezione |
-| `--odys-lime` | `#D8F64E` | CTA principale ("Nuovo viaggio"), accenti su scuro, stato confermato |
-| `--odys-coral` | `#FF695A` | Attenzione, errori, azioni distruttive |
+| `--odys-ink` | `#121212` | Testo, pannelli di brand (hero, riepiloghi, mappa) |
+| `--odys-off-white` | `#F8F6F2` | Sfondo dell'app |
+| `--odys-blue` | `#3355FF` | Azione primaria, link, selezione |
+| `--odys-lime` | `#D9F54A` | CTA principale ("Nuovo viaggio"), accenti su scuro, stato confermato |
+| `--odys-coral` | `#FF6B57` | Urgenza (ultimi posti), punto dell'anello, tappa attiva, errori |
 
 ### Token semantici (tema chiaro → scuro automatico)
 
@@ -48,7 +56,8 @@ Codice: `apps/web/src/styles/_tokens.scss` (token) e `apps/web/src/app/shared/ui
 
 | Ruolo | Font | Peso | Token |
 |---|---|---|---|
-| Brand / titoli | Plus Jakarta Sans | 800 (corsivo per gli accenti) | `--font-brand` |
+| Titoli e mete | Inter | 900, spaziatura stretta; mete in maiuscolo grande (classe `.destination`) | `--font-brand` |
+| Dati brevi (date, durate, conteggi) | JetBrains Mono | 500, maiuscolo spaziato (classe `.meta-line`) | `--font-mono` |
 | UI / testo | Inter | 400–700 | `--font-ui` |
 
 Scala: `--text-xs` 13 · `sm` 14 · `md` 16 · `lg` 18 · `xl` 22 · `2xl` 28 · `3xl` fluido 32→52.

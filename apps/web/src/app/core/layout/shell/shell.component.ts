@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { ButtonComponent, IconComponent, LogoComponent } from '../../../shared/ui';
+import { IconComponent, LogoComponent } from '../../../shared/ui';
 import { OnboardingStore } from '../../state/onboarding.store';
 import { OnboardingDialogComponent } from '../onboarding/onboarding-dialog.component';
-import { NAV_ITEMS } from './nav-items';
+import { navigationFor, shortLabel } from './nav-items';
+import { EntitlementsStore } from '../../state/entitlements.store';
 import { ThemeSwitchComponent } from './theme-switch.component';
 import { UserMenuComponent } from './user-menu.component';
 import { AuthStore } from '../../auth/auth.store';
@@ -11,18 +12,25 @@ import { AccountStore } from '../../state/account.store';
 import { ThemeStore } from '../../state/theme.store';
 
 /**
- * Struttura dell'app: header con navigazione su desktop, tab bar in basso su mobile.
+ * Struttura dell'app: header con navigazione su desktop, barra a pillola in basso su mobile.
+ * Le voci cambiano con il ruolo (specifiche per ruolo, «Navigazione per ruolo»).
  * Le pagine vengono caricate nel <router-outlet>.
  */
 @Component({
   selector: 'odys-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LogoComponent, IconComponent, ButtonComponent, OnboardingDialogComponent, ThemeSwitchComponent, UserMenuComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LogoComponent, IconComponent, OnboardingDialogComponent, ThemeSwitchComponent, UserMenuComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
 })
 export class ShellComponent {
-  protected readonly nav = NAV_ITEMS;
+  private readonly entitlements = inject(EntitlementsStore);
+  /** Voci della barra: dipendono dai diritti dell'utente, non dal nome del piano. */
+  protected readonly nav = computed(() => {
+    this.entitlements.entitlements();
+    return navigationFor((key) => this.entitlements.has(key));
+  });
+  protected readonly short = shortLabel;
   protected readonly onboarding = inject(OnboardingStore);
   // Istanziato qui così il tema salvato viene applicato all'avvio.
   protected readonly theme = inject(ThemeStore);

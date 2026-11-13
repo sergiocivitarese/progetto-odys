@@ -2,16 +2,17 @@
 
 <header class="topbar">
   <div class="topbar__inner">
-    <a routerLink="/" class="brand" aria-label="Odys, torna alla home">
-      <odys-logo [size]="30" />
+    <a routerLink="/" class="brand" aria-label="Odys, torna a Esplora">
+      <odys-logo [size]="28" />
     </a>
 
     <nav class="topnav" aria-label="Navigazione principale">
-      @for (item of nav; track item.path) {
-        <a [routerLink]="item.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: !!item.exact }" class="topnav__link">
+      @for (item of nav().items; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: !!item.exact }" class="topnav__link" [class.topnav__link--primary]="item.primary">
           {{ item.label }}
         </a>
       }
+      <a routerLink="/esplora" routerLinkActive="is-active" class="topnav__link">Dai coordinatori</a>
     </nav>
 
     <div class="topbar__actions">
@@ -19,7 +20,6 @@
       <button type="button" class="icon-button" (click)="onboarding.reopen()" aria-label="Come funziona Odys">
         <odys-icon name="info" [size]="20" />
       </button>
-      <a odysButton variant="accent" size="sm" icon="plus" routerLink="/pianifica" class="topbar__cta">Nuovo viaggio</a>
       <odys-user-menu />
     </div>
   </div>
@@ -29,11 +29,12 @@
   <router-outlet />
 </main>
 
-<nav class="tabbar" aria-label="Navigazione principale">
-  @for (item of nav; track item.path) {
-    <a [routerLink]="item.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: !!item.exact }" class="tabbar__link" [class.tabbar__link--primary]="item.path === '/pianifica'">
-      <span class="tabbar__icon"><odys-icon [name]="item.icon" [size]="20" /></span>
-      <span class="tabbar__label">{{ item.label === 'Viaggi di gruppo' ? 'Gruppi' : item.label === 'I miei viaggi' ? 'Viaggi' : item.label }}</span>
+<nav class="tabbar" [class.tabbar--agency]="nav().tone === 'agency'" aria-label="Navigazione principale">
+  @for (item of nav().items; track item.path) {
+    <a [routerLink]="item.path" routerLinkActive="is-active" [routerLinkActiveOptions]="{ exact: !!item.exact }"
+       class="tabbar__link" [class.tabbar__link--primary]="item.primary" [attr.aria-label]="item.label">
+      <odys-icon [name]="item.icon" [size]="item.primary ? 24 : 22" />
+      <span class="tabbar__label" aria-hidden="true">{{ short(item) }}</span>
     </a>
   }
 </nav>
