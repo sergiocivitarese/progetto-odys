@@ -484,3 +484,24 @@ test('recensioni: solo chi ha partecipato e solo al rientro; il profilo mostra v
   assert.deepEqual(profile.rows[0], { rating: '5.0', reviews_count: 1, followers: 1, trips_completed: 1 });
   await assert.rejects(asAnon(() => db.query('select author_id from public.trip_reviews')), /permission denied/, 'chi ha scritto la recensione non è esposto ai visitatori');
 });
+
+test('Split: solo i membri del gruppo con il diritto scrivono; le quote devono tornare (TP-09)', async () => {
+  // Gruppo di Roma lenta: Giulia (coordinatrice) e Luca (confermato). Luca diventa Premium.
+  const admin = (await db.query<{ id: string }>(`select id from public.profiles where role = 'admin' limit 1`)).rows[0].id;
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, 'traveller_premium')`, [luca]));
+  const shares = (amounts: Array<[string, number]>) => JSON.stringify(amounts.map(([userId, amountCents]) => ({ userId, amountCents })));
+  const add = (who: string, amount: number, list: string) => asUser(who, () => db.query<{ id: string }>(`select id from public.add_split_expense($1, 'Cena', 'food', $2, $3, $4::jsonb)`, [romaLenta, amount, who, list]));
+
+  await assert.rejects(add(sara, 1000, shares([[sara, 1000]])), /Non fai parte/);
+  await assert.rejects(add(luca, 1000, shares([[luca, 500], [giulia, 400]])), /non corrispondono/);
+  await assert.rejects(add(luca, 1000, shares([[luca, 500], [sara, 500]])), /chi fa parte del gruppo/);
+  const expense = (await add(luca, 1000, shares([[luca, 500], [giulia, 500]]))).rows[0].id;
+  await assert.rejects(asUser(luca, () => db.query(`insert into public.split_expenses (published_trip_id, paid_by, description, category, amount_cents) values ($1, $2, 'x', 'food', 1)`, [romaLenta, luca])), /permission denied/);
+
+  assert.equal((await asUser(giulia, () => db.query('select id from public.split_expenses'))).rows.length, 1);
+  assert.equal((await asUser(sara, () => db.query('select id from public.split_expenses'))).rows.length, 0);
+  assert.equal((await asUser(giulia, () => db.query('select amount_cents from public.split_shares'))).rows.length, 2);
+  await assert.rejects(asUser(giulia, () => db.query('select public.delete_split_expense($1)', [expense])), /solo le spese che hai inserito/);
+  await asUser(luca, () => db.query('select public.delete_split_expense($1)', [expense]));
+  assert.equal((await asUser(giulia, () => db.query('select id from public.split_expenses'))).rows.length, 0);
+});

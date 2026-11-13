@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { describeEntitlements, migrateItinerary, type SubscriptionPlan } from '@odys/domain';
+import { describeEntitlements, migrateItinerary, type SplitExpense, type SubscriptionPlan } from '@odys/domain';
+import type { NewSplitExpense, SplitRepository } from '../../shared/split';
 import type { AuthProvider } from '../../shared/auth';
 import type {
   AccountRepository,
@@ -102,6 +103,7 @@ export class MemoryDatabase {
   readonly follows = new Map<string, Set<string>>();
   readonly payments: Payment[] = [];
   readonly reviews: Array<Review & { authorId: string }> = [];
+  readonly splitExpenses: Array<SplitExpense & { tripId: string; createdBy: string; deleted: boolean }> = [];
   /** Eventi dei viaggi (CP-05). */
   readonly events: Array<{ tripId: string; kind: 'view' | 'save' | 'request' | 'payment_confirmed'; userId?: string; createdAt: string }> = [];
   /** token → utente, per simulare l'autenticazione nei test. */
@@ -663,6 +665,55 @@ class MemoryAdminRepository implements AdminRepository {
   }
 }
 
+/** Stesse regole delle funzioni SQL dello Split (0014). */
+class MemorySplitRepository implements SplitRepository {
+  constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
+  private memberIds(tripId: string): string[] {
+    const trip = this.db.published.get(tripId);
+    if (!trip) return [];
+    const ids = [...this.db.participations.values()].filter((item) => item.tripId === tripId && (item.status === 'confirmed' || item.status === 'balance_paid')).map((item) => item.userId);
+    return [...new Set([trip.coordinatorId, ...ids])];
+  }
+  private guard(tripId: string): string[] {
+    const ids = this.memberIds(tripId);
+    if (!ids.includes(this.userId)) throw new HttpError(403, 'Non fai parte del gruppo di questo viaggio.');
+    return ids;
+  }
+  async groups() {
+    return [...this.db.published.values()].filter((trip) => this.memberIds(trip.id).includes(this.userId))
+      .map((trip) => ({ tripId: trip.id, title: trip.title, destination: trip.destination, startDate: trip.startDate, endDate: trip.endDate }))
+      .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
+  }
+  async members(tripId: string) {
+    const trip = this.db.published.get(tripId);
+    return this.guard(tripId).map((id) => {
+      const profile = this.db.user(id).profile;
+      return { userId: id, displayName: `${profile.firstName} ${profile.lastName[0] ?? ''}.`, initials: `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}`.toUpperCase(), isCoordinator: id === trip?.coordinatorId };
+    });
+  }
+  async expenses(tripId: string) {
+    this.guard(tripId);
+    return this.db.splitExpenses.filter((item) => item.tripId === tripId && !item.deleted).map(({ tripId: _t, createdBy: _c, deleted: _d, ...expense }) => structuredClone(expense)).reverse();
+  }
+  async add(tripId: string, input: NewSplitExpense) {
+    const ids = this.guard(tripId);
+    const me = this.db.user(this.userId);
+    if (!describeEntitlements(me.profile.role, me.plans).entitlements.includes('split.use')) throw new HttpError(403, 'Lo Split è incluso in Traveller Premium.');
+    if (!ids.includes(input.paidBy)) throw new HttpError(422, 'Chi ha pagato deve far parte del gruppo.');
+    if (input.shares.reduce((sum, share) => sum + share.amountCents, 0) !== input.amountCents) throw new HttpError(422, 'Le quote non corrispondono all’importo.');
+    if (input.shares.some((share) => !ids.includes(share.userId))) throw new HttpError(422, 'Si divide solo con chi fa parte del gruppo.');
+    const expense = { ...structuredClone(input), id: randomUUID(), tripId, createdBy: this.userId, deleted: false, createdAt: new Date().toISOString() };
+    this.db.splitExpenses.push(expense);
+    const { tripId: _t, createdBy: _c, deleted: _d, ...out } = expense;
+    return out;
+  }
+  async remove(expenseId: string) {
+    const expense = this.db.splitExpenses.find((item) => item.id === expenseId && !item.deleted);
+    if (!expense || expense.createdBy !== this.userId) throw new HttpError(403, 'Puoi eliminare solo le spese che hai inserito tu.');
+    expense.deleted = true;
+  }
+}
+
 /** Stesse regole del trigger SQL `trip_reviews_guard` e delle policy dei follower. */
 class MemorySocialRepository implements SocialRepository {
   constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
@@ -734,6 +785,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     admin: (user) => new MemoryAdminRepository(db, user.id),
     reports: (user) => new MemoryReportsRepository(db, user.id),
     social: (user) => new MemorySocialRepository(db, user.id),
+    split: (user) => new MemorySplitRepository(db, user.id),
     ...memoryCreator(db, db.creator),
   };
 }

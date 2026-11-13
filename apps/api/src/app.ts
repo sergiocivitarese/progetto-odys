@@ -18,6 +18,7 @@ import { reportsRouter } from './modules/reports/reports.routes';
 import { coordinatorRouter } from './modules/coordinator/coordinator.routes';
 import { publishedRouter } from './modules/published/published.routes';
 import { bookingsRouter } from './modules/bookings/bookings.routes';
+import { splitRouter } from './modules/split/split.routes';
 import { simulatedPaymentProvider, type PaymentProvider } from './shared/payments';
 import { supabaseAuthProvider } from './infra/supabase/auth-provider';
 import { supabaseGeoCacheStore } from './infra/supabase/geocode-cache';
@@ -56,6 +57,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   app.use('/api/trips', tripsRouter(auth, store));
   app.use('/api/catalog', publishedRouter(auth, store));
   app.use('/api/coordinator', coordinatorRouter(auth, store));
+  app.use('/api/split', splitRouter(auth, store));
   app.use('/api/bookings', bookingsRouter(auth, store, deps.payments ?? simulatedPaymentProvider()));
   app.use('/api/admin', adminRouter(auth, store));
   app.use('/api/posts', postsRouter(auth, store));

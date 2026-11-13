@@ -19,6 +19,7 @@ import { dbError, userClient } from './client';
 import { supabaseCatalog } from './supabase-catalog';
 import { supabaseCommunity } from './supabase-community';
 import { supabaseCreator } from './supabase-creator';
+import { supabaseSplit } from './supabase-split';
 
 interface TripRow {
   id: string;
@@ -231,5 +232,6 @@ export function supabaseDataStore(config: AppConfig): DataStore {
     },
     ...supabaseCommunity(config),
     ...supabaseCreator(config),
+    ...supabaseSplit(config),
   };
 }

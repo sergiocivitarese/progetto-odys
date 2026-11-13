@@ -585,3 +585,54 @@ test('profilo coordinatore: Segui, recensioni solo dai partecipanti a viaggio co
   assert.equal((await call<ProfileView>('GET', `/catalog/coordinators/${coordinatorId}`)).data.following, false);
   assert.equal((await call('DELETE', `/catalog/coordinators/${coordinatorId}/follow`, undefined, travelerToken)).status, 204);
 });
+
+test('Split: cassa comune del gruppo, quote calcolate dal server, solo per chi ha il diritto (TP-09, TP-10)', async () => {
+  const coordToken = 'token-split-coord';
+  const coordId = db.addUser(coordToken, undefined, 'luca.split@example.com');
+  Object.assign(db.user(coordId).profile, { role: 'coordinator', firstName: 'Luca', lastName: 'Testa' });
+  const saraToken = 'token-split-sara';
+  const saraId = db.addUser(saraToken, undefined, 'sara.split@example.com');
+  Object.assign(db.user(saraId).profile, { firstName: 'Sara', lastName: 'Colombo' });
+  db.user(saraId).plans = ['traveller_premium'];
+  const baseToken = 'token-split-base';
+  const baseId = db.addUser(baseToken, undefined, 'base.split@example.com');
+  const strangerToken = 'token-split-estraneo';
+  db.user(db.addUser(strangerToken)).plans = ['traveller_premium'];
+
+  const tripId = 'viaggio-split-amalfi';
+  db.published.set(tripId, {
+    id: tripId, coordinatorId: coordId, status: 'published', effectiveStatus: 'published', title: 'Costiera', summary: '', destination: 'Amalfi', country: 'Italia', region: '',
+    interests: [], visibility: 'public', startDate: '2027-05-15', endDate: '2027-05-18', currency: 'EUR', capacity: 12, priceCents: 65000, included: [], excluded: [],
+    itinerary: { days: [] } as unknown as Itinerary, updatedAt: new Date().toISOString(), coordinator: { id: coordId, displayName: 'Luca T.', interests: [] },
+  });
+  for (const [id, userId] of [['split-sara', saraId], ['split-base', baseId]]) {
+    db.participations.set(id, { id, tripId, userId, status: 'confirmed', currency: 'EUR', createdAt: new Date().toISOString() });
+  }
+
+  // TP-10: un Base riceve l'invito all'upgrade; chi non è nel gruppo non vede la cassa.
+  assert.equal((await call<{ code: string }>('GET', `/split/${tripId}`, undefined, baseToken)).data.code, 'upgrade_required');
+  assert.equal((await call('GET', `/split/${tripId}`, undefined, strangerToken)).status, 403);
+
+  type View = { members: Array<{ userId: string }>; expenses: Array<{ id: string; shares: Array<{ amountCents: number }> }>; summary: { totalCents: number; myBalanceCents: number; transfers: Array<{ from: string; to: string; amountCents: number }> } };
+  const groups = await call<Array<{ tripId: string }>>('GET', '/split', undefined, saraToken);
+  assert.deepEqual(groups.data.map((group) => group.tripId), [tripId]);
+  assert.equal((await call('POST', `/split/${tripId}/expenses`, { description: 'Cena', category: 'food', amount: 10, among: ['sconosciuto'] }, saraToken)).status, 422);
+  const dinner = await call<View>('POST', `/split/${tripId}/expenses`, { description: 'Cena da Lucia', category: 'food', amount: '100,00', among: [saraId, coordId, baseId] }, saraToken);
+  assert.equal(dinner.status, 201);
+  assert.deepEqual(dinner.data.expenses[0].shares.map((share) => share.amountCents), [3334, 3333, 3333]);
+  assert.equal(dinner.data.summary.myBalanceCents, 6666);
+
+  const ferry = await call<View>('POST', `/split/${tripId}/expenses`, { description: 'Traghetto', category: 'transport', amount: 30, paidBy: coordId, among: [saraId, coordId] }, coordToken);
+  assert.equal(ferry.data.summary.totalCents, 13000);
+  const debt = ferry.data.summary.transfers.find((transfer) => transfer.to === saraId && transfer.from === coordId);
+  assert.ok(debt, 'Luca deve qualcosa a Sara');
+
+  // «Salda ora»: il rimborso chiude il debito.
+  const settled = await call<View>('POST', `/split/${tripId}/settle`, { to: saraId, amount: debt.amountCents / 100 }, coordToken);
+  assert.ok(!settled.data.summary.transfers.some((transfer) => transfer.from === coordId));
+  assert.equal(settled.data.summary.totalCents, 13000, 'il rimborso non è una spesa');
+
+  // Si elimina solo la propria spesa.
+  assert.equal((await call('DELETE', `/split/expenses/${dinner.data.expenses[0].id}`, undefined, coordToken)).status, 403);
+  assert.equal((await call('DELETE', `/split/expenses/${dinner.data.expenses[0].id}`, undefined, saraToken)).status, 204);
+});

@@ -3,6 +3,7 @@ import type { AuthUser } from './auth';
 import type { CatalogFactory, CoordinatorRepository, SavedTripsRepository } from './catalog';
 import type { CommunityStore } from './community';
 import type { CreatorStore } from './creator';
+import type { SplitStore } from './split';
 
 /*
  * Contratti dell'archivio dati. Implementazioni:
@@ -106,7 +107,7 @@ export interface AccountRepository {
 }
 
 /** Fabbrica dei repository per l'utente della richiesta. */
-export interface DataStore extends CommunityStore, CreatorStore {
+export interface DataStore extends CommunityStore, CreatorStore, SplitStore {
   trips(user: AuthUser): TripsRepository;
   account(user: AuthUser): AccountRepository;
   /** Catalogo pubblico: leggibile anche senza accesso; con l'utente include i viaggi «Solo follower» di chi segue. */
