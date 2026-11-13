@@ -636,3 +636,34 @@ test('Split: cassa comune del gruppo, quote calcolate dal server, solo per chi h
   assert.equal((await call('DELETE', `/split/expenses/${dinner.data.expenses[0].id}`, undefined, coordToken)).status, 403);
   assert.equal((await call('DELETE', `/split/expenses/${dinner.data.expenses[0].id}`, undefined, saraToken)).status, 204);
 });
+
+test('generatore di itinerari: solo Premium, rigenera senza salvare, «Salva e accetta» crea il viaggio (TP-01…TP-03, TP-10)', async () => {
+  const baseToken = 'token-gen-base';
+  db.addUser(baseToken);
+  const premiumToken = 'token-gen-premium';
+  db.user(db.addUser(premiumToken)).plans = ['traveller_premium'];
+  const body = { destination: 'Costiera Amalfitana', dates: { mode: 'flexible', months: [5, 6] }, duration: '3-5', budget: 650, interests: ['Mare', 'Cibo', 'Storia'] };
+
+  const blocked = await call<{ code: string }>('POST', '/generator', body, baseToken);
+  assert.deepEqual([blocked.status, blocked.data.code], [403, 'upgrade_required']);
+  assert.equal((await call('POST', '/generator', { ...body, destination: '' }, premiumToken)).status, 400);
+  assert.equal((await call('POST', '/generator', { ...body, interests: [] }, premiumToken)).status, 400);
+  assert.equal((await call('POST', '/generator', { ...body, dates: { mode: 'precise', departure: '2027-05-10', returnDate: '2027-05-01' } }, premiumToken)).status, 422);
+
+  type Generated = { title: string; days: Array<{ title: string; places: string[]; costCents: number }>; totalCents: number; budgetCents: number; itinerary?: unknown };
+  const first = await call<Generated>('POST', '/generator', body, premiumToken);
+  assert.equal(first.status, 200);
+  assert.deepEqual([first.data.title, first.data.days.length, first.data.budgetCents], ['Costiera Amalfitana in 4 giorni', 4, 65000]);
+  assert.equal(first.data.itinerary, undefined, 'l’anteprima non porta l’itinerario completo');
+  const again = await call<Generated>('POST', '/generator', { ...body, seed: 1 }, premiumToken);
+  assert.notDeepEqual(again.data.days.map((day) => day.places), first.data.days.map((day) => day.places));
+  const surprise = await call<Generated & { destination: string }>('POST', '/generator', { ...body, destination: '', surprise: true }, premiumToken);
+  assert.equal(surprise.data.destination, 'Costiera Amalfitana');
+
+  // Generare non salva; accettare sì.
+  assert.equal((await call<Trip[]>('GET', '/trips', undefined, premiumToken)).data.length, 0);
+  const accepted = await call<Trip>('POST', '/generator/accept', body, premiumToken);
+  assert.equal(accepted.status, 201);
+  assert.equal(accepted.data.title, 'Costiera Amalfitana in 4 giorni');
+  assert.equal((await call<Trip[]>('GET', '/trips', undefined, premiumToken)).data.length, 1);
+});

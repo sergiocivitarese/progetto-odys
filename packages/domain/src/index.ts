@@ -20,5 +20,6 @@ export * from './lib/tripForm';
 export * from './lib/entitlements';
 export * from './lib/affinity';
 export * from './lib/split';
+export * from './lib/tripGenerator';
 export * from './data/places';
 export * from './data/demo';
