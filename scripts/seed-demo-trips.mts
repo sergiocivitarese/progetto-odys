@@ -81,10 +81,12 @@ try {
       const response = await fetch(`${api}/api/itineraries/generate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ form }) });
       if (!response.ok) throw new Error(`${example.title}: ${response.status} ${await response.text()}`);
       const itinerary = await response.json();
+      // La meta in grande sulla card è la città; il paese serve alla ricerca per intento (TB-02).
+      const [place, country] = example.destination.split(',').map((part) => part.trim());
       const [row] = await sql<{ id: string }[]>`
-        insert into public.published_trips (coordinator_id, status, title, summary, destination, start_date, end_date, price_cents, capacity, included, excluded, itinerary)
-        values (${coordinator.id}, 'published', ${example.title}, ${example.summary}, ${example.destination}, ${example.start}, ${example.end},
-                ${example.price * 100}, ${example.capacity}, ${example.included}, ${example.excluded}, ${sql.json(itinerary)})
+        insert into public.published_trips (coordinator_id, status, title, summary, destination, country, interests, start_date, end_date, price_cents, capacity, included, excluded, itinerary)
+        values (${coordinator.id}, 'published', ${example.title}, ${example.summary}, ${place}, ${country ?? ''}, ${example.interests}, ${example.start}, ${example.end},
+                ${example.price * 100}, ${Math.min(example.capacity, 12)}, ${example.included}, ${example.excluded}, ${sql.json(itinerary)})
         returning id`;
       console.log(`✅ ${example.title} · ${itinerary.days.length} giorni → ${api}/gruppi/${row.id}`);
     }

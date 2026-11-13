@@ -7,7 +7,9 @@ import { authGuard, guestGuard } from './core/auth/auth.guard';
  * Le pagine riservate usano `authGuard` (U-10): senza accesso portano al login e poi tornano qui.
  */
 export const routes: Routes = [
-  { path: '', title: 'Odys — Plan. Discover. Experience.', loadChildren: () => import('./features/home/home.routes') },
+  { path: '', pathMatch: 'full', title: 'Esplora · Odys', loadComponent: () => import('./features/discover/discover.page') },
+  { path: 'cerca', title: 'Cerca un viaggio · Odys', loadComponent: () => import('./features/discover/search.page') },
+  { path: 'salvati', title: 'Salvati · Odys', canActivate: [authGuard], loadComponent: () => import('./features/discover/saved.page') },
   { path: 'pianifica', title: 'Pianifica il viaggio · Odys', loadChildren: () => import('./features/planner/planner.routes') },
   { path: 'viaggi', title: 'I miei viaggi · Odys', canActivate: [authGuard], loadChildren: () => import('./features/trips/trips.routes') },
   { path: 'itinerario', loadChildren: () => import('./features/itinerary/itinerary.routes') },

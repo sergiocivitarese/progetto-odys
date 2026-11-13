@@ -31,7 +31,7 @@
         <div class="group">
           <p class="label">I tuoi interessi</p>
           <div class="chips">
-            @for (item of interestsOptions; track item) {
+            @for (item of interestsOptions(); track item) {
               <button odysChip [selected]="interests().includes(item)" (click)="toggleInterest(item)">{{ item }}</button>
             }
           </div>

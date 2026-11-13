@@ -4,7 +4,7 @@ import { PostTileComponent } from '../../shared/travel/post-tile.component';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, OnInit, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { RECOMMENDED_INTERESTS, type GroupTrip } from '@odys/domain';
+import { TRIP_INTERESTS, type GroupTrip } from '@odys/domain';
 import { AccountApi, type ActivityEntry } from '../../core/api/account.api';
 import { CatalogApi, formatPrice, PARTICIPATION_STATUS_LABELS, type MyParticipation, type ParticipationStatus, type PublishedTripSummary } from '../../core/api/catalog.api';
 import { apiErrorMessage } from '../../core/api/api-client';
@@ -68,7 +68,8 @@ export default class AccountPage implements OnInit {
   /** Avviso da mostrare all'arrivo (es. `?avviso=password`). */
   readonly avviso = input<string>();
 
-  protected readonly interestsOptions = RECOMMENDED_INTERESTS;
+  /** Gli stessi interessi dei viaggi (servono all'affinità, TB-04), più quelli già scelti in passato. */
+  protected readonly interestsOptions = computed(() => [...TRIP_INTERESTS, ...this.interests().filter((item) => !(TRIP_INTERESTS as readonly string[]).includes(item))]);
   protected readonly firstName = signal('');
   protected readonly lastName = signal('');
   protected readonly bio = signal('');

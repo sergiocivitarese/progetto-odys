@@ -38,7 +38,10 @@ const services = [
 ];
 
 const children = services.map(({ name, color, args }) => {
-  const child = spawn(npm, args, { stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+  // L'API ascolta sempre sulla 3000 (è lì che punta il proxy del frontend): una PORT
+  // ereditata dall'ambiente, per esempio dal pannello di anteprima, la sposterebbe sulla 4200.
+  const env = name === 'api' ? { ...process.env, PORT: '3000' } : process.env;
+  const child = spawn(npm, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
   const prefix = `${color}[${name}]\x1b[0m `;
   const pipe = (stream, target) => stream.on('data', (chunk) => {
     chunk.toString().split('\n').filter(Boolean).forEach((line) => target.write(`${prefix}${line}\n`));

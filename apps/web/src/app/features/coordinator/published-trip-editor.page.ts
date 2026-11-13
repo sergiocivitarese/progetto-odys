@@ -2,10 +2,11 @@ import { DatePipe } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { MAX_TRIP_PARTICIPANTS, TRIP_INTERESTS } from '@odys/domain';
 import { apiErrorMessage } from '../../core/api/api-client';
-import { CatalogApi, PUBLISHED_STATUS_LABELS, type CoordinatorAction, type PublishedTrip, type PublishedTripForm } from '../../core/api/catalog.api';
+import { CatalogApi, PUBLISHED_STATUS_LABELS, type CoordinatorAction, type PublishedTrip, type PublishedTripForm, type TripVisibility } from '../../core/api/catalog.api';
 import { TripsStore } from '../../core/state/trips.store';
-import { ButtonComponent, IconComponent, NoticeComponent, TextFieldComponent } from '../../shared/ui';
+import { ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent } from '../../shared/ui';
 import { CoordinatorAccessComponent } from './coordinator-access.component';
 
 function lines(value: string): string[] {
@@ -19,7 +20,7 @@ function lines(value: string): string[] {
  */
 @Component({
   selector: 'odys-published-trip-editor-page',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent],
+  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './published-trip-editor.page.html',
   styleUrl: './published-trip-editor.page.scss',
@@ -47,6 +48,23 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   protected readonly excluded = signal('');
   protected readonly coverImageUrl = signal('');
   protected readonly scheduledFor = signal('');
+  // Dati per ricerca, affinità e prenotazione (CB-02, CB-04, CB-05).
+  protected readonly country = signal('');
+  protected readonly region = signal('');
+  protected readonly interests = signal<string[]>([]);
+  protected readonly deposit = signal('');
+  protected readonly balanceDueDate = signal('');
+  protected readonly visibility = signal<TripVisibility>('public');
+  protected readonly ageMin = signal('');
+  protected readonly ageMax = signal('');
+  protected readonly interestOptions = TRIP_INTERESTS;
+  protected readonly maxSeats = MAX_TRIP_PARTICIPANTS;
+  protected readonly visibilities: Array<{ value: TripVisibility; label: string; hint: string }> = [
+    { value: 'public', label: 'Pubblico', hint: 'Lo vede chiunque, in Esplora e nella ricerca.' },
+    { value: 'followers', label: 'Follower', hint: 'Lo vede solo chi ti segue.' },
+    { value: 'invite', label: 'Su invito', hint: 'Resta fuori dal catalogo: gli inviti arrivano in una prossima versione.' },
+  ];
+  protected readonly visibilityHint = computed(() => this.visibilities.find((item) => item.value === this.visibility())?.hint ?? '');
 
   protected readonly busy = signal(false);
   protected readonly error = signal('');
@@ -99,11 +117,24 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     this.included.set(trip.included.join('\n'));
     this.excluded.set(trip.excluded.join('\n'));
     this.coverImageUrl.set(trip.coverImageUrl ?? '');
+    this.country.set(trip.country);
+    this.region.set(trip.region);
+    this.interests.set([...trip.interests]);
+    this.deposit.set(trip.depositCents !== undefined ? String(trip.depositCents / 100) : '');
+    this.balanceDueDate.set(trip.balanceDueDate ?? '');
+    this.visibility.set(trip.visibility);
+    this.ageMin.set(trip.ageMin !== undefined ? String(trip.ageMin) : '');
+    this.ageMax.set(trip.ageMax !== undefined ? String(trip.ageMax) : '');
+  }
+
+  protected toggleInterest(item: string): void {
+    this.interests.update((list) => (list.includes(item) ? list.filter((value) => value !== item) : [...list, item]));
   }
 
   private form(): PublishedTripForm {
     const price = this.price().trim().replace(',', '.');
     const capacity = this.capacity().trim();
+    const deposit = this.deposit().trim().replace(',', '.');
     return {
       title: this.title().trim(),
       summary: this.summary().trim(),
@@ -115,6 +146,14 @@ export default class PublishedTripEditorPage implements AfterViewInit {
       included: lines(this.included()),
       excluded: lines(this.excluded()),
       coverImageUrl: this.coverImageUrl().trim(),
+      country: this.country().trim(),
+      region: this.region().trim(),
+      interests: this.interests(),
+      deposit: deposit ? Number(deposit) : undefined,
+      balanceDueDate: this.balanceDueDate(),
+      visibility: this.visibility(),
+      ageMin: this.ageMin().trim() ? Number(this.ageMin()) : null,
+      ageMax: this.ageMax().trim() ? Number(this.ageMax()) : null,
     };
   }
 
@@ -158,7 +197,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
       const scheduled = action === 'schedule' ? new Date(this.scheduledFor()).toISOString() : undefined;
       this.fill(await this.api.changeStatus(saved.id, action, scheduled));
       const messages: Record<CoordinatorAction, string> = {
-        publish: 'Viaggio pubblicato: ora è visibile a tutti in “Viaggi di gruppo”.',
+        publish: this.visibility() === 'public' ? 'Viaggio pubblicato: ora è visibile a tutti in Esplora.' : this.visibility() === 'followers' ? 'Viaggio pubblicato per chi ti segue.' : 'Viaggio pubblicato su invito: resta fuori dal catalogo.',
         schedule: 'Pubblicazione programmata.',
         unpublish: 'Il viaggio è tornato in bozza e non è più visibile al pubblico.',
         cancel: 'Viaggio annullato.',

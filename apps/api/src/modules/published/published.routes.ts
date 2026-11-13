@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
-import type { CatalogFilters } from '../../shared/catalog';
+import { currentUser, maybeUser, optionalAuth, requireAuth, type AuthProvider, type AuthUser } from '../../shared/auth';
+import { refineCatalog, similarDestinations, suggestPlaces, type CatalogFilters, type PublishedTripSummary } from '../../shared/catalog';
 import type { DataStore } from '../../shared/data';
 import { handle, HttpError } from '../../shared/http';
 
@@ -19,28 +19,74 @@ export function publishedRouter(auth: AuthProvider, store: DataStore): Router {
     if (!auth.configured) throw new HttpError(503, 'Catalogo non disponibile: archivio non configurato.');
   };
 
+  // Le rotte di lettura restano pubbliche; con l'accesso aggiungono affinità e viaggi «Solo follower».
+  router.use(optionalAuth(auth));
+
+  /** Interessi di chi guarda (per l'affinità, TB-04); senza accesso nessuno. */
+  const interestsOf = async (user: AuthUser | undefined): Promise<string[]> =>
+    user ? (await store.account(user).getProfile().catch(() => null))?.interests ?? [] : [];
+
+  /** Catalogo filtrato, con posti liberi e affinità (TB-03…TB-05). */
+  const search = async (user: AuthUser | undefined, filters: CatalogFilters): Promise<PublishedTripSummary[]> => {
+    const catalog = store.catalog(user);
+    const trips = await catalog.list({ destination: filters.destination, coordinatorId: filters.coordinatorId, maxPriceCents: filters.maxPriceCents, includeCompleted: filters.includeCompleted });
+    const [taken, interests] = await Promise.all([
+      // I posti liberi sono un'informazione in più: se il conteggio non risponde il catalogo si apre lo stesso.
+      catalog.seatsTaken(trips.map((trip) => trip.id)).catch(() => null),
+      interestsOf(user),
+    ]);
+    const refined = refineCatalog(trips, filters, taken ?? new Map(), interests);
+    return taken ? refined : refined.map((trip) => ({ ...trip, seatsLeft: undefined }));
+  };
+
   router.get('/trips', handle(async (req, res) => {
     ensureConfigured();
     const sort = req.query['sort'];
     const maxPrice = Number(req.query['maxPrice']);
+    const month = Number(req.query['month']);
+    const minDays = Number(req.query['minDays']);
+    const maxDays = Number(req.query['maxDays']);
+    const interests = text(req.query['interests'], 200)?.split(',').map((item) => item.trim()).filter(Boolean).slice(0, 12);
     const filters: CatalogFilters = {
       q: text(req.query['q']),
       destination: text(req.query['destination']),
       coordinatorId: text(req.query['coordinator'], 40),
       maxPriceCents: Number.isFinite(maxPrice) && maxPrice > 0 ? Math.round(maxPrice * 100) : undefined,
-      sort: sort === 'price' || sort === 'recent' ? sort : 'upcoming',
+      sort: sort === 'price' || sort === 'recent' || sort === 'upcoming' ? sort : 'affinity',
       includeCompleted: req.query['completed'] === '1',
+      interests: interests?.length ? interests : undefined,
+      month: Number.isInteger(month) && month >= 1 && month <= 12 ? month : undefined,
+      minDays: Number.isInteger(minDays) && minDays > 0 ? minDays : undefined,
+      maxDays: Number.isInteger(maxDays) && maxDays > 0 ? maxDays : undefined,
+      onlyAvailable: req.query['available'] === '1',
     };
-    res.json(await store.catalog().list(filters));
+    res.json(await search(maybeUser(res), filters));
+  }));
+
+  // Ricerca per intento (TB-02): suggerimenti di paese, regione e città con il numero di viaggi.
+  router.get('/suggest', handle(async (req, res) => {
+    ensureConfigured();
+    const q = text(req.query['q']) ?? '';
+    res.json(suggestPlaces(await store.catalog(maybeUser(res)).list({}), q));
+  }));
+
+  // «Chi cerca Messico guarda anche»: mete con interessi simili (TB-02).
+  router.get('/similar', handle(async (req, res) => {
+    ensureConfigured();
+    const q = text(req.query['q']) ?? '';
+    res.json(similarDestinations(await store.catalog(maybeUser(res)).list({}), q));
   }));
 
   router.get('/trips/:id', handle(async (req, res) => {
     ensureConfigured();
-    const trip = await store.catalog().get(String(req.params.id));
+    const user = maybeUser(res);
+    const catalog = store.catalog(user);
+    const trip = await catalog.get(String(req.params.id));
     if (!trip) throw new HttpError(404, 'Viaggio non trovato o non più disponibile.');
-    // I posti rimasti sono un'informazione in più: se il conteggio non è disponibile il dettaglio si apre lo stesso.
-    const confirmed = await store.catalog().confirmedCount(trip.id).catch(() => null);
-    res.json({ ...trip, seatsLeft: trip.capacity === undefined || confirmed === null ? undefined : Math.max(0, trip.capacity - confirmed) });
+    const [taken, interests] = await Promise.all([catalog.seatsTaken([trip.id]).catch(() => null), interestsOf(user)]);
+    void catalog.recordView(trip.id).catch(() => undefined);
+    const [detail] = refineCatalog([trip], {}, taken ?? new Map(), interests);
+    res.json({ ...trip, ...detail, seatsLeft: taken ? detail.seatsLeft : undefined });
   }));
 
   // Richiesta di partecipazione (U-14, U-16): tracciata, senza pagamento; il posto lo conferma il coordinatore.
@@ -62,7 +108,7 @@ export function publishedRouter(auth: AuthProvider, store: DataStore): Router {
 
   router.get('/coordinators/:id', handle(async (req, res) => {
     ensureConfigured();
-    const catalog = store.catalog();
+    const catalog = store.catalog(maybeUser(res));
     const id = String(req.params.id);
     const coordinator = await catalog.coordinator(id);
     if (!coordinator) throw new HttpError(404, 'Coordinatore non trovato.');

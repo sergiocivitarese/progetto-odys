@@ -265,7 +265,7 @@ async function createDemoCoordinator(spec: DemoCoordinator): Promise<string> {
   return user.id;
 }
 
-async function publishTrip(coordinatorId: string, trip: DemoCoordinator['trip']): Promise<string> {
+async function publishTrip(coordinatorId: string, trip: DemoCoordinator['trip'], interests: string[] = ['Natura', 'Cibo']): Promise<string> {
   const form = {
     destination: trip.destination, departure: trip.start, returnDate: trip.end, arrivalTime: '', departureTime: '', travelers: String(trip.capacity),
     pace: 'equilibrato', interests: ['Natura', 'Cibo'], customInterests: [], transport: 'misto', arrivalTransport: 'treno', arrivalDayOffset: 0,
@@ -275,7 +275,8 @@ async function publishTrip(coordinatorId: string, trip: DemoCoordinator['trip'])
   if (!response.ok) throw new Error(`Generazione itinerario: ${response.status} (l'API è avviata su ${api}?)`);
   const itinerary = await response.json();
   const row = await check('viaggio pubblicato', await db.from('published_trips').insert({
-    coordinator_id: coordinatorId, status: 'published', title: trip.title, summary: trip.summary, destination: trip.destination,
+    coordinator_id: coordinatorId, status: 'published', title: trip.title, summary: trip.summary,
+    destination: trip.destination.split(',')[0].trim(), country: trip.destination.split(',')[1]?.trim() ?? '', interests,
     start_date: trip.start, end_date: trip.end, price_cents: trip.price * 100, capacity: trip.capacity, included: trip.included, excluded: trip.excluded, itinerary,
   }).select('id').single());
   return row.id as string;
@@ -335,7 +336,7 @@ try {
     for (const coordinator of DEMO_COORDINATORS) {
       const id = await createDemoCoordinator(coordinator);
       demoIds.push(id);
-      const tripId = await publishTrip(id, coordinator.trip);
+      const tripId = await publishTrip(id, coordinator.trip, coordinator.interests);
       for (const spec of coordinator.posts) {
         publicPosts.push(await createPost(id, spec, new Map([[coordinator.trip.title, tripId]]), seed++));
         process.stdout.write('.');

@@ -90,6 +90,10 @@ export class MemoryDatabase {
   readonly creator = new MemoryCreatorData();
   readonly reports: Array<ReportReview & { reporterId: string }> = [];
   readonly users = new Map<string, MemoryUser>();
+  /** follower → coordinatori seguiti. */
+  readonly follows = new Map<string, Set<string>>();
+  /** Eventi dei viaggi (CP-05). */
+  readonly events: Array<{ tripId: string; kind: 'view' | 'save' | 'request' | 'payment_confirmed'; userId?: string; createdAt: string }> = [];
   /** token → utente, per simulare l'autenticazione nei test. */
   readonly tokens = new Map<string, { id: string; email: string }>();
 
@@ -212,6 +216,18 @@ function isPublic(trip: MemoryPublished): boolean {
     || (trip.status === 'scheduled' && !!trip.scheduledFor && Date.parse(trip.scheduledFor) <= Date.now());
 }
 
+/** Stessa regola della funzione SQL `published_trip_visible_to_me` (CB-05). */
+function visibleTo(db: MemoryDatabase, trip: MemoryPublished, userId?: string): boolean {
+  if (!isPublic(trip)) return false;
+  if (trip.visibility === 'public' || trip.coordinatorId === userId) return true;
+  return trip.visibility === 'followers' && !!userId && !!db.follows.get(userId)?.has(trip.coordinatorId);
+}
+
+/** Posti occupati: stessa regola di `published_trips_seats_taken`. */
+function seatsTaken(db: MemoryDatabase, tripId: string, exceptId?: string): number {
+  return [...db.participations.values()].filter((item) => item.tripId === tripId && item.status === 'confirmed' && item.id !== exceptId).length;
+}
+
 function card(db: MemoryDatabase, id: string) {
   const profile = db.users.get(id)?.profile;
   return { id, displayName: displayName(profile?.firstName, profile?.lastName?.[0]), headline: profile?.publicHeadline, bio: profile?.bio, interests: profile?.interests ?? [] };
@@ -219,15 +235,16 @@ function card(db: MemoryDatabase, id: string) {
 
 function publicView(db: MemoryDatabase, trip: MemoryPublished): PublishedTrip {
   const { coordinatorId: _id, ...rest } = structuredClone(trip);
-  return { ...rest, effectiveStatus: effectiveStatus(rest.status, rest.startDate, rest.endDate, rest.scheduledFor), coordinator: card(db, trip.coordinatorId) };
+  // Come il trigger SQL: la durata deriva dalle date.
+  const durationDays = rest.startDate && rest.endDate ? Math.round((Date.parse(rest.endDate) - Date.parse(rest.startDate)) / 86_400_000) + 1 : rest.durationDays;
+  return { ...rest, durationDays, effectiveStatus: effectiveStatus(rest.status, rest.startDate, rest.endDate, rest.scheduledFor), coordinator: card(db, trip.coordinatorId) };
 }
 
 class MemoryCatalogRepository implements CatalogRepository {
-  constructor(private readonly db: MemoryDatabase) {}
+  constructor(private readonly db: MemoryDatabase, private readonly userId?: string) {}
+  private visible(trip: MemoryPublished | undefined): trip is MemoryPublished { return !!trip && visibleTo(this.db, trip, this.userId); }
   async list(filters: CatalogFilters) {
-    const q = filters.q?.toLowerCase();
-    return [...this.db.published.values()].filter(isPublic)
-      .filter((trip) => !q || `${trip.title} ${trip.destination} ${trip.summary}`.toLowerCase().includes(q))
+    return [...this.db.published.values()].filter((trip) => this.visible(trip))
       .filter((trip) => !filters.destination || trip.destination.toLowerCase().includes(filters.destination.toLowerCase()))
       .filter((trip) => !filters.coordinatorId || trip.coordinatorId === filters.coordinatorId)
       .filter((trip) => filters.maxPriceCents === undefined || (trip.priceCents ?? 0) <= filters.maxPriceCents)
@@ -236,18 +253,38 @@ class MemoryCatalogRepository implements CatalogRepository {
   }
   async get(id: string) {
     const trip = this.db.published.get(id);
-    return trip && isPublic(trip) ? publicView(this.db, trip) : null;
+    return this.visible(trip) ? publicView(this.db, trip) : null;
   }
   async getMany(ids: string[]) {
-    return ids.map((id) => this.db.published.get(id)).filter((trip): trip is MemoryPublished => !!trip && isPublic(trip)).map((trip) => publicView(this.db, trip));
+    return ids.map((id) => this.db.published.get(id)).filter((trip): trip is MemoryPublished => this.visible(trip)).map((trip) => publicView(this.db, trip));
   }
-  async confirmedCount(id: string) {
-    return [...this.db.participations.values()].filter((item) => item.tripId === id && item.status === 'confirmed').length;
+  async seatsTaken(ids: string[]) {
+    return new Map(ids.map((id) => [id, seatsTaken(this.db, id)] as const).filter(([, taken]) => taken > 0));
+  }
+  async recordView(id: string) {
+    const trip = this.db.published.get(id);
+    if (!this.visible(trip) || trip.coordinatorId === this.userId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (this.userId && this.db.events.some((event) => event.tripId === id && event.kind === 'view' && event.userId === this.userId && event.createdAt.startsWith(today))) return;
+    this.db.events.push({ tripId: id, kind: 'view', userId: this.userId, createdAt: new Date().toISOString() });
   }
   async coordinator(id: string) {
     const profile = this.db.users.get(id)?.profile;
     return profile && (profile.role === 'coordinator' || profile.role === 'admin') ? card(this.db, id) : null;
   }
+}
+
+/** Campi svuotabili: stringa vuota o null tolgono il valore, come fa l'archivio reale. */
+function normalizeInput(input: Partial<PublishedTripInput>): Partial<MemoryPublished> {
+  const { balanceDueDate, ageMin, ageMax, ...rest } = structuredClone(input);
+  const out: Partial<MemoryPublished> = rest;
+  if (balanceDueDate !== undefined) out.balanceDueDate = balanceDueDate || undefined;
+  if (ageMin !== undefined) out.ageMin = ageMin ?? undefined;
+  if (ageMax !== undefined) out.ageMax = ageMax ?? undefined;
+  for (const field of Object.keys(out) as Array<keyof MemoryPublished>) {
+    if (out[field] === undefined && !['balanceDueDate', 'ageMin', 'ageMax'].includes(field)) delete out[field];
+  }
+  return out;
 }
 
 class MemoryCoordinatorRepository implements CoordinatorRepository {
@@ -264,14 +301,19 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
   async create(input: PublishedTripInput) {
     if (!(await this.isCoordinator())) throw new HttpError(403, 'Operazione non consentita.');
     const now = new Date().toISOString();
-    const trip: MemoryPublished = { ...structuredClone(input), id: randomUUID(), coordinatorId: this.userId, status: 'draft', effectiveStatus: 'draft', currency: 'EUR', updatedAt: now, coordinator: card(this.db, this.userId) };
+    if ((input.capacity ?? 0) > 12) throw new HttpError(422, 'Ogni viaggio ha al massimo 12 partecipanti.');
+    const trip: MemoryPublished = { country: '', region: '', interests: [], visibility: 'public', ...normalizeInput(input), id: randomUUID(), coordinatorId: this.userId, status: 'draft', effectiveStatus: 'draft', currency: 'EUR', updatedAt: now, coordinator: card(this.db, this.userId) } as MemoryPublished;
     this.db.published.set(trip.id, trip);
     return publicView(this.db, trip);
   }
   async update(id: string, patch: Partial<PublishedTripInput>) {
     const trip = this.owned(id);
     if (!trip) return null;
-    Object.assign(trip, structuredClone(patch), { updatedAt: new Date().toISOString() });
+    const next = { ...trip, ...normalizeInput(patch) };
+    if ((next.capacity ?? 0) > 12) throw new HttpError(422, 'Ogni viaggio ha al massimo 12 partecipanti.');
+    if (next.depositCents !== undefined && next.priceCents !== undefined && next.depositCents > next.priceCents) throw new HttpError(422, 'L’acconto non può superare la quota di partecipazione.');
+    if (next.balanceDueDate && next.startDate && next.balanceDueDate > next.startDate) throw new HttpError(422, 'Il saldo va pagato entro la data di partenza.');
+    Object.assign(trip, next, { updatedAt: new Date().toISOString() });
     return publicView(this.db, trip);
   }
   async setStatus(id: string, status: PublishedTripStatus, scheduledFor?: string) {
@@ -283,6 +325,11 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
       if (!trip.startDate || !trip.endDate || trip.endDate < trip.startDate) throw new HttpError(422, 'Indica date di partenza e rientro valide.');
       if (trip.capacity === undefined) throw new HttpError(422, 'Indica il numero di posti disponibili.');
       if (trip.priceCents === undefined) throw new HttpError(422, 'Indica la quota di partecipazione.');
+      // Valori provvisori, come nel trigger SQL: un quarto della quota, saldo 30 giorni prima.
+      trip.depositCents ??= Math.min(trip.priceCents, Math.max(5000, Math.round(trip.priceCents * 0.25 / 1000) * 1000));
+      const today = new Date().toISOString().slice(0, 10);
+      const thirtyBefore = new Date(Date.parse(trip.startDate) - 30 * 86_400_000).toISOString().slice(0, 10);
+      trip.balanceDueDate ??= thirtyBefore > today ? thirtyBefore : today;
     }
     Object.assign(trip, { status, scheduledFor: status === 'scheduled' ? scheduledFor : undefined, publishedAt: status === 'published' ? trip.publishedAt ?? new Date().toISOString() : trip.publishedAt });
     return publicView(this.db, trip);
@@ -294,7 +341,8 @@ class MemorySavedTripsRepository implements SavedTripsRepository {
   async listIds() { return [...this.db.user(this.userId).savedTrips]; }
   async save(id: string) {
     const trip = this.db.published.get(id);
-    if (!trip || !isPublic(trip)) throw new HttpError(404, 'Elemento non trovato.');
+    if (!trip || !visibleTo(this.db, trip, this.userId)) throw new HttpError(404, 'Elemento non trovato.');
+    if (!this.db.user(this.userId).savedTrips.has(id)) this.db.events.push({ tripId: id, kind: 'save', userId: this.userId, createdAt: new Date().toISOString() });
     this.db.user(this.userId).savedTrips.add(id);
   }
   async remove(id: string) { this.db.user(this.userId).savedTrips.delete(id); }
@@ -530,7 +578,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
   return {
     trips: (user) => new MemoryTripsRepository(db, user.id),
     account: (user) => new MemoryAccountRepository(db, user.id),
-    catalog: () => new MemoryCatalogRepository(db),
+    catalog: (user) => new MemoryCatalogRepository(db, user?.id),
     coordinator: (user) => new MemoryCoordinatorRepository(db, user.id),
     saved: (user) => new MemorySavedTripsRepository(db, user.id),
     async entitlements(user) {

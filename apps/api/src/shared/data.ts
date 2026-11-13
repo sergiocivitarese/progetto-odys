@@ -1,6 +1,6 @@
 import type { AccountEntitlements, Itinerary, SavedTrip } from '@odys/domain';
 import type { AuthUser } from './auth';
-import type { CatalogRepository, CoordinatorRepository, SavedTripsRepository } from './catalog';
+import type { CatalogFactory, CoordinatorRepository, SavedTripsRepository } from './catalog';
 import type { CommunityStore } from './community';
 import type { CreatorStore } from './creator';
 
@@ -109,8 +109,8 @@ export interface AccountRepository {
 export interface DataStore extends CommunityStore, CreatorStore {
   trips(user: AuthUser): TripsRepository;
   account(user: AuthUser): AccountRepository;
-  /** Catalogo pubblico: leggibile anche senza accesso. */
-  catalog(): CatalogRepository;
+  /** Catalogo pubblico: leggibile anche senza accesso; con l'utente include i viaggi «Solo follower» di chi segue. */
+  catalog: CatalogFactory;
   coordinator(user: AuthUser): CoordinatorRepository;
   saved(user: AuthUser): SavedTripsRepository;
   /** Piano effettivo e diritti dell'utente, decisi dal server. */

@@ -1,4 +1,5 @@
 import { computed, effect, inject, Injectable, signal, untracked } from '@angular/core';
+import { Router } from '@angular/router';
 import { AccountApi, type Preferences, type Profile } from '../api/account.api';
 import { CatalogApi } from '../api/catalog.api';
 import { AuthStore } from '../auth/auth.store';
@@ -15,6 +16,7 @@ export class AccountStore {
   private readonly auth = inject(AuthStore);
   private readonly theme = inject(ThemeStore);
   private readonly catalog = inject(CatalogApi);
+  private readonly router = inject(Router);
 
   readonly profile = signal<Profile | null>(null);
   readonly preferences = signal<Preferences | null>(null);
@@ -77,6 +79,20 @@ export class AccountStore {
       await this.load();
       throw error;
     }
+  }
+
+  /**
+   * Cuore su card e dettaglio (TB-07): senza accesso porta al login e poi
+   * riporta a `returnUrl`. Restituisce false se l'utente è stato mandato al login.
+   */
+  async toggleSavedTripWithLogin(id: string, returnUrl: string): Promise<boolean> {
+    await this.auth.start();
+    if (!this.auth.isAuthenticated()) {
+      await this.router.navigate(['/accedi'], { queryParams: { ritorno: returnUrl } });
+      return false;
+    }
+    await this.toggleSavedTrip(id);
+    return true;
   }
 
   completeOnboarding(): void {

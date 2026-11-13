@@ -17,7 +17,7 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
-      <a routerLink="/gruppi" class="back"><odys-icon name="arrow-left" [size]="16" /> Viaggi di gruppo</a>
+      <a routerLink="/cerca" class="back"><odys-icon name="arrow-left" [size]="16" /> Tutti i viaggi</a>
       @if (error()) {
         <odys-empty-state icon="user" title="Coordinatore non trovato" [description]="error()" />
       } @else if (coordinator(); as c) {

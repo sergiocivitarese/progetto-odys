@@ -377,5 +377,39 @@ test('piani e diritti: la tabella SQL coincide con il dominio, il piano lo asseg
 });
 
 test('un viaggio ha al massimo 12 posti, coordinatore escluso', async () => {
-  await assert.rejects(db.query(`insert into public.published_trips (coordinator_id, title, itinerary, capacity) values ($1, 'Troppi posti', '{"days":[]}', 13)`, [giulia]), /published_trips_capacity_max/);
+  await assert.rejects(db.query(`insert into public.published_trips (coordinator_id, title, itinerary, capacity) values ($1, 'Troppi posti', '{"days":[]}', 13)`, [giulia]), /massimo 12 partecipanti/);
+});
+
+test('catalogo: acconto e saldo validati, visibilità «Solo follower», eventi scritti solo dal server (CB-04, CB-05, CP-05)', async () => {
+  const anna = await signUp('anna.catalogo@example.com', { ...adult, first_name: 'Anna' });
+  const piero = await signUp('piero.catalogo@example.com', { ...adult, first_name: 'Piero' });
+  await db.query(`update public.profiles set role = 'coordinator' where id = $1`, [anna]);
+  const draft = (await asUser(anna, () => db.query<{ id: string }>(
+    `insert into public.published_trips (title, summary, itinerary, start_date, end_date, capacity, price_cents, interests, visibility)
+     values ('Baja per chi mi segue', 'Balene, deserto e spiagge della Baja California.', $1, current_date + 90, current_date + 97, 12, 195000, '{Mare,Natura}', 'followers') returning id`,
+    [JSON.stringify(itinerary)]))).rows[0].id;
+
+  await assert.rejects(asUser(anna, () => db.query(`update public.published_trips set deposit_cents = 200000 where id = $1`, [draft])), /acconto non può superare/);
+  await assert.rejects(asUser(anna, () => db.query(`update public.published_trips set balance_due_date = current_date + 120 where id = $1`, [draft])), /entro la data di partenza/);
+  const published = (await asUser(anna, () => db.query<{ deposit_cents: number; due: boolean }>(
+    `update public.published_trips set status = 'published' where id = $1 returning deposit_cents, balance_due_date = start_date - 30 as due`, [draft]))).rows[0];
+  assert.deepEqual(published, { deposit_cents: 49000, due: true }, 'valori provvisori: un quarto della quota, saldo 30 giorni prima');
+
+  const visible = (who: string | null) => (who ? asUser(who, () => db.query('select id from public.published_trips where id = $1', [draft])) : asAnon(() => db.query('select id from public.published_trips where id = $1', [draft])));
+  assert.equal((await visible(null)).rows.length, 0);
+  assert.equal((await visible(piero)).rows.length, 0, 'chi non segue il coordinatore non vede il viaggio');
+  await assert.rejects(asUser(piero, () => db.query(`insert into public.coordinator_follows (follower_id, coordinator_id) values ($1, $2)`, [anna, anna])), /row-level security|check/);
+  await asUser(piero, () => db.query(`insert into public.coordinator_follows (coordinator_id) values ($1)`, [anna]));
+  assert.equal((await visible(piero)).rows.length, 1);
+  assert.equal((await asAnon(() => db.query<{ n: number }>('select public.coordinator_followers_count($1) as n', [anna]))).rows[0].n, 1);
+
+  // Eventi: visualizzazione una volta al giorno, salvataggio dal trigger; la tabella non è leggibile né scrivibile dai client.
+  await asUser(piero, () => db.query('select public.record_trip_view($1)', [draft]));
+  await asUser(piero, () => db.query('select public.record_trip_view($1)', [draft]));
+  await asUser(anna, () => db.query('select public.record_trip_view($1)', [draft]));
+  await asUser(piero, () => db.query('insert into public.saved_published_trips (published_trip_id) values ($1)', [draft]));
+  const events = await db.query<{ kind: string }>('select kind from public.trip_events where published_trip_id = $1 order by kind', [draft]);
+  assert.deepEqual(events.rows.map((row) => row.kind), ['view', 'save']);
+  await assert.rejects(asUser(piero, () => db.query('select * from public.trip_events')), /permission denied/);
+  await assert.rejects(asUser(piero, () => db.query(`insert into public.trip_events (published_trip_id, kind) values ($1, 'view')`, [draft])), /permission denied/);
 });

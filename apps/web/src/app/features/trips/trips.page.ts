@@ -5,20 +5,25 @@ import type { SavedTrip } from '@odys/domain';
 import { TripsStore } from '../../core/state/trips.store';
 import { TripCardComponent } from '../../shared/travel/trip-card.component';
 import { TripManagementDialogsComponent } from '../../shared/travel/trip-management-dialogs.component';
-import { EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
+import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
+import { ImportTripDialogComponent } from './import-trip-dialog.component';
 
 /** Tutti i viaggi salvati, ordinati dall'ultima modifica, con ricerca per nome o destinazione. */
 @Component({
   selector: 'odys-trips-page',
-  imports: [FormsModule, TripCardComponent, TripManagementDialogsComponent, EmptyStateComponent, IconComponent, NoticeComponent],
+  imports: [FormsModule, TripCardComponent, TripManagementDialogsComponent, ImportTripDialogComponent, ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
       <header class="head">
-        <p class="eyebrow">La tua raccolta</p>
         <h1>I miei viaggi</h1>
         <p class="muted">I viaggi sono ordinati dall’ultima modifica e restano salvati nel tuo spazio Odys.</p>
+        <div class="row">
+          <button odysButton variant="primary" size="sm" icon="plus" (click)="router.navigate(['/pianifica'])">Nuovo viaggio</button>
+          <button odysButton variant="secondary" size="sm" icon="upload" (click)="importMessage.set(''); importOpen.set(true)">Importa JSON</button>
+        </div>
       </header>
+      @if (importMessage()) {<odys-notice tone="success">{{ importMessage() }}</odys-notice>}
 
       @if (store.trips().length > 3) {
         <label class="search">
@@ -43,6 +48,7 @@ import { EmptyStateComponent, IconComponent, NoticeComponent } from '../../share
       }
     </div>
     <odys-trip-management-dialogs [renaming]="renaming()" [deleting]="deleting()" (done)="renaming.set(null); deleting.set(null)" />
+    <odys-import-trip-dialog [open]="importOpen()" (closed)="importOpen.set(false)" (imported)="onImported($event)" />
   `,
   styles: `
     .head { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-6); }
@@ -66,7 +72,15 @@ export default class TripsPage implements OnInit {
       : this.store.trips();
   });
 
+  protected readonly importOpen = signal(false);
+  protected readonly importMessage = signal('');
+
   ngOnInit(): void {
     void this.store.load();
+  }
+
+  protected onImported(result: { trip: SavedTrip; replaced: boolean }): void {
+    this.importOpen.set(false);
+    this.importMessage.set(result.replaced ? `“${result.trip.title}” è stato sostituito con l’export confermato.` : `“${result.trip.title}” è stato importato.`);
   }
 }

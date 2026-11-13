@@ -18,7 +18,9 @@ import { ButtonComponent, IconComponent } from '../../../shared/ui';
         <div class="menu" role="menu">
           <p class="menu__who"><strong>{{ auth.displayName() }}</strong><span>{{ auth.user()?.email }}</span></p>
           <a role="menuitem" routerLink="/account" (click)="open.set(false)"><odys-icon name="user" [size]="16" /> Il mio account</a>
-          <a role="menuitem" routerLink="/viaggi" (click)="open.set(false)"><odys-icon name="bookmark" [size]="16" /> I miei viaggi</a>
+          <a role="menuitem" routerLink="/prossimo-viaggio" (click)="open.set(false)"><odys-icon name="bag" [size]="16" /> Prossimo viaggio</a>
+          <a role="menuitem" routerLink="/salvati" (click)="open.set(false)"><odys-icon name="heart" [size]="16" /> Salvati</a>
+          <a role="menuitem" routerLink="/viaggi" (click)="open.set(false)"><odys-icon name="map" [size]="16" /> I miei itinerari</a>
           <a role="menuitem" routerLink="/coordinatore" (click)="open.set(false)"><odys-icon name="shield" [size]="16" /> {{ account.isCoordinator() ? 'Area coordinatore' : 'Diventa coordinatore' }}</a>
           @if (account.isCoordinator()) {
             <a role="menuitem" routerLink="/studio" (click)="open.set(false)"><odys-icon name="upload" [size]="16" /> Creator Studio</a>
@@ -35,7 +37,7 @@ import { ButtonComponent, IconComponent } from '../../../shared/ui';
   `,
   styles: `
     :host { position: relative; display: inline-flex; }
-    .avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-pill); border: 0; background: var(--color-accent); color: var(--color-on-accent); font-family: var(--font-brand); font-weight: 800; cursor: pointer; }
+    .avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-pill); border: 0; background: var(--color-accent); color: var(--color-on-accent); font-family: var(--font-brand); font-weight: 900; cursor: pointer; }
     .menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; min-width: 240px; display: flex; flex-direction: column; padding: var(--space-2); border-radius: var(--radius-md); background: var(--color-surface); border: var(--border-width) solid var(--color-border); box-shadow: var(--shadow-lg); }
     .menu__who { display: flex; flex-direction: column; padding: var(--space-2) var(--space-3) var(--space-3); border-bottom: var(--border-width) solid var(--color-border); margin-bottom: var(--space-1);
       span { font-size: var(--text-sm); color: var(--color-text-muted); overflow-wrap: anywhere; } }

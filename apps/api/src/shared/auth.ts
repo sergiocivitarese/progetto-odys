@@ -30,6 +30,23 @@ export function currentUser(res: Response): AuthUser {
   return user;
 }
 
+/** Rotte pubbliche che cambiano per chi ha fatto l'accesso (affinità, follower): un token non valido vale come nessun token. */
+export function optionalAuth(auth: AuthProvider): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const token = auth.configured ? bearerToken(req) : null;
+    if (!token) { next(); return; }
+    auth.verify(token)
+      .then((user) => { if (user) res.locals['user'] = { ...user, accessToken: token } satisfies AuthUser; })
+      .catch(() => undefined)
+      .finally(() => next());
+  };
+}
+
+/** Utente della richiesta se ha fatto l'accesso, altrimenti undefined (dopo `optionalAuth`). */
+export function maybeUser(res: Response): AuthUser | undefined {
+  return res.locals['user'] as AuthUser | undefined;
+}
+
 /** Protegge le rotte riservate (U-10): senza token valido risponde 401. */
 export function requireAuth(auth: AuthProvider): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {

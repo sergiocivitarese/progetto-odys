@@ -449,3 +449,72 @@ test('piani e diritti: il server dice cosa è sbloccato e solo l’amministrator
   assert.equal(revoked.data.plan, 'traveller_base');
   assert.ok((await call<{ entitlements: string[] }>('GET', '/me/entitlements', undefined, adminToken)).data.entitlements.includes('admin.moderate'));
 });
+
+test('catalogo del Traveller: ricerca per intento, filtri, affinità, posti liberi e visibilità (TB-02…TB-05, CB-05)', async () => {
+  const coordinatorToken = 'token-catalogo-coord';
+  const coordinatorId = db.addUser(coordinatorToken, undefined, 'giada@example.com');
+  Object.assign(db.user(coordinatorId).profile, { role: 'coordinator', firstName: 'Giada', lastName: 'Lombardi' });
+  await call('POST', '/coordinator/guidelines', {}, coordinatorToken);
+  const travelerToken = 'token-catalogo-viaggiatrice';
+  const travelerId = db.addUser(travelerToken, undefined, 'giulia.catalogo@example.com');
+  db.user(travelerId).profile.interests = ['Rovine', 'Mare'];
+
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Mérida' } });
+  const own = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coordinatorToken);
+  const year = new Date().getFullYear() + 1;
+  const publish = async (form: Record<string, unknown>) => {
+    const created = await call<{ id: string }>('POST', '/coordinator/trips', { sourceTripId: own.data.id, summary: 'Un viaggio di prova per il catalogo di Odys.', price: 1680, capacity: 12, ...form }, coordinatorToken);
+    assert.equal(created.status, 201);
+    const published = await call<{ status: string; depositCents: number; balanceDueDate: string }>('POST', `/coordinator/trips/${created.data.id}/publish`, {}, coordinatorToken);
+    assert.equal(published.data.status, 'published');
+    return { id: created.data.id, ...published.data };
+  };
+
+  // Il limite di 12 posti vale anche lato API; l'acconto non supera la quota.
+  assert.equal((await call('POST', '/coordinator/trips', { sourceTripId: own.data.id, title: 'Troppi', capacity: 13 }, coordinatorToken)).status, 400);
+  const yucatan = await publish({ title: 'Yucatán', destination: 'Mérida', region: 'Yucatán', country: 'Messico', interests: ['Rovine', 'Mare', 'Cibo', 'Avventura'], startDate: `${year}-04-04`, endDate: `${year}-04-12`, deposit: 400, ageMin: 27, ageMax: 36 });
+  assert.equal(yucatan.depositCents, 40000);
+  assert.equal((await call('PUT', `/coordinator/trips/${yucatan.id}`, { deposit: 5000 }, coordinatorToken)).status, 422);
+  const oaxaca = await publish({ title: 'CDMX + Oaxaca', destination: 'Oaxaca', country: 'Messico', interests: ['Cibo', 'Città'], startDate: `${year}-05-10`, endDate: `${year}-05-17`, price: 1490 });
+  assert.equal(oaxaca.depositCents, 37000, 'senza acconto indicato vale il valore provvisorio: un quarto della quota');
+  await publish({ title: 'Guatemala maya', destination: 'Antigua', country: 'Guatemala', interests: ['Rovine', 'Natura'], startDate: `${year}-06-01`, endDate: `${year}-06-03`, price: 900 });
+  const followersOnly = await publish({ title: 'Baja per chi mi segue', destination: 'La Paz', country: 'Messico', interests: ['Mare'], startDate: `${year}-07-01`, endDate: `${year}-07-08`, visibility: 'followers' });
+
+  // Suggerimenti con il numero di viaggi, senza accenti né maiuscole (TB-02).
+  const suggest = await call<Array<{ kind: string; label: string; trips: number }>>('GET', '/catalog/suggest?q=mess');
+  assert.deepEqual(suggest.data, [{ kind: 'country', label: 'Messico', trips: 2 }]);
+  const byCountry = await call<Array<{ id: string; title: string; affinity?: unknown }>>('GET', '/catalog/trips?q=messico');
+  assert.deepEqual(byCountry.data.map((trip) => trip.title).sort(), ['CDMX + Oaxaca', 'Yucatán']);
+  assert.equal(byCountry.data[0].affinity, undefined, 'senza accesso non c’è affinità');
+  const similar = await call<Array<{ label: string; trips: number }>>('GET', '/catalog/similar?q=messico');
+  assert.deepEqual(similar.data, [{ label: 'Guatemala', trips: 1 }]);
+
+  // Con l'accesso: affinità sugli interessi e ordinamento predefinito per affinità (TB-03, TB-04).
+  const forGiulia = await call<Array<{ title: string; affinity?: { percent: number; explanation: string }; seatsLeft: number }>>('GET', '/catalog/trips?q=messico', undefined, travelerToken);
+  assert.deepEqual(forGiulia.data.map((trip) => [trip.title, trip.affinity?.percent]), [['Yucatán', 50], ['CDMX + Oaxaca', 0]]);
+  assert.equal(forGiulia.data[0].affinity?.explanation, 'Rovine e mare: i tuoi interessi');
+  assert.equal(forGiulia.data[0].seatsLeft, 12);
+
+  // Filtri: interessi, mese, durata, budget (TB-03).
+  const titles = async (query: string) => (await call<Array<{ title: string }>>('GET', `/catalog/trips?coordinator=${coordinatorId}&${query}`)).data.map((trip) => trip.title).sort();
+  assert.deepEqual(await titles('interests=Natura,Città'), ['CDMX + Oaxaca', 'Guatemala maya']);
+  assert.deepEqual(await titles('month=4'), ['Yucatán']);
+  assert.deepEqual(await titles('maxDays=3'), ['Guatemala maya']);
+  assert.deepEqual(await titles('minDays=9'), ['Yucatán']);
+  assert.deepEqual(await titles('maxPrice=1000'), ['Guatemala maya']);
+
+  // «Solo follower» (CB-05): fuori dal catalogo per chi non segue il coordinatore.
+  assert.equal((await call('GET', `/catalog/trips/${followersOnly.id}`, undefined, travelerToken)).status, 404);
+  db.follows.set(travelerId, new Set([coordinatorId]));
+  assert.equal((await call('GET', `/catalog/trips/${followersOnly.id}`, undefined, travelerToken)).status, 200);
+  assert.equal((await call('GET', `/catalog/trips/${followersOnly.id}`)).status, 404);
+
+  // Eventi lato server (CP-05): una visualizzazione al giorno per utente, il salvataggio una volta sola.
+  await call('GET', `/catalog/trips/${yucatan.id}`, undefined, travelerToken);
+  await call('GET', `/catalog/trips/${yucatan.id}`, undefined, travelerToken);
+  await call('GET', `/catalog/trips/${yucatan.id}`, undefined, coordinatorToken);
+  await call('PUT', `/me/saved-trips/${yucatan.id}`, undefined, travelerToken);
+  await call('PUT', `/me/saved-trips/${yucatan.id}`, undefined, travelerToken);
+  const events = db.events.filter((event) => event.tripId === yucatan.id).map((event) => event.kind).sort();
+  assert.deepEqual(events, ['save', 'view']);
+});

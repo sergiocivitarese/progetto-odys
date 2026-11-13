@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import type { Itinerary } from '@odys/domain';
+import { MAX_TRIP_PARTICIPANTS, type Itinerary } from '@odys/domain';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
-import { COORDINATOR_GUIDELINES_VERSION, type PublishedTripInput, type PublishedTripStatus } from '../../shared/catalog';
+import { COORDINATOR_GUIDELINES_VERSION, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
 import type { CoordinatorApplicationInput } from '../../shared/community';
 import type { DataStore } from '../../shared/data';
 import { handle, HttpError, requireObject } from '../../shared/http';
@@ -46,7 +46,7 @@ function inputFrom(body: unknown, partial: boolean): Partial<PublishedTripInput>
   }
   if (raw['capacity'] !== undefined) {
     const capacity = Number(raw['capacity']);
-    if (!Number.isInteger(capacity) || capacity < 1 || capacity > 500) throw new HttpError(400, 'Il numero di posti deve essere tra 1 e 500.');
+    if (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_TRIP_PARTICIPANTS) throw new HttpError(400, `Il numero di posti deve essere tra 1 e ${MAX_TRIP_PARTICIPANTS}: è il massimo per ogni viaggio, coordinatore escluso.`);
     out.capacity = capacity;
   }
   if (raw['coverImageUrl'] !== undefined) {
@@ -54,6 +54,28 @@ function inputFrom(body: unknown, partial: boolean): Partial<PublishedTripInput>
     if (url && !/^https:\/\//.test(url)) throw new HttpError(400, 'L’immagine di copertina deve essere un indirizzo https.');
     out.coverImageUrl = url;
   }
+  out.country = optionalText(raw['country'], 'paese', 80);
+  out.region = optionalText(raw['region'], 'regione', 80);
+  const interests = list(raw['interests'], 'interessi');
+  if (interests) out.interests = Array.from(new Set(interests.map((item) => item.slice(0, 30)))).slice(0, 12);
+  if (raw['deposit'] !== undefined) {
+    const deposit = Number(raw['deposit']);
+    if (!Number.isFinite(deposit) || deposit < 0 || deposit > 100000) throw new HttpError(400, 'Acconto non valido.');
+    out.depositCents = Math.round(deposit * 100);
+  }
+  out.balanceDueDate = date(raw['balanceDueDate'], 'di scadenza del saldo');
+  if (raw['visibility'] !== undefined) {
+    if (!VISIBILITIES.includes(raw['visibility'] as TripVisibility)) throw new HttpError(400, 'Visibilità non valida.');
+    out.visibility = raw['visibility'] as TripVisibility;
+  }
+  for (const field of ['ageMin', 'ageMax'] as const) {
+    if (raw[field] === undefined) continue;
+    if (raw[field] === null || raw[field] === '') { out[field] = null; continue; }
+    const age = Number(raw[field]);
+    if (!Number.isInteger(age) || age < 18 || age > 99) throw new HttpError(400, 'La fascia d’età va da 18 a 99 anni.');
+    out[field] = age;
+  }
+  if (typeof out.ageMin === 'number' && typeof out.ageMax === 'number' && out.ageMin > out.ageMax) throw new HttpError(400, 'L’età minima supera la massima.');
   if (!partial && (!out.title || out.title.length < 3)) throw new HttpError(400, 'Il titolo deve avere almeno 3 caratteri.');
   return Object.fromEntries(Object.entries(out).filter(([, value]) => value !== undefined)) as Partial<PublishedTripInput>;
 }
@@ -72,6 +94,8 @@ function applicationFrom(body: unknown): CoordinatorApplicationInput {
   if (raw['acceptGuidelines'] !== true) throw new HttpError(422, 'Per candidarti devi accettare le linee guida del coordinatore.');
   return { motivation, experience, tripsLed, languages: (list(raw['languages'], 'lingue') ?? []).slice(0, 8), links };
 }
+
+const VISIBILITIES: TripVisibility[] = ['public', 'followers', 'invite'];
 
 const STATUS_ACTIONS: Record<string, PublishedTripStatus> = {
   publish: 'published',
@@ -178,6 +202,14 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
       coverImageUrl: input.coverImageUrl,
       itinerary,
       sourceTripId: source.id,
+      country: input.country,
+      region: input.region,
+      interests: input.interests,
+      depositCents: input.depositCents,
+      balanceDueDate: input.balanceDueDate,
+      visibility: input.visibility,
+      ageMin: input.ageMin,
+      ageMax: input.ageMax,
     });
     await store.account(user).record({ action: 'published_trip.create', entity: 'published_trip', entityId: created.id });
     res.status(201).json(created);

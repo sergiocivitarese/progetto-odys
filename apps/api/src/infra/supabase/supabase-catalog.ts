@@ -15,6 +15,7 @@ import {
   type PublishedTripStatus,
   type PublishedTripSummary,
   type SavedTripsRepository,
+  type TripVisibility,
 } from '../../shared/catalog';
 import type { StoredTrip } from '../../shared/data';
 import { dbError, userClient } from './client';
@@ -40,6 +41,14 @@ interface PublishedRow {
   scheduled_for: string | null;
   published_at: string | null;
   updated_at: string;
+  country: string;
+  region: string;
+  interests: string[] | null;
+  deposit_cents: number | null;
+  balance_due_date: string | null;
+  visibility: TripVisibility;
+  age_min: number | null;
+  age_max: number | null;
 }
 
 interface CoordinatorRow {
@@ -53,7 +62,7 @@ interface CoordinatorRow {
   created_at: string;
 }
 
-const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at';
+const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max';
 const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary`;
 
 function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
@@ -88,6 +97,14 @@ function toSummary(row: PublishedRow, coordinator: CoordinatorCard): PublishedTr
     scheduledFor: row.scheduled_for ?? undefined,
     updatedAt: row.updated_at,
     coordinator,
+    country: row.country,
+    region: row.region,
+    interests: row.interests ?? [],
+    depositCents: row.deposit_cents ?? undefined,
+    balanceDueDate: row.balance_due_date ?? undefined,
+    visibility: row.visibility,
+    ageMin: row.age_min ?? undefined,
+    ageMax: row.age_max ?? undefined,
   };
 }
 
@@ -122,14 +139,8 @@ class SupabaseCatalogRepository implements CatalogRepository {
     if (filters.destination) query = query.ilike('destination', `%${filters.destination.replace(/[%_]/g, '')}%`);
     if (filters.coordinatorId && isUuid(filters.coordinatorId)) query = query.eq('coordinator_id', filters.coordinatorId);
     if (filters.maxPriceCents !== undefined) query = query.lte('price_cents', filters.maxPriceCents);
-    if (filters.q) {
-      const term = filters.q.replace(/[%_,()]/g, ' ').trim();
-      if (term) query = query.or(`title.ilike.%${term}%,destination.ilike.%${term}%,summary.ilike.%${term}%`);
-    }
-    query = filters.sort === 'price' ? query.order('price_cents', { ascending: true, nullsFirst: false })
-      : filters.sort === 'recent' ? query.order('published_at', { ascending: false, nullsFirst: false })
-        : query.order('start_date', { ascending: true, nullsFirst: false });
-    const { data, error } = await query.limit(100);
+    // Ricerca libera, interessi, mese, durata e ordinamento li applica `refineCatalog`, uguale per ogni archivio.
+    const { data, error } = await query.order('start_date', { ascending: true, nullsFirst: false }).limit(300);
     if (error) throw dbError(error);
     const rows = data as PublishedRow[];
     const cards = await coordinatorCards(this.db, rows.map((row) => row.coordinator_id));
@@ -159,11 +170,18 @@ class SupabaseCatalogRepository implements CatalogRepository {
     return valid.map((id) => byId.get(id)).filter((trip): trip is PublishedTripSummary => Boolean(trip));
   }
 
-  async confirmedCount(id: string): Promise<number> {
-    if (!isUuid(id)) return 0;
-    const { data, error } = await this.db.rpc('published_trip_confirmed_count', { p_published_trip_id: id });
+  async seatsTaken(ids: string[]): Promise<Map<string, number>> {
+    const valid = ids.filter(isUuid);
+    if (!valid.length) return new Map();
+    const { data, error } = await this.db.rpc('published_trips_seats_taken', { p_trip_ids: valid });
     if (error) throw dbError(error);
-    return Number(data ?? 0);
+    return new Map((data as Array<{ trip_id: string; taken: number }>).map((row) => [row.trip_id, Number(row.taken)]));
+  }
+
+  async recordView(id: string): Promise<void> {
+    if (!isUuid(id)) return;
+    const { error } = await this.db.rpc('record_trip_view', { p_published_trip_id: id });
+    if (error) console.warn('[eventi] visualizzazione non registrata:', error.message);
   }
 
   async coordinator(id: string): Promise<CoordinatorCard | null> {
@@ -188,6 +206,14 @@ function inputToRow(input: Partial<PublishedTripInput>): Record<string, unknown>
   if (input.coverImageUrl !== undefined) row['cover_image_url'] = input.coverImageUrl || null;
   if (input.itinerary !== undefined) row['itinerary'] = input.itinerary;
   if (input.sourceTripId !== undefined) row['source_trip_id'] = input.sourceTripId || null;
+  if (input.country !== undefined) row['country'] = input.country;
+  if (input.region !== undefined) row['region'] = input.region;
+  if (input.interests !== undefined) row['interests'] = input.interests;
+  if (input.depositCents !== undefined) row['deposit_cents'] = input.depositCents;
+  if (input.balanceDueDate !== undefined) row['balance_due_date'] = input.balanceDueDate || null;
+  if (input.visibility !== undefined) row['visibility'] = input.visibility;
+  if (input.ageMin !== undefined) row['age_min'] = input.ageMin;
+  if (input.ageMax !== undefined) row['age_max'] = input.ageMax;
   return row;
 }
 
@@ -290,9 +316,10 @@ const SERVER_OPTIONS = { auth: { persistSession: false, autoRefreshToken: false,
 export function supabaseCatalog(config: AppConfig) {
   const anon = config.supabase.url && config.supabase.anonKey ? createClient(config.supabase.url, config.supabase.anonKey, SERVER_OPTIONS) : null;
   return {
-    catalog: (): CatalogRepository => {
+    catalog: (user?: AuthUser): CatalogRepository => {
       if (!anon) throw dbError({ code: 'not_configured' });
-      return new SupabaseCatalogRepository(anon);
+      // Con l'accesso valgono le regole RLS dell'utente: vede anche i viaggi «Solo follower» di chi segue.
+      return new SupabaseCatalogRepository(user ? userClient(config, user.accessToken) : anon);
     },
     coordinator: (user: AuthUser): CoordinatorRepository => new SupabaseCoordinatorRepository(userClient(config, user.accessToken), user),
     saved: (user: AuthUser): SavedTripsRepository => new SupabaseSavedTripsRepository(userClient(config, user.accessToken), user),

@@ -14,10 +14,10 @@ import { IconComponent } from './icon.component';
   styles: `
     :host {
       display: inline-flex; align-items: center; gap: 6px;
-      min-height: 38px; padding: 0 var(--space-4);
+      min-height: 44px; padding: 0 var(--space-4);
       border: var(--border-width) solid var(--color-border-strong); border-radius: var(--radius-pill);
       background: var(--color-surface); color: var(--color-text);
-      font-size: var(--text-sm); font-weight: 500; cursor: pointer; text-transform: none;
+      font-size: var(--text-sm); font-weight: 700; cursor: pointer; text-transform: none; white-space: nowrap;
       transition: background-color var(--duration-fast), border-color var(--duration-fast);
     }
     :host(:hover) { border-color: var(--color-text); }

@@ -37,7 +37,20 @@
           <h2>{{ isNew() ? '2. ' : '' }}Presentazione</h2>
           <odys-text-field label="Titolo" [(value)]="title" placeholder="Es. Lisbona slow in piccolo gruppo" />
           <odys-text-field label="Descrizione" [multiline]="true" hint="Almeno 20 caratteri: cosa si vive, per chi è pensato, il ritmo." [(value)]="summary" />
-          <odys-text-field label="Destinazione" icon="map-pin" [(value)]="destination" />
+          <odys-text-field label="Meta" icon="map-pin" hint="Compare in grande sulla card: una città o un’area, es. «Yucatán»." [(value)]="destination" />
+          <div class="two">
+            <odys-text-field label="Paese" placeholder="Es. Messico" hint="Serve alla ricerca: chi cerca «Messico» trova questo viaggio." [(value)]="country" />
+            <odys-text-field label="Regione (facoltativa)" placeholder="Es. Penisola dello Yucatán" [(value)]="region" />
+          </div>
+          <div>
+            <p class="label" id="interests-label">Interessi del viaggio</p>
+            <div class="chips" role="group" aria-labelledby="interests-label">
+              @for (item of interestOptions; track item) {
+                <button odysChip [selected]="interests().includes(item)" (click)="toggleInterest(item)">{{ item }}</button>
+              }
+            </div>
+            <p class="hint">Servono ai filtri e all’affinità «X% per te» mostrata ai viaggiatori.</p>
+          </div>
           <odys-text-field label="Immagine di copertina (facoltativa)" placeholder="https://…" hint="Indirizzo https di un’immagine. Il caricamento delle foto arriverà con il Creator Studio." [(value)]="coverImageUrl" />
         </section>
 
@@ -49,7 +62,24 @@
           </div>
           <div class="two">
             <odys-text-field label="Quota a persona (€)" inputMode="decimal" placeholder="Es. 690" [(value)]="price" />
-            <odys-text-field label="Posti disponibili" inputMode="numeric" placeholder="Es. 12" [(value)]="capacity" />
+            <odys-text-field label="Posti disponibili" inputMode="numeric" placeholder="Es. 12" [hint]="'Al massimo ' + maxSeats + ', tu escluso.'" [(value)]="capacity" />
+          </div>
+          <div class="two">
+            <odys-text-field label="Acconto per bloccare il posto (€)" inputMode="decimal" placeholder="Es. 300" hint="Se lo lasci vuoto vale un quarto della quota." [(value)]="deposit" />
+            <odys-text-field label="Saldo entro il" type="date" hint="Se lo lasci vuoto: 30 giorni prima della partenza." [(value)]="balanceDueDate" />
+          </div>
+          <div class="two">
+            <odys-text-field label="Età minima (facoltativa)" inputMode="numeric" placeholder="Es. 25" [(value)]="ageMin" />
+            <odys-text-field label="Età massima (facoltativa)" inputMode="numeric" placeholder="Es. 40" [(value)]="ageMax" />
+          </div>
+          <div>
+            <p class="label" id="visibility-label">Visibilità</p>
+            <div class="segmented" role="radiogroup" aria-labelledby="visibility-label">
+              @for (item of visibilities; track item.value) {
+                <button type="button" role="radio" [attr.aria-checked]="visibility() === item.value" [class.is-on]="visibility() === item.value" (click)="visibility.set(item.value)">{{ item.label }}</button>
+              }
+            </div>
+            <p class="hint">{{ visibilityHint() }}</p>
           </div>
         </section>
 

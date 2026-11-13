@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal, effect } from '@angular/core';
 import type { SavedTrip } from '@odys/domain';
-import { apiErrorMessage } from '../../../core/api/api-client';
-import { TripsStore } from '../../../core/state/trips.store';
-import { ButtonComponent, DialogComponent, NoticeComponent, TextFieldComponent } from '../../../shared/ui';
+import { apiErrorMessage } from '../../core/api/api-client';
+import { TripsStore } from '../../core/state/trips.store';
+import { ButtonComponent, DialogComponent, NoticeComponent, TextFieldComponent } from '../../shared/ui';
 
 /**
  * Import di un export JSON (Odys o Triply v5). Se il viaggio esiste già,
- * chiede conferma prima di sostituirlo — come nella Home originale.
+ * chiede conferma prima di sostituirlo.
  */
 @Component({
   selector: 'odys-import-trip-dialog',
