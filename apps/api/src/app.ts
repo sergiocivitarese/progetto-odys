@@ -17,6 +17,8 @@ import { postsRouter, studioRouter } from './modules/creator/creator.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
 import { coordinatorRouter } from './modules/coordinator/coordinator.routes';
 import { publishedRouter } from './modules/published/published.routes';
+import { bookingsRouter } from './modules/bookings/bookings.routes';
+import { simulatedPaymentProvider, type PaymentProvider } from './shared/payments';
 import { supabaseAuthProvider } from './infra/supabase/auth-provider';
 import { supabaseGeoCacheStore } from './infra/supabase/geocode-cache';
 import { supabaseDataStore } from './infra/supabase/supabase-store';
@@ -29,6 +31,8 @@ export interface AppDependencies {
   store?: DataStore;
   /** Rete verso i provider esterni (i test la sostituiscono). */
   fetch?: typeof fetch;
+  /** Fornitore dei pagamenti (i test ne usano uno immediato). */
+  payments?: PaymentProvider;
 }
 
 /**
@@ -52,6 +56,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   app.use('/api/trips', tripsRouter(auth, store));
   app.use('/api/catalog', publishedRouter(auth, store));
   app.use('/api/coordinator', coordinatorRouter(auth, store));
+  app.use('/api/bookings', bookingsRouter(auth, store, deps.payments ?? simulatedPaymentProvider()));
   app.use('/api/admin', adminRouter(auth, store));
   app.use('/api/posts', postsRouter(auth, store));
   app.use('/api/studio', studioRouter(auth, store));

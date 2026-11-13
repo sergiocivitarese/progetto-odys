@@ -23,6 +23,7 @@ import type {
   ParticipationRequest,
   ParticipationStatus,
 } from '../../shared/community';
+import { holdsSeat, type Payment, type PaymentKind, type PaymentMethod } from '../../shared/community';
 import { dbError, userClient } from './client';
 
 interface RequestRow {
@@ -32,6 +33,12 @@ interface RequestRow {
   message: string | null;
   created_at: string;
   decided_at: string | null;
+  reserved_until?: string | null;
+  seat_number: number | null;
+  price_cents: number | null;
+  deposit_cents: number | null;
+  currency: string;
+  balance_due_date: string | null;
 }
 
 interface ParticipantRow extends Omit<RequestRow, 'published_trip_id'> {
@@ -39,6 +46,27 @@ interface ParticipantRow extends Omit<RequestRow, 'published_trip_id'> {
   first_name: string;
   last_name: string;
   email: string | null;
+  age: number | null;
+  shared_interests: number | null;
+}
+
+interface PaymentRow {
+  id: string;
+  request_id: string;
+  kind: PaymentKind;
+  amount_cents: number;
+  currency: string;
+  status: Payment['status'];
+  provider: string;
+  method: PaymentMethod;
+  created_at: string;
+  confirmed_at: string | null;
+}
+
+const PAYMENT_COLUMNS = 'id, request_id, kind, amount_cents, currency, status, provider, method, created_at, confirmed_at';
+
+function toPayment(row: PaymentRow): Payment {
+  return { id: row.id, requestId: row.request_id, kind: row.kind, amountCents: row.amount_cents, currency: row.currency, status: row.status, provider: row.provider, method: row.method, createdAt: row.created_at, confirmedAt: row.confirmed_at ?? undefined };
 }
 
 interface ApplicationRow {
@@ -64,7 +92,7 @@ interface ReviewRow extends ApplicationRow {
   interests: string[] | null;
 }
 
-const REQUEST_COLUMNS = 'id, published_trip_id, status, message, created_at, decided_at';
+const REQUEST_COLUMNS = 'id, published_trip_id, status, message, created_at, decided_at, reserved_until, seat_number, price_cents, deposit_cents, currency, balance_due_date';
 // La nota interna dell'amministratore non è leggibile dal candidato (permessi di colonna).
 const APPLICATION_COLUMNS = 'id, status, motivation, experience, trips_led, languages, links, reviewer_message, created_at, decided_at';
 
@@ -73,7 +101,11 @@ function isUuid(value: string): boolean {
 }
 
 function toRequest(row: RequestRow): ParticipationRequest {
-  return { id: row.id, tripId: row.published_trip_id, status: row.status, message: row.message ?? undefined, createdAt: row.created_at, decidedAt: row.decided_at ?? undefined };
+  return {
+    id: row.id, tripId: row.published_trip_id, status: row.status, message: row.message ?? undefined, createdAt: row.created_at, decidedAt: row.decided_at ?? undefined,
+    reservedUntil: row.reserved_until ?? undefined, seatNumber: row.seat_number ?? undefined, priceCents: row.price_cents ?? undefined, depositCents: row.deposit_cents ?? undefined,
+    currency: row.currency ?? 'EUR', balanceDueDate: row.balance_due_date ?? undefined,
+  };
 }
 
 function toApplication(row: ApplicationRow): CoordinatorApplication {
@@ -120,13 +152,21 @@ class SupabaseParticipationRepository implements ParticipationRepository {
     return data as RequestRow | null;
   }
 
-  async request(tripId: string, message?: string): Promise<ParticipationRequest> {
+  async get(id: string): Promise<ParticipationRequest | null> {
+    if (!isUuid(id)) return null;
+    const { data, error } = await this.db.from('participation_requests').select(REQUEST_COLUMNS).eq('id', id).eq('user_id', this.user.id).maybeSingle();
+    if (error) throw dbError(error);
+    return data ? toRequest(data as RequestRow) : null;
+  }
+
+  async reserve(tripId: string): Promise<ParticipationRequest> {
     if (!isUuid(tripId)) throw dbError({ code: 'P0002' });
     const existing = await this.own(tripId);
-    if (existing && existing.status !== 'withdrawn') return toRequest(existing);
+    if (existing && holdsSeat(toRequest(existing))) return toRequest(existing);
+    // Le regole (posti, stato del viaggio, importi, scadenza) le applica il trigger del database.
     const query = existing
-      ? this.db.from('participation_requests').update({ status: 'pending', message: message ?? null }).eq('id', existing.id)
-      : this.db.from('participation_requests').insert({ published_trip_id: tripId, user_id: this.user.id, message: message ?? null });
+      ? this.db.from('participation_requests').update({ status: 'reserved' }).eq('id', existing.id)
+      : this.db.from('participation_requests').insert({ published_trip_id: tripId, user_id: this.user.id });
     const { data, error } = await query.select(REQUEST_COLUMNS).single();
     if (error) throw dbError(error);
     return toRequest(data as RequestRow);
@@ -142,6 +182,27 @@ class SupabaseParticipationRepository implements ParticipationRepository {
     return toRequest(data as RequestRow);
   }
 
+  async startPayment(requestId: string, kind: PaymentKind, method: PaymentMethod, acceptTerms: boolean): Promise<Payment> {
+    if (!isUuid(requestId)) throw dbError({ code: 'P0002' });
+    const { data, error } = await this.db.rpc('start_payment', { p_request_id: requestId, p_kind: kind, p_method: method, p_accept_terms: acceptTerms }).single();
+    if (error) throw dbError(error);
+    return toPayment(data as PaymentRow);
+  }
+
+  async confirmSimulatedPayment(paymentId: string): Promise<Payment> {
+    if (!isUuid(paymentId)) throw dbError({ code: 'P0002' });
+    const { data, error } = await this.db.rpc('confirm_simulated_payment', { p_payment_id: paymentId }).single();
+    if (error) throw dbError(error);
+    return toPayment(data as PaymentRow);
+  }
+
+  async payments(requestId: string): Promise<Payment[]> {
+    if (!isUuid(requestId)) return [];
+    const { data, error } = await this.db.from('payments').select(PAYMENT_COLUMNS).eq('request_id', requestId).eq('user_id', this.user.id).order('created_at', { ascending: false });
+    if (error) throw dbError(error);
+    return (data as PaymentRow[]).map(toPayment);
+  }
+
   async participants(tripId: string): Promise<Participant[]> {
     if (!isUuid(tripId)) throw dbError({ code: 'P0002' });
     const { data, error } = await this.db.rpc('trip_participants', { p_published_trip_id: tripId });
@@ -152,6 +213,8 @@ class SupabaseParticipationRepository implements ParticipationRepository {
       firstName: row.first_name,
       lastName: row.last_name,
       email: row.email ?? undefined,
+      age: row.age ?? undefined,
+      sharedInterests: row.shared_interests ?? undefined,
     }));
   }
 
@@ -166,11 +229,11 @@ class SupabaseParticipationRepository implements ParticipationRepository {
     const counts = new Map<string, ParticipationCounts>();
     const valid = tripIds.filter(isUuid);
     if (!valid.length) return counts;
-    const { data, error } = await this.db.from('participation_requests').select('published_trip_id, status').in('published_trip_id', valid).in('status', ['pending', 'confirmed']);
+    const { data, error } = await this.db.from('participation_requests').select('published_trip_id, status').in('published_trip_id', valid).in('status', ['pending', 'confirmed', 'balance_paid']);
     if (error) throw dbError(error);
-    for (const row of data as Array<{ published_trip_id: string; status: 'pending' | 'confirmed' }>) {
+    for (const row of data as Array<{ published_trip_id: string; status: 'pending' | 'confirmed' | 'balance_paid' }>) {
       const current = counts.get(row.published_trip_id) ?? { pending: 0, confirmed: 0 };
-      current[row.status] += 1;
+      current[row.status === 'pending' ? 'pending' : 'confirmed'] += 1;
       counts.set(row.published_trip_id, current);
     }
     return counts;

@@ -178,6 +178,13 @@ class SupabaseCatalogRepository implements CatalogRepository {
     return new Map((data as Array<{ trip_id: string; taken: number }>).map((row) => [row.trip_id, Number(row.taken)]));
   }
 
+  async participantInitials(id: string): Promise<string[]> {
+    if (!isUuid(id)) return [];
+    const { data, error } = await this.db.rpc('published_trip_participant_initials', { p_published_trip_id: id });
+    if (error) throw dbError(error);
+    return (data as string[] | null) ?? [];
+  }
+
   async recordView(id: string): Promise<void> {
     if (!isUuid(id)) return;
     const { error } = await this.db.rpc('record_trip_view', { p_published_trip_id: id });

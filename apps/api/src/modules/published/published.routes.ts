@@ -83,25 +83,16 @@ export function publishedRouter(auth: AuthProvider, store: DataStore): Router {
     const catalog = store.catalog(user);
     const trip = await catalog.get(String(req.params.id));
     if (!trip) throw new HttpError(404, 'Viaggio non trovato o non più disponibile.');
-    const [taken, interests] = await Promise.all([catalog.seatsTaken([trip.id]).catch(() => null), interestsOf(user)]);
+    const [taken, interests, participants] = await Promise.all([catalog.seatsTaken([trip.id]).catch(() => null), interestsOf(user), catalog.participantInitials(trip.id).catch(() => [])]);
     void catalog.recordView(trip.id).catch(() => undefined);
     const [detail] = refineCatalog([trip], {}, taken ?? new Map(), interests);
-    res.json({ ...trip, ...detail, seatsLeft: taken ? detail.seatsLeft : undefined });
-  }));
-
-  // Richiesta di partecipazione (U-14, U-16): tracciata, senza pagamento; il posto lo conferma il coordinatore.
-  router.post('/trips/:id/participation', requireAuth(auth), handle(async (req, res) => {
-    const user = currentUser(res);
-    const message = text((req.body as { message?: unknown } | undefined)?.message, 600);
-    const request = await store.participation(user).request(String(req.params.id), message);
-    await store.account(user).record({ action: 'participation.request', entity: 'published_trip', entityId: request.tripId });
-    res.status(201).json(request);
+    res.json({ ...trip, ...detail, seatsLeft: taken ? detail.seatsLeft : undefined, participants });
   }));
 
   router.delete('/trips/:id/participation', requireAuth(auth), handle(async (req, res) => {
     const user = currentUser(res);
     const request = await store.participation(user).withdraw(String(req.params.id));
-    if (!request) throw new HttpError(404, 'Non hai una richiesta per questo viaggio.');
+    if (!request) throw new HttpError(404, 'Non hai una prenotazione per questo viaggio.');
     await store.account(user).record({ action: 'participation.withdraw', entity: 'published_trip', entityId: request.tripId });
     res.json(request);
   }));

@@ -179,33 +179,70 @@ let romaLenta = '';
 let sara = '';
 let luca = '';
 
-test('un viaggiatore chiede di partecipare; il coordinatore non può farlo sul proprio viaggio (U-14)', async () => {
+/** Prenota e paga l'acconto con il fornitore simulato: la richiesta arriva al coordinatore. */
+async function bookWithDeposit(userId: string, tripId: string): Promise<string> {
+  const request = (await asUser(userId, () => db.query<{ id: string }>('insert into public.participation_requests (published_trip_id) values ($1) returning id', [tripId]))).rows[0].id;
+  const payment = (await asUser(userId, () => db.query<{ id: string }>(`select id from public.start_payment($1, 'deposit', 'card', true)`, [request]))).rows[0].id;
+  await asUser(userId, () => db.query('select public.confirm_simulated_payment($1)', [payment]));
+  return request;
+}
+
+test('prenotazione: il posto si riserva con timer, il coordinatore non prenota il proprio viaggio (TB-08)', async () => {
   sara = await signUp('sara@example.com', { ...adult, first_name: 'Sara', last_name: 'Neri' });
   luca = await signUp('luca@example.com', { ...adult, first_name: 'Luca', last_name: 'Rossi' });
   romaLenta = (await db.query<{ id: string }>(`select id from public.published_trips where title = 'Roma lenta'`)).rows[0].id;
-  await db.query('update public.published_trips set capacity = 1 where id = $1', [romaLenta]);
+  await db.query('update public.published_trips set capacity = 1, price_cents = 69000, deposit_cents = 20000 where id = $1', [romaLenta]);
 
-  const created = await asUser(sara, () => db.query<{ status: string; user_id: string }>(
-    `insert into public.participation_requests (published_trip_id, message, status) values ($1, 'Ci sono!', 'confirmed') returning status, user_id`, [romaLenta]));
-  assert.deepEqual(created.rows[0], { status: 'pending', user_id: sara }, 'la richiesta nasce sempre in attesa');
+  const created = await asUser(sara, () => db.query<{ status: string; user_id: string; seat_number: number; deposit_cents: number; minutes: number }>(
+    `insert into public.participation_requests (published_trip_id, message, status) values ($1, 'Ci sono!', 'confirmed')
+     returning status, user_id, seat_number, deposit_cents, round(extract(epoch from reserved_until - now()) / 60)::int as minutes`, [romaLenta]));
+  assert.deepEqual(created.rows[0], { status: 'reserved', user_id: sara, seat_number: 1, deposit_cents: 20000, minutes: 15 }, 'la prenotazione nasce come posto riservato per 15 minuti');
   await assert.rejects(asUser(giulia, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [romaLenta])), /che coordini/);
-  await assert.rejects(asUser(sara, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [romaLenta])), /duplicate key/);
+  await assert.rejects(asUser(sara, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [romaLenta])), /già una prenotazione/);
   const draft = (await db.query<{ id: string }>(`select id from public.published_trips where title = 'Bozza segreta'`)).rows[0].id;
   await assert.rejects(asUser(sara, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [draft])), /non trovato/);
+  // Il posto riservato conta: con un solo posto, Luca non può riservare.
+  await assert.rejects(asUser(luca, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [romaLenta])), /esauriti/);
 });
 
-test('RLS: la richiesta è visibile solo a chi l’ha fatta e al coordinatore del viaggio (S-01, C-15)', async () => {
-  const own = await asUser(sara, () => db.query('select id from public.participation_requests'));
-  assert.equal(own.rows.length, 1);
-  const stranger = await asUser(luca, () => db.query('select id from public.participation_requests'));
-  assert.equal(stranger.rows.length, 0);
-  const participants = await asUser(giulia, () => db.query<{ first_name: string; email: string | null }>('select first_name, email from public.trip_participants($1)', [romaLenta]));
-  assert.deepEqual(participants.rows, [{ first_name: 'Sara', email: null }], 'prima della conferma il contatto non è esposto');
+test('acconto: importo deciso dal server, condizioni obbligatorie, avanzamento solo con la conferma del pagamento (TB-09)', async () => {
+  const request = (await asUser(sara, () => db.query<{ id: string }>('select id from public.participation_requests where published_trip_id = $1', [romaLenta]))).rows[0].id;
+  // Nessun client scrive i pagamenti o fa avanzare la prenotazione da solo.
+  await assert.rejects(asUser(sara, () => db.query(`insert into public.payments (request_id, user_id, kind, amount_cents, currency) values ($1, $2, 'deposit', 1, 'EUR')`, [request, sara])), /permission denied/);
+  await assert.rejects(asUser(sara, () => db.query(`update public.participation_requests set status = 'pending' where id = $1`, [request])), /conferma del pagamento/);
+  await assert.rejects(asUser(sara, () => db.query(`select public.start_payment($1, 'deposit', 'card', false)`, [request])), /condizioni/);
+  await assert.rejects(asUser(luca, () => db.query(`select public.start_payment($1, 'deposit', 'card', true)`, [request])), /non trovata/);
+  await assert.rejects(asUser(sara, () => db.query(`select public.confirm_payment(gen_random_uuid())`)), /permission denied/);
+
+  const payment = (await asUser(sara, () => db.query<{ id: string; amount_cents: number; status: string }>(`select id, amount_cents, status from public.start_payment($1, 'deposit', 'card', true)`, [request]))).rows[0];
+  assert.deepEqual([payment.amount_cents, payment.status], [20000, 'processing']);
+  const again = (await asUser(sara, () => db.query<{ id: string }>(`select id from public.start_payment($1, 'deposit', 'card', true)`, [request]))).rows[0];
+  assert.equal(again.id, payment.id, 'un pagamento in corso si riprende, non si duplica');
+  await assert.rejects(asUser(luca, () => db.query('select public.confirm_simulated_payment($1)', [payment.id])), /non trovato/);
+
+  await asUser(sara, () => db.query('select public.confirm_simulated_payment($1)', [payment.id]));
+  await asUser(sara, () => db.query('select public.confirm_simulated_payment($1)', [payment.id])); // seconda notifica: nessun effetto
+  const after = await asUser(sara, () => db.query<{ status: string; reserved_until: string | null; terms: boolean }>('select status, reserved_until, terms_accepted_at is not null as terms from public.participation_requests where id = $1', [request]));
+  assert.deepEqual(after.rows[0], { status: 'pending', reserved_until: null, terms: true });
+  const events = await db.query<{ kind: string }>(`select kind from public.trip_events where published_trip_id = $1 and kind in ('request', 'payment_confirmed') order by kind`, [romaLenta]);
+  assert.deepEqual(events.rows.map((row) => row.kind), ['request', 'payment_confirmed']);
+  // Il saldo si paga solo dopo la conferma del coordinatore.
+  await assert.rejects(asUser(sara, () => db.query(`select public.start_payment($1, 'balance')`, [request])), /dopo la conferma/);
+});
+
+test('RLS: prenotazioni e pagamenti visibili a chi li ha fatti e al coordinatore del viaggio (S-01, CB-08)', async () => {
+  assert.equal((await asUser(sara, () => db.query('select id from public.participation_requests'))).rows.length, 1);
+  assert.equal((await asUser(luca, () => db.query('select id from public.participation_requests'))).rows.length, 0);
+  assert.equal((await asUser(luca, () => db.query('select id from public.payments'))).rows.length, 0);
+  assert.equal((await asUser(giulia, () => db.query('select id from public.payments'))).rows.length, 1);
+  const participants = await asUser(giulia, () => db.query<{ first_name: string; email: string | null; deposit_cents: number }>('select first_name, email, deposit_cents from public.trip_participants($1)', [romaLenta]));
+  assert.deepEqual(participants.rows, [{ first_name: 'Sara', email: null, deposit_cents: 20000 }], 'prima della conferma il contatto non è esposto');
   await assert.rejects(asUser(luca, () => db.query('select * from public.trip_participants($1)', [romaLenta])), /non consentita/);
+  const initials = await asAnon(() => db.query<{ list: string[] }>('select public.published_trip_participant_initials($1) as list', [romaLenta]));
+  assert.deepEqual(initials.rows[0].list, ['SN']);
 });
 
-test('solo il coordinatore conferma, nel limite dei posti; il viaggiatore può ritirarsi (U-16, C-15)', async () => {
-  // Il viaggiatore non può confermarsi da solo, né un altro utente può decidere.
+test('il coordinatore conferma nel limite dei posti, poi il saldo chiude la prenotazione (TB-10, CB-08)', async () => {
   await assert.rejects(asUser(sara, () => db.query(`update public.participation_requests set status = 'confirmed' where published_trip_id = $1`, [romaLenta])), /non consentita/);
   const foreign = await asUser(luca, () => db.query(`update public.participation_requests set status = 'confirmed' where published_trip_id = $1 returning id`, [romaLenta]));
   assert.equal(foreign.rows.length, 0);
@@ -217,15 +254,31 @@ test('solo il coordinatore conferma, nel limite dei posti; il viaggiatore può r
   const count = await asAnon(() => db.query<{ count: number }>('select public.published_trip_confirmed_count($1) as count', [romaLenta]));
   assert.equal(count.rows[0].count, 1);
 
-  // Posti esauriti: niente nuove richieste.
-  await assert.rejects(asUser(luca, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [romaLenta])), /esauriti/);
+  const request = (await asUser(sara, () => db.query<{ id: string }>('select id from public.participation_requests where published_trip_id = $1', [romaLenta]))).rows[0].id;
+  const balance = (await asUser(sara, () => db.query<{ id: string; amount_cents: number }>(`select id, amount_cents from public.start_payment($1, 'balance')`, [request]))).rows[0];
+  assert.equal(balance.amount_cents, 49000, 'saldo = quota meno acconto');
+  await asUser(sara, () => db.query('select public.confirm_simulated_payment($1)', [balance.id]));
+  assert.equal((await db.query<{ status: string }>('select status from public.participation_requests where id = $1', [request])).rows[0].status, 'balance_paid');
+  await assert.rejects(asUser(sara, () => db.query(`update public.participation_requests set status = 'withdrawn' where id = $1`, [request])), /non consentita/, 'una prenotazione saldata non si annulla da sola');
 
-  await asUser(sara, () => db.query(`update public.participation_requests set status = 'withdrawn' where published_trip_id = $1`, [romaLenta]));
-  await asUser(luca, () => db.query('insert into public.participation_requests (published_trip_id) values ($1)', [romaLenta]));
-  await asUser(giulia, () => db.query(`update public.participation_requests set status = 'confirmed' where published_trip_id = $1 and user_id = $2`, [romaLenta, luca]));
-  // Sara riapre la richiesta, ma il posto ora è di Luca.
-  await asUser(sara, () => db.query(`update public.participation_requests set status = 'pending' where published_trip_id = $1`, [romaLenta]));
-  await assert.rejects(asUser(giulia, () => db.query(`update public.participation_requests set status = 'confirmed' where published_trip_id = $1 and user_id = $2`, [romaLenta, sara])), /esauriti/);
+  // Liberato il posto (dalla dashboard), Luca prenota e paga; il coordinatore lo conferma.
+  await db.query(`update public.participation_requests set status = 'withdrawn' where id = $1`, [request]);
+  const lucaRequest = await bookWithDeposit(luca, romaLenta);
+  await asUser(giulia, () => db.query(`update public.participation_requests set status = 'confirmed' where id = $1`, [lucaRequest]));
+  // Sara riprova: il posto ora è di Luca.
+  await assert.rejects(asUser(sara, () => db.query(`update public.participation_requests set status = 'reserved' where id = $1`, [request])), /esauriti/);
+});
+
+test('una riserva scaduta libera il posto e non si può più pagare', async () => {
+  const marta = await signUp('marta@example.com', { ...adult, first_name: 'Marta', last_name: 'Gialli' });
+  await db.query('update public.published_trips set capacity = 3 where id = $1', [romaLenta]);
+  const request = (await asUser(marta, () => db.query<{ id: string }>('insert into public.participation_requests (published_trip_id) values ($1) returning id', [romaLenta]))).rows[0].id;
+  await db.query(`update public.participation_requests set reserved_until = now() - interval '1 minute' where id = $1`, [request]);
+  await assert.rejects(asUser(marta, () => db.query(`select public.start_payment($1, 'deposit', 'card', true)`, [request])), /scaduto/);
+  assert.equal((await asAnon(() => db.query<{ count: number }>('select public.published_trip_confirmed_count($1) as count', [romaLenta]))).rows[0].count, 1, 'conta solo Luca');
+  // Riprova: una nuova riserva sulla stessa prenotazione riparte da 15 minuti.
+  const renewed = await asUser(marta, () => db.query<{ status: string; minutes: number }>(`update public.participation_requests set status = 'reserved' where id = $1 returning status, round(extract(epoch from reserved_until - now()) / 60)::int as minutes`, [request]));
+  assert.deepEqual(renewed.rows[0], { status: 'reserved', minutes: 15 });
 });
 
 const application = { motivation: 'Organizzo da anni viaggi lenti per piccoli gruppi e vorrei farlo con Odys.', experience: 'Dieci viaggi di gruppo tra Italia e Portogallo.' };

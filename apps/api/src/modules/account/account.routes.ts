@@ -84,6 +84,23 @@ export function accountRouter(auth: AuthProvider, store: DataStore): Router {
     res.json(requests.map((request) => ({ ...request, trip: byId.get(request.tripId) ?? null })));
   }));
 
+  // Prossimo viaggio (TB-10): la prenotazione attiva con la partenza più vicina, con viaggio e pagamenti.
+  router.get('/next-trip', handle(async (_req, res) => {
+    const user = currentUser(res);
+    const repo = store.participation(user);
+    const active = (await repo.mine()).filter((request) => ['pending', 'confirmed', 'balance_paid'].includes(request.status));
+    const trips = await store.catalog(user).getMany(active.map((request) => request.tripId));
+    const byId = new Map(trips.map((trip) => [trip.id, trip]));
+    const today = new Date().toISOString().slice(0, 10);
+    const ranked = active
+      .map((request) => ({ request, trip: byId.get(request.tripId) }))
+      .filter((item): item is { request: typeof item.request; trip: NonNullable<typeof item.trip> } => !!item.trip && (item.trip.endDate ?? item.trip.startDate ?? today) >= today)
+      .sort((a, b) => (a.trip.startDate ?? '').localeCompare(b.trip.startDate ?? ''));
+    const next = ranked[0];
+    if (!next) { res.json(null); return; }
+    res.json({ ...next.request, trip: next.trip, payments: await repo.payments(next.request.id), others: ranked.length - 1 });
+  }));
+
   router.get('/saved-ideas', handle(async (_req, res) => res.json(await repo(res).listSavedIdeas())));
   router.put('/saved-ideas/:id', handle(async (req, res) => {
     const id = String(req.params.id);

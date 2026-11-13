@@ -8,6 +8,7 @@ import { FALLBACK_TRIP_FORM, type Itinerary } from '@odys/domain';
 import { createApp } from '../src/app.ts';
 import { loadConfig } from '../src/config/env.ts';
 import { MemoryDatabase, memoryAuthProvider, memoryDataStore } from '../src/infra/memory/memory-store.ts';
+import { simulatedPaymentProvider } from '../src/shared/payments.ts';
 
 // OpenStreetMap (Photon) simulato: nessuna chiamata di rete nei test.
 const osmCalls: string[] = [];
@@ -30,7 +31,7 @@ db.addUser('token-marco', undefined, 'marco@example.com');
 
 before(async () => {
   dataDir = await mkdtemp(path.join(os.tmpdir(), 'odys-api-'));
-  const app = createApp({ ...loadConfig({}), dataDir }, { auth: memoryAuthProvider(db), store: memoryDataStore(db), fetch: fakeOsm });
+  const app = createApp({ ...loadConfig({}), dataDir }, { auth: memoryAuthProvider(db), store: memoryDataStore(db), fetch: fakeOsm, payments: simulatedPaymentProvider(5) });
   const server = app.listen(0);
   await new Promise((resolve) => server.once('listening', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
@@ -52,6 +53,16 @@ async function call<T>(method: string, route: string, body?: unknown, token?: st
 }
 
 type Trip = { id: string; title: string; itinerary: Itinerary; currentVersion: number };
+
+/** Riprova finché la condizione è vera: la conferma del pagamento arriva dopo la risposta. */
+async function waitFor<T>(read: () => Promise<T>, done: (value: T) => boolean, attempts = 50): Promise<T> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const value = await read();
+    if (done(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('Condizione non raggiunta in tempo.');
+}
 
 test('la configurazione pubblica non espone chiavi segrete', async () => {
   const { status, data } = await call<{ providers: Record<string, boolean>; auth: unknown }>('GET', '/config');
@@ -227,41 +238,61 @@ test('partecipazione: richiesta, conferma del coordinatore nel limite dei posti,
   }, coordinatorToken);
   const id = created.data.id;
 
-  // Finché è una bozza il viaggio non accetta richieste; servono comunque accesso e pubblicazione.
-  assert.equal((await call('POST', `/catalog/trips/${id}/participation`, {}, first)).status, 404);
+  // Finché è una bozza il viaggio non si prenota; servono comunque accesso e pubblicazione.
+  assert.equal((await call('POST', `/bookings/trips/${id}`, {}, first)).status, 404);
   await call('POST', `/coordinator/trips/${id}/publish`, {}, coordinatorToken);
-  assert.equal((await call('POST', `/catalog/trips/${id}/participation`, {})).status, 401);
-  assert.equal((await call('POST', `/catalog/trips/${id}/participation`, {}, coordinatorToken)).status, 422);
+  assert.equal((await call('POST', `/bookings/trips/${id}`, {})).status, 401);
+  assert.equal((await call('POST', `/bookings/trips/${id}`, {}, coordinatorToken)).status, 422);
 
-  const request = await call<{ id: string; status: string }>('POST', `/catalog/trips/${id}/participation`, { message: 'Viaggio da solo, va bene?' }, first);
-  assert.deepEqual([request.status, request.data.status], [201, 'pending']);
-  const again = await call<{ id: string }>('POST', `/catalog/trips/${id}/participation`, {}, first);
-  assert.equal(again.data.id, request.data.id, 'una sola richiesta per viaggio');
-  const other = await call<{ id: string }>('POST', `/catalog/trips/${id}/participation`, {}, second);
+  // Blocca il posto (TB-08): riserva con timer e importi decisi dal server.
+  type Booking = { id: string; status: string; seatNumber: number; depositCents: number; priceCents: number; reservedUntil?: string; trip: { title: string }; payments: Array<{ status: string }> };
+  const reserved = await call<Booking>('POST', `/bookings/trips/${id}`, {}, first);
+  assert.equal(reserved.status, 201);
+  assert.deepEqual([reserved.data.status, reserved.data.seatNumber, reserved.data.depositCents, reserved.data.trip.title], ['reserved', 1, 8000, 'Torino a passo lento']);
+  assert.ok(Date.parse(reserved.data.reservedUntil!) > Date.now() + 14 * 60_000);
+  assert.equal((await call<Booking>('POST', `/bookings/trips/${id}`, {}, first)).data.id, reserved.data.id, 'una sola prenotazione per viaggio');
+  assert.equal((await call('POST', `/bookings/trips/${id}`, {}, second)).status, 422, 'il posto riservato conta tra i posti occupati');
+  assert.equal((await call('GET', `/bookings/${reserved.data.id}`, undefined, second)).status, 404);
 
-  // L'area personale mostra lo stato con il viaggio collegato (U-12, U-16).
+  // Checkout (TB-09): servono le condizioni; la conferma arriva dal fornitore, non dal client.
+  assert.equal((await call('POST', `/bookings/${reserved.data.id}/payments`, { kind: 'deposit' }, first)).status, 422);
+  const payment = await call<{ status: string; amountCents: number }>('POST', `/bookings/${reserved.data.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true }, first);
+  assert.deepEqual([payment.status, payment.data.status, payment.data.amountCents], [202, 'processing', 8000]);
+  const paid = await waitFor(() => call<Booking>('GET', `/bookings/${reserved.data.id}`, undefined, first), (booking) => booking.data.status === 'pending');
+  assert.equal(paid.data.payments[0].status, 'confirmed');
+
+  // Prossimo viaggio (TB-10) e area personale mostrano la richiesta inviata.
+  const next = await call<Booking>('GET', '/me/next-trip', undefined, first);
+  assert.deepEqual([next.data.status, next.data.trip.title], ['pending', 'Torino a passo lento']);
+  assert.equal((await call('GET', '/me/next-trip', undefined, second)).data, null);
   const mine = await call<Array<{ status: string; trip: { title: string } }>>('GET', '/me/participations', undefined, first);
   assert.deepEqual(mine.data.map((item) => [item.status, item.trip.title]), [['pending', 'Torino a passo lento']]);
 
-  // Il coordinatore vede le richieste; il contatto compare solo dopo la conferma (C-15).
+  // Il coordinatore vede solo le richieste con acconto pagato; il contatto dopo la conferma (CB-08).
   assert.equal((await call('GET', `/coordinator/trips/${id}/participants`, undefined, first)).status, 403);
-  const before = await call<Array<{ firstName: string; message?: string; email?: string }>>('GET', `/coordinator/trips/${id}/participants`, undefined, coordinatorToken);
-  assert.deepEqual(before.data.map((item) => [item.firstName, item.message, item.email]), [['Paolo', 'Viaggio da solo, va bene?', undefined], ['Utente', undefined, undefined]]);
+  const before = await call<Array<{ firstName: string; email?: string; depositCents: number }>>('GET', `/coordinator/trips/${id}/participants`, undefined, coordinatorToken);
+  assert.deepEqual(before.data.map((item) => [item.firstName, item.email, item.depositCents]), [['Paolo', undefined, 8000]]);
   const list = await call<Array<{ id: string; requests: { pending: number; confirmed: number } }>>('GET', '/coordinator/trips', undefined, coordinatorToken);
-  assert.deepEqual(list.data.find((trip) => trip.id === id)?.requests, { pending: 2, confirmed: 0 });
+  assert.deepEqual(list.data.find((trip) => trip.id === id)?.requests, { pending: 1, confirmed: 0 });
 
-  const confirmed = await call<{ status: string }>('POST', `/coordinator/trips/${id}/participants/${request.data.id}/confirm`, {}, coordinatorToken);
+  // Il saldo si paga solo dopo la conferma del coordinatore.
+  assert.equal((await call('POST', `/bookings/${reserved.data.id}/payments`, { kind: 'balance' }, first)).status, 422);
+  const confirmed = await call<{ status: string }>('POST', `/coordinator/trips/${id}/participants/${reserved.data.id}/confirm`, {}, coordinatorToken);
   assert.equal(confirmed.data.status, 'confirmed');
   const after = await call<Array<{ email?: string }>>('GET', `/coordinator/trips/${id}/participants`, undefined, coordinatorToken);
   assert.equal(after.data[0].email, 'primo@example.com');
-  assert.equal((await call<{ seatsLeft: number }>('GET', `/catalog/trips/${id}`)).data.seatsLeft, 0);
+  assert.equal((await call<{ seatsLeft: number; participants: string[] }>('GET', `/catalog/trips/${id}`)).data.seatsLeft, 0);
+  assert.deepEqual((await call<{ participants: string[] }>('GET', `/catalog/trips/${id}`)).data.participants, ['PB']);
 
-  // Posti esauriti: la seconda richiesta non può essere confermata finché il primo non si ritira.
-  const full = await call<{ error: string }>('POST', `/coordinator/trips/${id}/participants/${other.data.id}/confirm`, {}, coordinatorToken);
-  assert.equal(full.status, 422);
-  assert.match(full.data.error, /esauriti/);
-  assert.equal((await call<{ status: string }>('DELETE', `/catalog/trips/${id}/participation`, undefined, first)).data.status, 'withdrawn');
-  assert.equal((await call('POST', `/coordinator/trips/${id}/participants/${other.data.id}/confirm`, {}, coordinatorToken)).status, 200);
+  const balance = await call<{ amountCents: number }>('POST', `/bookings/${reserved.data.id}/payments`, { kind: 'balance' }, first);
+  assert.equal(balance.data.amountCents, 24000, 'saldo = quota meno acconto');
+  await waitFor(() => call<Booking>('GET', `/bookings/${reserved.data.id}`, undefined, first), (booking) => booking.data.status === 'balance_paid');
+
+  // Chi non può prenotare (un'agenzia) riceve l'invito all'upgrade, non un errore generico.
+  const agencyToken = 'token-agenzia';
+  Object.assign(db.user(db.addUser(agencyToken)).profile, { role: 'agency' });
+  const blocked = await call<{ code: string }>('POST', `/bookings/trips/${id}`, {}, agencyToken);
+  assert.deepEqual([blocked.status, blocked.data.code], [403, 'upgrade_required']);
 });
 
 test('candidatura a coordinatore: requisiti, revisione dell’amministratore e attivazione del ruolo (C-01, C-02, G-01)', async () => {

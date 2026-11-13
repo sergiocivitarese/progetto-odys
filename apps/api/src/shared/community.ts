@@ -6,7 +6,14 @@ import type { AuthUser } from './auth';
  * Requisiti: U-14, U-16, C-15 (richieste e partecipanti), C-01, C-02, G-01 (candidature).
  */
 
-export type ParticipationStatus = 'pending' | 'confirmed' | 'declined' | 'withdrawn';
+/**
+ * Stati di una prenotazione: posto riservato (checkout in corso) → richiesta
+ * inviata (acconto confermato) → confermata dal coordinatore → saldata.
+ */
+export type ParticipationStatus = 'reserved' | 'pending' | 'confirmed' | 'balance_paid' | 'declined' | 'withdrawn';
+
+/** Minuti di riserva del posto durante il checkout (valore provvisorio, come nella funzione SQL). */
+export const SEAT_RESERVATION_MINUTES = 15;
 
 export interface ParticipationRequest {
   id: string;
@@ -15,14 +22,49 @@ export interface ParticipationRequest {
   message?: string;
   createdAt: string;
   decidedAt?: string;
+  /** Scadenza della riserva del posto (solo nello stato `reserved`). */
+  reservedUntil?: string;
+  /** Numero del posto assegnato alla riserva, es. «Posto 8 di 12». */
+  seatNumber?: number;
+  /** Importi fissati alla riserva, in centesimi. */
+  priceCents?: number;
+  depositCents?: number;
+  currency: string;
+  balanceDueDate?: string;
 }
 
-/** Richiesta vista dal coordinatore del viaggio (C-15): il contatto arriva solo dopo la conferma. */
+export type PaymentKind = 'deposit' | 'balance';
+export type PaymentStatus = 'processing' | 'confirmed' | 'failed';
+export type PaymentMethod = 'card' | 'wallet';
+
+export interface Payment {
+  id: string;
+  requestId: string;
+  kind: PaymentKind;
+  amountCents: number;
+  currency: string;
+  status: PaymentStatus;
+  provider: string;
+  method: PaymentMethod;
+  createdAt: string;
+  confirmedAt?: string;
+}
+
+/** Vero se la prenotazione occupa un posto: stessa regola di `participation_holds_seat`. */
+export function holdsSeat(request: Pick<ParticipationRequest, 'status' | 'reservedUntil'>, now = Date.now()): boolean {
+  if (request.status === 'pending' || request.status === 'confirmed' || request.status === 'balance_paid') return true;
+  return request.status === 'reserved' && !!request.reservedUntil && Date.parse(request.reservedUntil) > now;
+}
+
+/** Richiesta vista dal coordinatore del viaggio (CB-08): il contatto arriva solo dopo la conferma. */
 export interface Participant extends ParticipationRequest {
   userId: string;
   firstName: string;
   lastName: string;
   email?: string;
+  age?: number;
+  /** Interessi in comune con il viaggio. */
+  sharedInterests?: number;
 }
 
 export interface ParticipationCounts {
@@ -33,13 +75,21 @@ export interface ParticipationCounts {
 export interface ParticipationRepository {
   /** Le richieste dell'utente, dalla più recente. */
   mine(): Promise<ParticipationRequest[]>;
-  /** Apre la richiesta (o riapre quella ritirata) per un viaggio prenotabile. */
-  request(tripId: string, message?: string): Promise<ParticipationRequest>;
+  /** Una prenotazione dell'utente. */
+  get(id: string): Promise<ParticipationRequest | null>;
+  /** Riserva un posto per il tempo del checkout (TB-08); una riserva ancora valida viene restituita com'è. */
+  reserve(tripId: string): Promise<ParticipationRequest>;
   withdraw(tripId: string): Promise<ParticipationRequest | null>;
+  /** Avvia l'acconto o il saldo: l'importo lo calcola l'archivio dalla prenotazione (TB-09). */
+  startPayment(requestId: string, kind: PaymentKind, method: PaymentMethod, acceptTerms: boolean): Promise<Payment>;
+  /** Conferma del fornitore simulato: fa avanzare la prenotazione. Con il fornitore reale arriverà dal webhook. */
+  confirmSimulatedPayment(paymentId: string): Promise<Payment>;
+  /** Pagamenti di una propria prenotazione, dal più recente. */
+  payments(requestId: string): Promise<Payment[]>;
   /** Partecipanti di un viaggio del coordinatore. */
   participants(tripId: string): Promise<Participant[]>;
   decide(tripId: string, requestId: string, status: 'confirmed' | 'declined'): Promise<ParticipationRequest | null>;
-  /** Richieste in attesa e confermate dei viaggi indicati (solo quelli del coordinatore). */
+  /** Richieste in attesa (acconto pagato) e posti confermati o saldati dei viaggi indicati (solo quelli del coordinatore). */
   counts(tripIds: string[]): Promise<Map<string, ParticipationCounts>>;
 }
 

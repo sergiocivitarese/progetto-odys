@@ -94,6 +94,8 @@ export interface CatalogRepository {
   getMany(ids: string[]): Promise<PublishedTripSummary[]>;
   /** Posti occupati dei viaggi indicati (quelli senza richieste non compaiono). */
   seatsTaken(ids: string[]): Promise<Map<string, number>>;
+  /** Iniziali di chi ha già un posto, per gli avatar del dettaglio (TB-06). */
+  participantInitials(id: string): Promise<string[]>;
   /** Registra la visualizzazione del dettaglio (CP-05); non deve mai bloccare la pagina. */
   recordView(id: string): Promise<void>;
   coordinator(id: string): Promise<CoordinatorCard | null>;

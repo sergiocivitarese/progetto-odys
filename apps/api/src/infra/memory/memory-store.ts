@@ -26,7 +26,11 @@ import {
   type PublishedTripStatus,
   type SavedTripsRepository,
 } from '../../shared/catalog';
+import { holdsSeat, SEAT_RESERVATION_MINUTES } from '../../shared/community';
 import type {
+  Payment,
+  PaymentKind,
+  PaymentMethod,
   AccountSummary,
   ContentReport,
   ReportAction,
@@ -75,6 +79,7 @@ interface MemoryPublished extends PublishedTrip {
 
 interface MemoryParticipation extends ParticipationRequest {
   userId: string;
+  termsAcceptedAt?: string;
 }
 
 interface MemoryApplication extends CoordinatorApplication {
@@ -92,6 +97,7 @@ export class MemoryDatabase {
   readonly users = new Map<string, MemoryUser>();
   /** follower → coordinatori seguiti. */
   readonly follows = new Map<string, Set<string>>();
+  readonly payments: Payment[] = [];
   /** Eventi dei viaggi (CP-05). */
   readonly events: Array<{ tripId: string; kind: 'view' | 'save' | 'request' | 'payment_confirmed'; userId?: string; createdAt: string }> = [];
   /** token → utente, per simulare l'autenticazione nei test. */
@@ -225,7 +231,7 @@ function visibleTo(db: MemoryDatabase, trip: MemoryPublished, userId?: string): 
 
 /** Posti occupati: stessa regola di `published_trips_seats_taken`. */
 function seatsTaken(db: MemoryDatabase, tripId: string, exceptId?: string): number {
-  return [...db.participations.values()].filter((item) => item.tripId === tripId && item.status === 'confirmed' && item.id !== exceptId).length;
+  return [...db.participations.values()].filter((item) => item.tripId === tripId && item.id !== exceptId && holdsSeat(item)).length;
 }
 
 function card(db: MemoryDatabase, id: string) {
@@ -260,6 +266,13 @@ class MemoryCatalogRepository implements CatalogRepository {
   }
   async seatsTaken(ids: string[]) {
     return new Map(ids.map((id) => [id, seatsTaken(this.db, id)] as const).filter(([, taken]) => taken > 0));
+  }
+  async participantInitials(id: string) {
+    const trip = this.db.published.get(id);
+    if (!this.visible(trip)) return [];
+    return [...this.db.participations.values()].filter((item) => item.tripId === id && ['pending', 'confirmed', 'balance_paid'].includes(item.status))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .map((item) => { const profile = this.db.user(item.userId).profile; return `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}`.toUpperCase(); });
   }
   async recordView(id: string) {
     const trip = this.db.published.get(id);
@@ -354,42 +367,60 @@ class MemorySavedTripsRepository implements SavedTripsRepository {
 }
 
 function publicRequest(item: MemoryParticipation): ParticipationRequest {
-  const { userId: _user, ...rest } = item;
+  const { userId: _user, termsAcceptedAt: _terms, ...rest } = item;
   return { ...rest };
 }
 
-/** Stesse regole del trigger SQL `participation_requests_guard`. */
+/** Stesse regole del trigger SQL `participation_requests_guard` e delle funzioni dei pagamenti. */
 class MemoryParticipationRepository implements ParticipationRepository {
   constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
 
   private own(tripId: string) {
     return [...this.db.participations.values()].find((item) => item.tripId === tripId && item.userId === this.userId);
   }
-  private confirmed(tripId: string, exceptId?: string) {
-    return [...this.db.participations.values()].filter((item) => item.tripId === tripId && item.status === 'confirmed' && item.id !== exceptId).length;
-  }
-  private openTrip(tripId: string): MemoryPublished {
-    const trip = this.db.published.get(tripId);
-    if (!trip || !isPublic(trip)) throw new HttpError(404, 'Elemento non trovato.');
-    if (effectiveStatus(trip.status, trip.startDate, trip.endDate, trip.scheduledFor) !== 'published') throw new HttpError(422, 'Le iscrizioni a questo viaggio sono chiuse.');
-    return trip;
+  private mineById(id: string) {
+    const item = this.db.participations.get(id);
+    return item && item.userId === this.userId ? item : undefined;
   }
 
   async mine() {
     return [...this.db.participations.values()].filter((item) => item.userId === this.userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicRequest);
   }
 
-  async request(tripId: string, message?: string) {
+  async get(id: string) {
+    const item = this.mineById(id);
+    return item ? publicRequest(item) : null;
+  }
+
+  async reserve(tripId: string) {
     const existing = this.own(tripId);
-    if (existing && existing.status !== 'withdrawn') return publicRequest(existing);
-    const trip = this.openTrip(tripId);
-    if (trip.coordinatorId === this.userId) throw new HttpError(422, 'Non puoi chiedere di partecipare a un viaggio che coordini.');
+    if (existing && holdsSeat(existing)) return publicRequest(existing);
+    if (existing?.status === 'declined') throw new HttpError(403, 'Operazione non consentita.');
+    const trip = this.db.published.get(tripId);
+    if (!trip || !visibleTo(this.db, trip, this.userId)) throw new HttpError(404, 'Elemento non trovato.');
+    if (trip.coordinatorId === this.userId) throw new HttpError(422, 'Non puoi prenotare un viaggio che coordini.');
+    const me = this.db.user(this.userId);
+    if (me.profile.status !== 'active' || !describeEntitlements(me.profile.role, me.plans).entitlements.includes('trips.book')) throw new HttpError(403, 'Operazione non consentita.');
+    if (effectiveStatus(trip.status, trip.startDate, trip.endDate, trip.scheduledFor) !== 'published') throw new HttpError(422, 'Le iscrizioni a questo viaggio sono chiuse.');
+    const taken = seatsTaken(this.db, tripId, existing?.id);
+    if (trip.capacity !== undefined && taken >= trip.capacity) throw new HttpError(422, 'I posti di questo viaggio sono esauriti.');
+    if (trip.priceCents === undefined || trip.depositCents === undefined) throw new HttpError(422, 'Questo viaggio non è ancora prenotabile: manca la quota.');
+    const reservation = {
+      status: 'reserved' as const,
+      reservedUntil: new Date(Date.now() + SEAT_RESERVATION_MINUTES * 60_000).toISOString(),
+      seatNumber: taken + 1,
+      priceCents: trip.priceCents,
+      depositCents: trip.depositCents,
+      currency: trip.currency,
+      balanceDueDate: trip.balanceDueDate,
+      decidedAt: undefined,
+      termsAcceptedAt: undefined,
+    };
     if (existing) {
-      Object.assign(existing, { status: 'pending', message, decidedAt: undefined });
+      Object.assign(existing, reservation);
       return publicRequest(existing);
     }
-    if (trip.capacity !== undefined && this.confirmed(tripId) >= trip.capacity) throw new HttpError(422, 'I posti di questo viaggio sono esauriti.');
-    const created: MemoryParticipation = { id: randomUUID(), tripId, userId: this.userId, status: 'pending', message, createdAt: new Date().toISOString() };
+    const created: MemoryParticipation = { id: randomUUID(), tripId, userId: this.userId, createdAt: new Date().toISOString(), ...reservation };
     this.db.participations.set(created.id, created);
     return publicRequest(created);
   }
@@ -397,8 +428,56 @@ class MemoryParticipationRepository implements ParticipationRepository {
   async withdraw(tripId: string) {
     const existing = this.own(tripId);
     if (!existing) return null;
-    if (existing.status === 'pending' || existing.status === 'confirmed') Object.assign(existing, { status: 'withdrawn', decidedAt: undefined });
+    if (existing.status === 'balance_paid') throw new HttpError(403, 'Operazione non consentita.');
+    if (['reserved', 'pending', 'confirmed'].includes(existing.status)) Object.assign(existing, { status: 'withdrawn', decidedAt: undefined, reservedUntil: undefined });
     return publicRequest(existing);
+  }
+
+  async startPayment(requestId: string, kind: PaymentKind, method: PaymentMethod, acceptTerms: boolean) {
+    const request = this.mineById(requestId);
+    if (!request) throw new HttpError(404, 'Elemento non trovato.');
+    let amountCents: number | undefined;
+    if (kind === 'deposit') {
+      if (request.status !== 'reserved' || !holdsSeat(request)) throw new HttpError(422, 'Il tempo per bloccare il posto è scaduto: riprova dalla pagina del viaggio.');
+      if (!acceptTerms) throw new HttpError(422, 'Per pagare l’acconto accetta le condizioni di partecipazione e la politica di cancellazione.');
+      amountCents = request.depositCents;
+      request.termsAcceptedAt = new Date().toISOString();
+    } else {
+      if (request.status !== 'confirmed') throw new HttpError(422, 'Il saldo si paga dopo la conferma del coordinatore.');
+      amountCents = request.priceCents !== undefined && request.depositCents !== undefined ? request.priceCents - request.depositCents : undefined;
+    }
+    if (amountCents === undefined) throw new HttpError(422, 'Importo non disponibile per questa prenotazione.');
+    const running = this.db.payments.find((payment) => payment.requestId === requestId && payment.kind === kind && payment.status !== 'failed');
+    if (running) return { ...running };
+    const payment: Payment = { id: randomUUID(), requestId, kind, amountCents, currency: request.currency, status: 'processing', provider: 'simulated', method, createdAt: new Date().toISOString() };
+    this.db.payments.push(payment);
+    return { ...payment };
+  }
+
+  async confirmSimulatedPayment(paymentId: string) {
+    const payment = this.db.payments.find((item) => item.id === paymentId);
+    const request = payment ? this.mineById(payment.requestId) : undefined;
+    if (!payment || !request) throw new HttpError(404, 'Elemento non trovato.');
+    if (payment.status === 'confirmed') return { ...payment };
+    if (payment.status !== 'processing') throw new HttpError(422, 'Questo pagamento non è più in corso.');
+    const now = new Date().toISOString();
+    if (payment.kind === 'deposit') {
+      if (request.status !== 'reserved') throw new HttpError(403, 'Operazione non consentita.');
+      Object.assign(request, { status: 'pending', reservedUntil: undefined });
+      this.db.events.push({ tripId: request.tripId, kind: 'request', userId: request.userId, createdAt: now });
+    } else {
+      if (request.status !== 'confirmed') throw new HttpError(403, 'Operazione non consentita.');
+      request.status = 'balance_paid';
+    }
+    Object.assign(payment, { status: 'confirmed', confirmedAt: now });
+    this.db.events.push({ tripId: request.tripId, kind: 'payment_confirmed', userId: request.userId, createdAt: now });
+    this.db.user(this.userId).audit.unshift({ action: `payment.${payment.kind}`, entity: 'payment', entityId: payment.id, metadata: { amountCents: payment.amountCents, trip: request.tripId }, createdAt: now });
+    return { ...payment };
+  }
+
+  async payments(requestId: string) {
+    if (!this.mineById(requestId)) return [];
+    return this.db.payments.filter((payment) => payment.requestId === requestId).map((payment) => ({ ...payment })).reverse();
   }
 
   private coordinated(tripId: string): MemoryPublished {
@@ -408,10 +487,16 @@ class MemoryParticipationRepository implements ParticipationRepository {
   }
 
   async participants(tripId: string): Promise<Participant[]> {
-    this.coordinated(tripId);
-    return [...this.db.participations.values()].filter((item) => item.tripId === tripId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((item) => {
+    const trip = this.coordinated(tripId);
+    // Le riserve senza acconto non sono richieste: il coordinatore non le vede.
+    return [...this.db.participations.values()].filter((item) => item.tripId === tripId && item.status !== 'reserved').sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((item) => {
       const profile = this.db.user(item.userId).profile;
-      return { ...publicRequest(item), userId: item.userId, firstName: profile.firstName, lastName: profile.lastName, email: item.status === 'confirmed' ? profile.email : undefined };
+      const mine = new Set(profile.interests.map((interest) => interest.toLowerCase()));
+      return {
+        ...publicRequest(item), userId: item.userId, firstName: profile.firstName, lastName: profile.lastName,
+        email: item.status === 'confirmed' || item.status === 'balance_paid' ? profile.email : undefined,
+        sharedInterests: trip.interests.filter((interest) => mine.has(interest.toLowerCase())).length,
+      };
     });
   }
 
@@ -419,8 +504,8 @@ class MemoryParticipationRepository implements ParticipationRepository {
     const trip = this.coordinated(tripId);
     const item = this.db.participations.get(requestId);
     if (!item || item.tripId !== tripId) return null;
-    if (item.status === 'withdrawn') throw new HttpError(403, 'Operazione non consentita.');
-    if (status === 'confirmed' && trip.capacity !== undefined && this.confirmed(tripId, item.id) >= trip.capacity) throw new HttpError(422, 'I posti di questo viaggio sono esauriti.');
+    if (!['pending', 'confirmed', 'declined'].includes(item.status)) throw new HttpError(403, 'Operazione non consentita.');
+    if (status === 'confirmed' && trip.capacity !== undefined && seatsTaken(this.db, tripId, item.id) >= trip.capacity) throw new HttpError(422, 'I posti di questo viaggio sono esauriti.');
     Object.assign(item, { status, decidedAt: new Date().toISOString() });
     return publicRequest(item);
   }
@@ -428,9 +513,9 @@ class MemoryParticipationRepository implements ParticipationRepository {
   async counts(tripIds: string[]) {
     const counts = new Map<string, ParticipationCounts>();
     for (const item of this.db.participations.values()) {
-      if (!tripIds.includes(item.tripId) || (item.status !== 'pending' && item.status !== 'confirmed')) continue;
+      if (!tripIds.includes(item.tripId) || !['pending', 'confirmed', 'balance_paid'].includes(item.status)) continue;
       const current = counts.get(item.tripId) ?? { pending: 0, confirmed: 0 };
-      current[item.status] += 1;
+      current[item.status === 'pending' ? 'pending' : 'confirmed'] += 1;
       counts.set(item.tripId, current);
     }
     return counts;

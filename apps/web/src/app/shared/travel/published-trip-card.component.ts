@@ -94,7 +94,7 @@ export function toneOf(id: string): TripCardTone {
     .tagline { margin-top: var(--space-3); color: var(--card-soft); font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
     .strip { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: auto; padding: var(--space-2); border-radius: var(--radius-lg); background: #fff; color: var(--odys-ink); }
-    .tagline + .strip { margin-top: var(--space-6); }
+    .tagline { margin-bottom: var(--space-6); }
     .who { display: flex; align-items: center; gap: var(--space-3); min-width: 0; min-height: 44px; color: inherit; text-decoration: none; }
     .who:hover strong { text-decoration: underline; }
     .avatar { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; background: var(--odys-ink); color: var(--odys-lime); font-weight: 900; font-size: var(--text-sm); }
@@ -108,7 +108,8 @@ export function toneOf(id: string): TripCardTone {
     :host(.size-sm) .card__top { min-height: 44px; padding-right: 48px; }
     :host(.size-sm) .badge { min-height: 26px; padding: 0 10px; }
     :host(.size-sm) .save { top: var(--space-3); right: var(--space-3); }
-    :host(.size-sm) .meta-line { margin-top: auto; padding-top: var(--space-6); }
+    :host(.size-sm) .meta-line { margin-top: auto; padding-top: var(--space-6); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    :host(.size-sm) .tagline { margin-bottom: 0; }
     :host(.size-sm) .destination { font-size: clamp(1.125rem, calc((100cqi - 36px) / (var(--chars) * 0.8)), 2.25rem); line-height: 0.98; }
     :host(.size-sm) .tagline { margin-top: var(--space-2); font-size: var(--text-sm); -webkit-line-clamp: 1; }
     .price-line { margin-top: var(--space-1); font-weight: 900; font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
