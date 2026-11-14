@@ -527,3 +527,23 @@ test('storia dei luoghi: la colonna non è leggibile dai client, il testo esce s
   // «Usa come base» funziona ancora senza leggere la colonna riservata.
   assert.equal((await asUser(marta, () => db.query<{ title: string }>('select title from public.copy_published_trip($1)', [trip]))).rows[0].title, 'Roma antica');
 });
+
+test('composizione del prezzo: solo chi coordina il viaggio la legge e la scrive (CB-04)', async () => {
+  const trip = (await asUser(giulia, () => db.query<{ id: string }>(
+    `insert into public.published_trips (title, summary, itinerary, start_date, end_date, capacity, price_cents, status)
+     values ('Roma con i conti', 'Tre giorni tra Fori, Colosseo e Appia Antica.', $1, current_date + 60, current_date + 62, 12, 40000, 'published') returning id`,
+    [JSON.stringify(itinerary)]))).rows[0].id;
+  const costs = JSON.stringify([{ id: 'c1', label: 'Hotel', category: 'alloggi', basis: 'per_person', amountCents: 20000 }]);
+
+  await asUser(giulia, () => db.query('insert into public.published_trip_pricing (published_trip_id, cost_items, target_earnings_cents) values ($1, $2::jsonb, 90000)', [trip, costs]));
+  await asUser(giulia, () => db.query('update public.published_trip_pricing set target_earnings_cents = 100000 where published_trip_id = $1', [trip]));
+  assert.equal((await asUser(giulia, () => db.query<{ t: number }>('select target_earnings_cents as t from public.published_trip_pricing where published_trip_id = $1', [trip]))).rows[0].t, 100000);
+
+  // Il viaggio è pubblico, ma i suoi conti no: né per gli altri utenti né per gli anonimi.
+  assert.equal((await asUser(sara, () => db.query('select * from public.published_trip_pricing'))).rows.length, 0);
+  await assert.rejects(asAnon(() => db.query('select * from public.published_trip_pricing')), /permission denied/);
+  await assert.rejects(asUser(marco, () => db.query('insert into public.published_trip_pricing (published_trip_id) values ($1)', [trip])), /row-level security|duplicate key/);
+  const updated = await asUser(marco, () => db.query('update public.published_trip_pricing set target_earnings_cents = 0 where published_trip_id = $1', [trip]));
+  assert.equal(updated.rowCount, 0);
+  await assert.rejects(asUser(giulia, () => db.query(`update public.published_trip_pricing set cost_items = '{}'::jsonb where published_trip_id = $1`, [trip])), /check constraint/);
+});

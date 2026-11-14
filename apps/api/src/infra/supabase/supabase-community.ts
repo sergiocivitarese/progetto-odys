@@ -232,8 +232,9 @@ class SupabaseParticipationRepository implements ParticipationRepository {
     const { data, error } = await this.db.from('participation_requests').select('published_trip_id, status').in('published_trip_id', valid).in('status', ['pending', 'confirmed', 'balance_paid']);
     if (error) throw dbError(error);
     for (const row of data as Array<{ published_trip_id: string; status: 'pending' | 'confirmed' | 'balance_paid' }>) {
-      const current = counts.get(row.published_trip_id) ?? { pending: 0, confirmed: 0 };
+      const current = counts.get(row.published_trip_id) ?? { pending: 0, confirmed: 0, balanceDue: 0 };
       current[row.status === 'pending' ? 'pending' : 'confirmed'] += 1;
+      if (row.status === 'confirmed') current.balanceDue += 1;
       counts.set(row.published_trip_id, current);
     }
     return counts;

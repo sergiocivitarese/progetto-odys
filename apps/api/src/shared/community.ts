@@ -69,7 +69,10 @@ export interface Participant extends ParticipationRequest {
 
 export interface ParticipationCounts {
   pending: number;
+  /** Posti venduti: confermati, con o senza saldo. */
   confirmed: number;
+  /** Confermati che non hanno ancora pagato il saldo. */
+  balanceDue: number;
 }
 
 export interface ParticipationRepository {

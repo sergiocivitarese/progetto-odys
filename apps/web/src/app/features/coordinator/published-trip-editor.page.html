@@ -83,6 +83,10 @@
           </div>
         </section>
 
+        @if (!isNew() && existing(); as trip) {
+          <odys-pricing-panel [tripId]="trip.id" [price]="price()" [capacity]="capacity()" [currency]="trip.currency" (usePrice)="price.set(formatEuros($event))" />
+        }
+
         <section class="card">
           <h2>{{ isNew() ? '4. ' : '' }}Cosa è incluso</h2>
           <p class="hint">Una voce per riga. Indicare con chiarezza cosa è escluso (per esempio i voli) evita dubbi prima dell’iscrizione.</p>

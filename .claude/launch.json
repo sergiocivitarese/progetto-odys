@@ -28,6 +28,17 @@
         "scripts/serve-prod.mjs"
       ],
       "port": 4300
+    },
+    {
+      "name": "api-memory",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:memory",
+        "-w",
+        "@odys/api"
+      ],
+      "port": 3000
     }
   ]
 }

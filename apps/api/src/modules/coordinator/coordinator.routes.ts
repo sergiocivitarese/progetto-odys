@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { MAX_TRIP_PARTICIPANTS, type Itinerary } from '@odys/domain';
+import { MAX_TRIP_PARTICIPANTS, normalizeCostItems, SERVICE_RATE, type Itinerary } from '@odys/domain';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
-import { COORDINATOR_GUIDELINES_VERSION, type PlaceStory, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
-import type { CoordinatorApplicationInput } from '../../shared/community';
+import { COORDINATOR_GUIDELINES_VERSION, coordinatorAlerts, type PlaceStory, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
+import type { CoordinatorApplicationInput, ParticipationCounts } from '../../shared/community';
 import type { DataStore } from '../../shared/data';
 import { handle, HttpError, requireObject } from '../../shared/http';
 
@@ -177,8 +177,11 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
 
   router.get('/trips', handle(async (_req, res) => {
     const trips = await repo(res).list();
-    const counts = await store.participation(currentUser(res)).counts(trips.map((trip) => trip.id)).catch(() => new Map<string, { pending: number; confirmed: number }>());
-    res.json(trips.map((trip) => ({ ...trip, requests: counts.get(trip.id) ?? { pending: 0, confirmed: 0 } })));
+    const counts = await store.participation(currentUser(res)).counts(trips.map((trip) => trip.id)).catch(() => new Map<string, ParticipationCounts>());
+    res.json(trips.map((trip) => {
+      const requests = counts.get(trip.id) ?? { pending: 0, confirmed: 0, balanceDue: 0 };
+      return { ...trip, requests, alerts: coordinatorAlerts(trip, requests) };
+    }));
   }));
 
   // Partecipanti e richieste di un proprio viaggio (C-15).
@@ -239,6 +242,31 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
     const trip = await repo(res).get(String(req.params.id));
     if (!trip) throw new HttpError(404, 'Viaggio non trovato.');
     res.json(trip);
+  }));
+
+  // Composizione del prezzo (CB-04): voci di costo e compenso desiderato, visibili solo a chi coordina.
+  router.get('/trips/:id/pricing', handle(async (req, res) => {
+    const pricing = await repo(res).pricing(String(req.params.id));
+    if (!pricing) throw new HttpError(404, 'Viaggio non trovato.');
+    res.json({ ...pricing, serviceRate: SERVICE_RATE });
+  }));
+
+  router.put('/trips/:id/pricing', handle(async (req, res) => {
+    const body = requireObject<{ costs?: unknown; targetEarningsCents?: unknown }>(req.body, 'Richiesta non valida.');
+    let costs;
+    try {
+      costs = normalizeCostItems(body.costs ?? []);
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : 'Voci di costo non valide.');
+    }
+    const target = body.targetEarningsCents;
+    if (target !== null && target !== undefined && (typeof target !== 'number' || !Number.isInteger(target) || target < 0 || target > 100_000_000)) {
+      throw new HttpError(400, 'Il compenso desiderato non è valido.');
+    }
+    const saved = await repo(res).savePricing(String(req.params.id), { costs, targetEarningsCents: typeof target === 'number' ? target : null });
+    if (!saved) throw new HttpError(404, 'Viaggio non trovato.');
+    await store.account(currentUser(res)).record({ action: 'published_trip.pricing', entity: 'published_trip', entityId: String(req.params.id) });
+    res.json({ ...saved, serviceRate: SERVICE_RATE });
   }));
 
   router.put('/trips/:id', handle(async (req, res) => {

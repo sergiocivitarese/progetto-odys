@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { asSavedTrip, type Itinerary } from '@odys/domain';
+import { asSavedTrip, normalizeCostItems, type Itinerary } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
 import type { AuthUser } from '../../shared/auth';
 import {
@@ -10,6 +10,7 @@ import {
   type CatalogRepository,
   type CoordinatorCard,
   type CoordinatorRepository,
+  type TripPricing,
   type PublishedTrip,
   type PublishedTripInput,
   type PublishedTripStatus,
@@ -319,6 +320,30 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     if (error) throw dbError(error);
     return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
+
+  async pricing(id: string): Promise<TripPricing | null> {
+    if (!(await this.get(id))) return null;
+    const { data, error } = await this.db.from('published_trip_pricing').select('cost_items, target_earnings_cents, updated_at').eq('published_trip_id', id).maybeSingle();
+    if (error) throw dbError(error);
+    return data ? toPricing(data as PricingRow) : { costs: [], targetEarningsCents: null };
+  }
+
+  async savePricing(id: string, pricing: TripPricing): Promise<TripPricing | null> {
+    if (!(await this.get(id))) return null;
+    const { data, error } = await this.db.from('published_trip_pricing')
+      .upsert({ published_trip_id: id, cost_items: pricing.costs, target_earnings_cents: pricing.targetEarningsCents }, { onConflict: 'published_trip_id' })
+      .select('cost_items, target_earnings_cents, updated_at').single();
+    if (error) throw dbError(error);
+    return toPricing(data as PricingRow);
+  }
+}
+
+interface PricingRow { cost_items: unknown; target_earnings_cents: number | null; updated_at: string }
+
+function toPricing(row: PricingRow): TripPricing {
+  let costs: TripPricing['costs'] = [];
+  try { costs = normalizeCostItems(row.cost_items); } catch { costs = []; }
+  return { costs, targetEarningsCents: row.target_earnings_cents, updatedAt: row.updated_at };
 }
 
 class SupabaseSavedTripsRepository implements SavedTripsRepository {

@@ -6,6 +6,7 @@ import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { FALLBACK_TRIP_FORM, type Itinerary } from '@odys/domain';
 import { createApp } from '../src/app.ts';
+import { coordinatorAlerts } from '../src/shared/catalog.ts';
 import { loadConfig } from '../src/config/env.ts';
 import { MemoryDatabase, memoryAuthProvider, memoryDataStore } from '../src/infra/memory/memory-store.ts';
 import { simulatedPaymentProvider } from '../src/shared/payments.ts';
@@ -273,7 +274,7 @@ test('partecipazione: richiesta, conferma del coordinatore nel limite dei posti,
   const before = await call<Array<{ firstName: string; email?: string; depositCents: number }>>('GET', `/coordinator/trips/${id}/participants`, undefined, coordinatorToken);
   assert.deepEqual(before.data.map((item) => [item.firstName, item.email, item.depositCents]), [['Paolo', undefined, 8000]]);
   const list = await call<Array<{ id: string; requests: { pending: number; confirmed: number } }>>('GET', '/coordinator/trips', undefined, coordinatorToken);
-  assert.deepEqual(list.data.find((trip) => trip.id === id)?.requests, { pending: 1, confirmed: 0 });
+  assert.deepEqual(list.data.find((trip) => trip.id === id)?.requests, { pending: 1, confirmed: 0, balanceDue: 0 });
 
   // Il saldo si paga solo dopo la conferma del coordinatore.
   assert.equal((await call('POST', `/bookings/${reserved.data.id}/payments`, { kind: 'balance' }, first)).status, 422);
@@ -694,4 +695,60 @@ test('storia dei luoghi: la scrive il coordinatore, la legge chi ha il Premium (
   assert.equal((await call<Detail>('GET', `/catalog/trips/${created.data.id}`, undefined, baseToken)).data.placeStories, undefined);
   assert.equal((await call<Detail>('GET', `/catalog/trips/${created.data.id}`, undefined, premiumToken)).data.placeStories?.[0].title, 'Villa Cimbrone');
   assert.equal((await call<Detail>('GET', `/catalog/trips/${created.data.id}`, undefined, coordToken)).data.placeStories?.length, 1);
+});
+
+test('composizione del prezzo: voci di costo riservate al coordinatore del viaggio (CB-04)', async () => {
+  const coordinatorToken = 'token-prezzo-coord';
+  Object.assign(db.user(db.addUser(coordinatorToken, undefined, 'prezzo@example.com')).profile, { role: 'coordinator', firstName: 'Nora', lastName: 'Conti' });
+  await call('POST', '/coordinator/guidelines', {}, coordinatorToken);
+  const otherToken = 'token-prezzo-altro';
+  Object.assign(db.user(db.addUser(otherToken, undefined, 'altro-coord@example.com')).profile, { role: 'coordinator' });
+  await call('POST', '/coordinator/guidelines', {}, otherToken);
+
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Matera' } });
+  const own = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coordinatorToken);
+  const created = await call<{ id: string }>('POST', '/coordinator/trips', { sourceTripId: own.data.id, title: 'Matera e i Sassi', price: 690, capacity: 12 }, coordinatorToken);
+  const url = `/coordinator/trips/${created.data.id}/pricing`;
+
+  const empty = await call<{ costs: unknown[]; targetEarningsCents: number | null; serviceRate: number }>('GET', url, undefined, coordinatorToken);
+  assert.deepEqual(empty.data.costs, []);
+  assert.equal(empty.data.targetEarningsCents, null);
+  assert.ok(empty.data.serviceRate > 0 && empty.data.serviceRate < 1);
+
+  const costs = [
+    { label: 'Masseria', category: 'alloggi', basis: 'per_person', amountCents: 32000 },
+    { label: 'Pulmino', category: 'trasporti', basis: 'group', amountCents: 120000 },
+  ];
+  const saved = await call<{ costs: Array<{ id: string; label: string }>; targetEarningsCents: number }>('PUT', url, { costs, targetEarningsCents: 150000 }, coordinatorToken);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.costs.length, 2);
+  assert.ok(saved.data.costs.every((cost) => cost.id));
+  assert.equal((await call<{ costs: unknown[] }>('GET', url, undefined, coordinatorToken)).data.costs.length, 2);
+
+  const invalid = await call<{ error: string }>('PUT', url, { costs: [{ label: 'Pulmino', category: 'trasporti', basis: 'boh', amountCents: 1 }] }, coordinatorToken);
+  assert.equal(invalid.status, 400);
+  assert.match(invalid.data.error, /per persona o per il gruppo/);
+  assert.equal((await call('PUT', url, { costs: [], targetEarningsCents: -5 }, coordinatorToken)).status, 400);
+
+  // Un altro coordinatore non vede né modifica i conti di questo viaggio.
+  assert.equal((await call('GET', url, undefined, otherToken)).status, 404);
+  assert.equal((await call('PUT', url, { costs: [] }, otherToken)).status, 404);
+  assert.equal((await call('GET', url)).status, 401);
+});
+
+test('avvisi di «I miei viaggi»: campi mancanti, saldi in sospeso o scaduti, richieste (CB-07)', () => {
+  type AlertTrip = Parameters<typeof coordinatorAlerts>[0];
+  const draft: AlertTrip = { status: 'draft', effectiveStatus: 'draft', summary: 'Breve', startDate: undefined, endDate: undefined, priceCents: 50000, capacity: 10, interests: [], country: '', balanceDueDate: undefined };
+  const [missing] = coordinatorAlerts(draft, { pending: 0, balanceDue: 0 }, '2027-01-10');
+  assert.equal(missing.kind, 'missing_fields');
+  assert.equal(missing.message, 'Da completare: descrizione, date, paese, interessi');
+
+  const onSale = { ...draft, status: 'published', effectiveStatus: 'published', summary: 'Quattro giorni tra borghi e cantine.', startDate: '2027-03-01', endDate: '2027-03-04', country: 'Italia', interests: ['Cibo'], balanceDueDate: '2027-02-01' } satisfies AlertTrip;
+  assert.deepEqual(coordinatorAlerts(onSale, { pending: 0, balanceDue: 0 }, '2027-01-10'), []);
+  const due = coordinatorAlerts(onSale, { pending: 2, balanceDue: 3 }, '2027-01-10');
+  assert.deepEqual(due.map((alert) => [alert.kind, alert.tone, alert.message]), [
+    ['balance_due', 'warning', '3 saldi in sospeso · entro il 01/02/2027'],
+    ['requests_pending', 'info', '2 richieste da confermare'],
+  ]);
+  assert.deepEqual(coordinatorAlerts(onSale, { pending: 0, balanceDue: 1 }, '2027-02-02').map((alert) => [alert.tone, alert.message]), [['danger', '1 saldo scaduto']]);
 });

@@ -26,6 +26,7 @@ import {
   type PublishedTripInput,
   type PublishedTripStatus,
   type SavedTripsRepository,
+  type TripPricing,
 } from '../../shared/catalog';
 import { holdsSeat, SEAT_RESERVATION_MINUTES } from '../../shared/community';
 import type {
@@ -94,6 +95,7 @@ interface MemoryApplication extends CoordinatorApplication {
 export class MemoryDatabase {
   readonly trips = new Map<string, MemoryTrip>();
   readonly published = new Map<string, MemoryPublished>();
+  readonly pricing = new Map<string, TripPricing>();
   readonly participations = new Map<string, MemoryParticipation>();
   readonly applications: MemoryApplication[] = [];
   readonly creator = new MemoryCreatorData();
@@ -376,6 +378,17 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
     Object.assign(trip, { status, scheduledFor: status === 'scheduled' ? scheduledFor : undefined, publishedAt: status === 'published' ? trip.publishedAt ?? new Date().toISOString() : trip.publishedAt });
     return publicView(this.db, trip);
   }
+  async pricing(id: string) {
+    if (!this.owned(id)) return null;
+    const saved = this.db.pricing.get(id);
+    return saved ? structuredClone(saved) : { costs: [], targetEarningsCents: null };
+  }
+  async savePricing(id: string, pricing: TripPricing) {
+    if (!this.owned(id)) return null;
+    const saved = { costs: structuredClone(pricing.costs), targetEarningsCents: pricing.targetEarningsCents, updatedAt: new Date().toISOString() };
+    this.db.pricing.set(id, saved);
+    return structuredClone(saved);
+  }
 }
 
 class MemorySavedTripsRepository implements SavedTripsRepository {
@@ -543,8 +556,9 @@ class MemoryParticipationRepository implements ParticipationRepository {
     const counts = new Map<string, ParticipationCounts>();
     for (const item of this.db.participations.values()) {
       if (!tripIds.includes(item.tripId) || !['pending', 'confirmed', 'balance_paid'].includes(item.status)) continue;
-      const current = counts.get(item.tripId) ?? { pending: 0, confirmed: 0 };
+      const current = counts.get(item.tripId) ?? { pending: 0, confirmed: 0, balanceDue: 0 };
       current[item.status === 'pending' ? 'pending' : 'confirmed'] += 1;
+      if (item.status === 'confirmed') current.balanceDue += 1;
       counts.set(item.tripId, current);
     }
     return counts;

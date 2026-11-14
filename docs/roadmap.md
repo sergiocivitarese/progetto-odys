@@ -21,8 +21,8 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 |---|---|---|---|
 | R0 | **Fondamenta**: piani e diritti decisi dal server, stile Orbit Route, barra di navigazione per ruolo | TP-10, AG-09 (predisposizione), elementi trasversali | ✅ Fatto · da collaudare |
 | R1 | **Traveller Base**: Esplora, ricerca per intento, filtri, affinità, card e dettaglio, acconto (pagamento simulato), Prossimo viaggio, follower e recensioni | TB-01…TB-12 | ✅ Fatto · da collaudare con un account reale |
-| R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | In corso · fatti Split (TP-09) e generatore con il motore locale (TP-01…TP-03); prenotati nella lista dei viaggi (TP-04) e storia dei luoghi scritta dal coordinatore (TP-08); restano giorno per ore, meteo e mappa a schermo intero sui viaggi prenotati (TP-05…TP-07) e la lettura offline |
-| R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | Da fare (candidatura, partecipanti e post esistono già) |
+| R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | ✅ Fatto · da collaudare con un account reale (il generatore usa il motore locale, non ancora un modello AI) |
+| R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | In corso · fatti costi, punto di pareggio e guadagno (CB-04), posti venduti e avvisi in «I miei viaggi» (CB-07), invito alle statistiche (CB-11); già presenti candidatura, visibilità e programmazione, partecipanti, post. Restano kit social (CB-06), creazione in 4 passi con itinerario modificabile nell’offerta (CB-02, CB-03), schede del feed profilo (CB-09) |
 | R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | Da fare (gli eventi si registrano già da R1) |
 | R5 | **Agenzia**: profilo, ruoli interni, catalogo multi-partenza, team, AI per i coordinatori, licenze a scaglioni, modalità ombrello | AG-01…AG-12 | Da fare (sostituisce la vecchia Fase 5) |
 | Fase 2 | Chat di gruppo, suggerimenti dai dati | TB-13, CP-07 | Rinviata |
@@ -36,7 +36,7 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Fornitore AI del generatore | Nessuno: l'itinerario lo prepara il motore locale di Odys (`packages/domain/src/lib/tripGenerator.ts`), con costi indicativi dichiarati come tali |
 | Prezzi e durata degli abbonamenti, prova gratuita | Nessun prezzo: il piano lo assegna l'amministratore dalla pagina Account |
 | Scaglioni e prezzi delle licenze | Non ancora sviluppato |
-| Commissione Odys e come compare nel prezzo | Non calcolata: l'acconto e il prezzo sono quelli indicati dal coordinatore |
+| Commissione Odys e come compare nel prezzo | Stima del 10% compresa nella quota (`SERVICE_RATE` in `packages/domain/src/lib/tripPricing.ts`), mostrata solo al coordinatore nei conti del viaggio (CB-04); non viene trattenuta dai pagamenti |
 | Algoritmo dell'affinità «X% per te» | Quota degli interessi del viaggio che l'utente condivide (`packages/domain/src/lib/affinity.ts`) |
 | Rimborso dell'acconto, richiesta non confermata | Nessun rimborso automatico: il pagamento è simulato |
 | Fornitore dei pagamenti | Simulato lato server dietro l'interfaccia `PaymentProvider`, da sostituire con quello reale |

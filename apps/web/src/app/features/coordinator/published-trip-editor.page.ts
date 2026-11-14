@@ -8,6 +8,7 @@ import { CatalogApi, PUBLISHED_STATUS_LABELS, type CoordinatorAction, type Place
 import { TripsStore } from '../../core/state/trips.store';
 import { ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent } from '../../shared/ui';
 import { CoordinatorAccessComponent } from './coordinator-access.component';
+import { PricingPanelComponent } from './pricing-panel.component';
 
 function lines(value: string): string[] {
   return value.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -20,7 +21,7 @@ function lines(value: string): string[] {
  */
 @Component({
   selector: 'odys-published-trip-editor-page',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent],
+  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent, PricingPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './published-trip-editor.page.html',
   styleUrl: './published-trip-editor.page.scss',
@@ -30,6 +31,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   private readonly router = inject(Router);
   protected readonly trips = inject(TripsStore);
   private readonly access = viewChild.required(CoordinatorAccessComponent);
+  private readonly pricing = viewChild(PricingPanelComponent);
 
   /** Parametro di rotta: assente per un nuovo viaggio. */
   readonly id = input<string>();
@@ -147,6 +149,11 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     }));
   }
 
+  /** Quota consigliata dal pannello dei costi, scritta come nel campo (virgola decimale). */
+  protected formatEuros(value: number): string {
+    return String(value).replace('.', ',');
+  }
+
   protected toggleInterest(item: string): void {
     this.interests.update((list) => (list.includes(item) ? list.filter((value) => value !== item) : [...list, item]));
   }
@@ -192,6 +199,8 @@ export default class PublishedTripEditorPage implements AfterViewInit {
         return created;
       }
       const updated = await this.api.updatePublished(existing.id, this.form());
+      // I costi (CB-04) si salvano insieme al resto: un solo pulsante.
+      await this.pricing()?.save();
       this.fill(updated);
       this.message.set('Modifiche salvate.');
       return updated;

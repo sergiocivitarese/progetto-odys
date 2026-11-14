@@ -1,4 +1,4 @@
-import { affinity, searchKey, sharesInterest, type Affinity, type Itinerary } from '@odys/domain';
+import { affinity, searchKey, sharesInterest, type Affinity, type CostItem, type Itinerary } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { StoredTrip } from './data';
 
@@ -168,6 +168,13 @@ export interface PublishedTripInput {
   placeStories?: PlaceStory[];
 }
 
+/** Composizione del prezzo (CB-04): dati riservati al coordinatore del viaggio. */
+export interface TripPricing {
+  costs: CostItem[];
+  targetEarningsCents: number | null;
+  updatedAt?: string;
+}
+
 /** Operazioni del coordinatore sui propri viaggi pubblicati (C-09…C-14). */
 export interface CoordinatorRepository {
   isCoordinator(): Promise<boolean>;
@@ -178,6 +185,9 @@ export interface CoordinatorRepository {
   create(input: PublishedTripInput): Promise<PublishedTrip>;
   update(id: string, patch: Partial<PublishedTripInput>): Promise<PublishedTrip | null>;
   setStatus(id: string, status: PublishedTripStatus, scheduledFor?: string): Promise<PublishedTrip | null>;
+  /** Voci di costo del viaggio; vuote se non ancora indicate. null se il viaggio non è del coordinatore. */
+  pricing(id: string): Promise<TripPricing | null>;
+  savePricing(id: string, pricing: TripPricing): Promise<TripPricing | null>;
 }
 
 /** Salvataggi e copie dei viaggi pubblicati per l'utente (U-08, U-21). */
@@ -186,6 +196,43 @@ export interface SavedTripsRepository {
   save(id: string): Promise<void>;
   remove(id: string): Promise<void>;
   copy(id: string): Promise<StoredTrip>;
+}
+
+/** Avviso operativo nell'elenco «I miei viaggi» (CB-07). */
+export interface CoordinatorAlert {
+  kind: 'missing_fields' | 'balance_due' | 'requests_pending';
+  tone: 'warning' | 'danger' | 'info';
+  message: string;
+}
+
+/**
+ * Avvisi per un viaggio del coordinatore (CB-07): campi che mancano prima di
+ * pubblicare, saldi in sospeso (in rosso dopo la scadenza), richieste da confermare.
+ */
+export function coordinatorAlerts(
+  trip: Pick<PublishedTrip, 'status' | 'effectiveStatus' | 'summary' | 'startDate' | 'endDate' | 'priceCents' | 'capacity' | 'interests' | 'country' | 'balanceDueDate'>,
+  counts: { pending: number; balanceDue: number },
+  today = new Date().toISOString().slice(0, 10),
+): CoordinatorAlert[] {
+  const alerts: CoordinatorAlert[] = [];
+  if (trip.status === 'draft' || trip.status === 'scheduled') {
+    const missing = [
+      (trip.summary ?? '').trim().length < 20 && 'descrizione',
+      (!trip.startDate || !trip.endDate) && 'date',
+      trip.priceCents === undefined && 'quota',
+      trip.capacity === undefined && 'posti',
+      !trip.country?.trim() && 'paese',
+      !trip.interests?.length && 'interessi',
+    ].filter((item): item is string => Boolean(item));
+    if (missing.length) alerts.push({ kind: 'missing_fields', tone: 'warning', message: `Da completare: ${missing.join(', ')}` });
+  }
+  if (counts.balanceDue > 0 && ['published', 'active'].includes(trip.effectiveStatus)) {
+    const overdue = Boolean(trip.balanceDueDate && trip.balanceDueDate < today);
+    const who = counts.balanceDue === 1 ? '1 saldo' : `${counts.balanceDue} saldi`;
+    alerts.push({ kind: 'balance_due', tone: overdue ? 'danger' : 'warning', message: overdue ? `${who} scadut${counts.balanceDue === 1 ? 'o' : 'i'}` : `${who} in sospeso${trip.balanceDueDate ? ` · entro il ${trip.balanceDueDate.split('-').reverse().join('/')}` : ''}` });
+  }
+  if (counts.pending > 0) alerts.push({ kind: 'requests_pending', tone: 'info', message: counts.pending === 1 ? '1 richiesta da confermare' : `${counts.pending} richieste da confermare` });
+  return alerts;
 }
 
 /** Un viaggio accetta richieste finché è pubblicato e non è ancora partito (§11.2). */

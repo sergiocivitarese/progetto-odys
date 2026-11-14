@@ -2,8 +2,9 @@ import { DatePipe } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { apiErrorMessage } from '../../core/api/api-client';
+import { EntitlementsStore } from '../../core/state/entitlements.store';
 import { CatalogApi, formatPrice, PUBLISHED_STATUS_LABELS, type PublishedTrip, type PublishedTripStatus } from '../../core/api/catalog.api';
-import { ButtonComponent, ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
+import { ButtonComponent, ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent, type IconName } from '../../shared/ui';
 import { CoordinatorAccessComponent } from './coordinator-access.component';
 
 type Filter = 'all' | PublishedTripStatus;
@@ -26,6 +27,17 @@ type Filter = 'all' | PublishedTripStatus;
 
       <odys-coordinator-access (accepted)="ready.set(true); load()" />
 
+      @if (ready() && !entitlements.has('analytics.coordinator')) {
+        <a class="stats" routerLink="/premium" [queryParams]="{ funzione: 'analytics.coordinator' }">
+          <span class="stats__icon"><odys-icon name="lock" [size]="20" /></span>
+          <span class="stats__text">
+            <strong>Quanto rendono i tuoi viaggi?</strong>
+            <span>Guadagni del mese, funnel dalle visite alle prenotazioni, post che vendono: con Coordinatore Premium.</span>
+          </span>
+          <odys-icon name="chevron-right" />
+        </a>
+      }
+
       @if (ready()) {
         <div class="filters" role="group" aria-label="Filtra per stato">
           @for (option of filters; track option.value) {
@@ -40,8 +52,18 @@ type Filter = 'all' | PublishedTripStatus;
               <span class="row__main">
                 <strong>{{ trip.title }}</strong>
                 <span class="muted small">{{ trip.destination }} · {{ trip.startDate ? (trip.startDate | date: 'd MMM y') : 'date da definire' }} · {{ price(trip) }} · {{ trip.capacity ?? '—' }} posti</span>
-                @if (trip.requests && (trip.requests.pending || trip.requests.confirmed)) {
-                  <span class="small"><odys-icon name="users" [size]="14" /> {{ trip.requests.confirmed }} confermati@if (trip.requests.pending) { · <strong>{{ trip.requests.pending }} in attesa</strong>}</span>
+                @if (trip.capacity) {
+                  <span class="sold">
+                    <span class="sold__bar" aria-hidden="true">
+                      @for (seat of seatsOf(trip); track $index) {<span class="sold__seat" [class.is-sold]="seat"></span>}
+                    </span>
+                    <span class="small"><strong>{{ trip.requests?.confirmed ?? 0 }}/{{ trip.capacity }}</strong> posti venduti@if ((trip.requests?.confirmed ?? 0) >= trip.capacity) { · <strong>tutto esaurito</strong>}</span>
+                  </span>
+                }
+                @if (trip.alerts?.length) {
+                  <span class="alerts">
+                    @for (alert of trip.alerts; track alert.kind) {<span class="alert alert--{{ alert.tone }}"><odys-icon [name]="alertIcon(alert.kind)" [size]="14" /> {{ alert.message }}</span>}
+                  </span>
                 }
                 @if (trip.status === 'scheduled' && trip.scheduledFor) {<span class="small">Pubblicazione il {{ trip.scheduledFor | date: 'd MMM y, HH:mm' }}</span>}
               </span>
@@ -62,6 +84,19 @@ type Filter = 'all' | PublishedTripStatus;
     .rows { display: flex; flex-direction: column; gap: var(--space-2); }
     .row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border); color: var(--color-text); text-decoration: none;
       &:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-md); } }
+    .stats { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-5); padding: var(--space-4) var(--space-5); border-radius: var(--radius-xl, 24px); background: var(--color-brand-panel); color: var(--color-on-brand); text-decoration: none;
+      &:hover .stats__icon { background: var(--color-accent); color: var(--color-on-accent); } }
+    .stats__icon { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; background: rgb(255 255 255 / 0.12); transition: background-color var(--duration-fast) var(--ease-out); }
+    .stats__text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; strong { font-size: var(--text-lg); } span { font-size: var(--text-sm); color: var(--color-on-brand-muted); } }
+    .sold { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: 2px; }
+    .sold__bar { display: grid; grid-auto-flow: column; grid-auto-columns: 10px; gap: 3px; }
+    .sold__seat { height: 8px; border-radius: var(--radius-pill); background: var(--color-surface-muted); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+    .sold__seat.is-sold { background: var(--color-text); box-shadow: none; }
+    .alerts { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: 4px; }
+    .alert { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; }
+    .alert--warning { background: var(--color-accent-soft); color: var(--color-text); }
+    .alert--danger { background: var(--color-danger-soft); color: var(--color-danger-text); }
+    .alert--info { background: var(--color-primary-soft); color: var(--color-link); }
     .row__main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
     .small { font-size: var(--text-sm); }
     .status { flex-shrink: 0; min-width: 104px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; text-align: center; background: var(--color-surface-muted); }
@@ -73,6 +108,7 @@ type Filter = 'all' | PublishedTripStatus;
 export default class CoordinatorDashboardPage implements AfterViewInit {
   private readonly api = inject(CatalogApi);
   private readonly router = inject(Router);
+  protected readonly entitlements = inject(EntitlementsStore);
   private readonly access = viewChild.required(CoordinatorAccessComponent);
   protected readonly ready = signal(false);
   protected readonly loading = signal(true);
@@ -109,6 +145,16 @@ export default class CoordinatorDashboardPage implements AfterViewInit {
 
   protected count(filter: Filter): number {
     return filter === 'all' ? this.trips().length : this.trips().filter((trip) => trip.effectiveStatus === filter).length;
+  }
+
+  /** Segmenti della barra dei posti: pieni quelli venduti (CB-07). */
+  protected seatsOf(trip: PublishedTrip): boolean[] {
+    const sold = trip.requests?.confirmed ?? 0;
+    return Array.from({ length: trip.capacity ?? 0 }, (_, index) => index < sold);
+  }
+
+  protected alertIcon(kind: string): IconName {
+    return kind === 'balance_due' ? 'credit-card' : kind === 'requests_pending' ? 'users' : 'alert-triangle';
   }
 
   protected label(status: PublishedTripStatus): string {

@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import type { Affinity, Itinerary } from '@odys/domain';
+import type { Affinity, CostItem, Itinerary } from '@odys/domain';
 import { ApiClient } from './api-client';
 import type { StoredTrip } from './trips.api';
 
@@ -109,7 +109,9 @@ export interface PublishedTrip extends PublishedTripSummary {
   itinerary: Itinerary;
   sourceTripId?: string;
   /** Richieste ricevute (solo area coordinatore). */
-  requests?: { pending: number; confirmed: number };
+  requests?: { pending: number; confirmed: number; balanceDue: number };
+  /** Avvisi operativi calcolati dal server (CB-07). */
+  alerts?: CoordinatorAlert[];
 }
 
 /** Posto riservato → richiesta inviata (acconto pagato) → confermata → saldata. */
@@ -307,6 +309,9 @@ export class CatalogApi {
   acceptGuidelines() { return this.api.post<void>('/coordinator/guidelines', {}); }
   myPublished() { return this.api.get<PublishedTrip[]>('/coordinator/trips'); }
   myPublishedTrip(id: string) { return this.api.get<PublishedTrip>(`/coordinator/trips/${encodeURIComponent(id)}`); }
+  /** Composizione del prezzo (CB-04): voci di costo riservate al coordinatore. */
+  pricing(id: string) { return this.api.get<TripPricing>(`/coordinator/trips/${encodeURIComponent(id)}/pricing`); }
+  savePricing(id: string, pricing: Pick<TripPricing, 'costs' | 'targetEarningsCents'>) { return this.api.put<TripPricing>(`/coordinator/trips/${encodeURIComponent(id)}/pricing`, pricing); }
   createPublished(form: PublishedTripForm) { return this.api.post<PublishedTrip>('/coordinator/trips', form); }
   updatePublished(id: string, form: PublishedTripForm) { return this.api.put<PublishedTrip>(`/coordinator/trips/${encodeURIComponent(id)}`, form); }
   changeStatus(id: string, action: CoordinatorAction, scheduledFor?: string) {
@@ -315,6 +320,21 @@ export class CatalogApi {
 }
 
 /** Quota formattata (prezzi in centesimi, P-06). */
+/** Avviso nell'elenco «I miei viaggi» (CB-07). */
+export interface CoordinatorAlert {
+  kind: 'missing_fields' | 'balance_due' | 'requests_pending';
+  tone: 'warning' | 'danger' | 'info';
+  message: string;
+}
+
+/** Voci di costo e compenso desiderato del coordinatore (CB-04). */
+export interface TripPricing {
+  costs: CostItem[];
+  targetEarningsCents: number | null;
+  serviceRate: number;
+  updatedAt?: string;
+}
+
 export function formatPrice(cents: number | undefined, currency = 'EUR'): string {
   if (cents === undefined || cents === null) return 'Quota da definire';
   return new Intl.NumberFormat('it-IT', { style: 'currency', currency, maximumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
