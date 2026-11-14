@@ -594,3 +594,54 @@ test('dashboard del coordinatore: eventi dal server, sollecito del saldo, post c
   const seen = await asUser(marta, () => db.query<{ balance_reminded_at: string | null }>('select balance_reminded_at from public.participation_requests where id = $1', [request]));
   assert.ok(seen.rows[0].balance_reminded_at, 'il viaggiatore vede il sollecito');
 });
+
+test('agenzia: profilo, ruoli interni, inviti e licenze che danno il Coordinatore Premium (AG-01, AG-02, AG-05, AG-09)', async () => {
+  const owner = await signUp('agenzia@example.com', { ...adult, first_name: 'Olga', last_name: 'Tour' });
+  const create = (who: string, slug = 'viaggi-lenti') => asUser(who, () => db.query<{ id: string }>(`select id from public.create_agency('Viaggi Lenti Srl', 'Viaggi Lenti', $1)`, [slug]));
+  await assert.rejects(create(owner), /piano Agenzia/);
+  const admin = (await db.query<{ id: string }>(`select id from public.profiles where role = 'admin' limit 1`)).rows[0].id;
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, 'agency')`, [owner]));
+  const agency = (await create(owner)).rows[0].id;
+  await assert.rejects(create(owner, 'altra'), /già un’agenzia/);
+
+  // Profilo (AG-01): lo modifica chi ha il ruolo giusto, le licenze no.
+  await asUser(owner, () => db.query(`update public.agencies set description = 'Viaggi lenti in piccoli gruppi dal 2012.', city = 'Bologna' where id = $1`, [agency]));
+  await assert.rejects(asUser(owner, () => db.query('update public.agencies set license_seats = 99 where id = $1', [agency])), /permission denied/);
+  const invite = (who: string, email: string, role: string) => asUser(who, () => db.query<{ id: string }>(`select public.invite_agency_member($1, $2, $3::public.agency_role) as id`, [agency, email, role]));
+  await assert.rejects(invite(owner, 'nessuno@example.com', 'coordinator'), /Nessun account Odys/);
+  await assert.rejects(invite(sara, 'luca@example.com', 'operator'), /non consentita/);
+  const saraMember = (await invite(owner, 'SARA@example.com', 'coordinator')).rows[0].id;
+  const lucaMember = (await invite(owner, 'luca@example.com', 'operator')).rows[0].id;
+  await assert.rejects(invite(owner, 'sara@example.com', 'coordinator'), /già parte del team/);
+
+  // L'invitata vede solo il proprio invito e lo accetta.
+  assert.equal((await asUser(sara, () => db.query('select id from public.agency_members'))).rows.length, 1);
+  await asUser(sara, () => db.query('select public.respond_agency_invite($1, true)', [saraMember]));
+  await asUser(luca, () => db.query('select public.respond_agency_invite($1, true)', [lucaMember]));
+
+  // Ruoli interni (AG-02): l'operatore legge il team ma non assegna né invita.
+  const team = await asUser(luca, () => db.query<{ first_name: string; role: string; link_type: string | null; verified: boolean }>('select first_name, role, link_type, verified from public.agency_team($1)', [agency]));
+  assert.deepEqual(team.rows.map((row) => [row.first_name, row.role, row.link_type]), [['Olga', 'owner', null], ['Luca', 'operator', null], ['Sara', 'coordinator', 'associated']]);
+  assert.equal(team.rows[2].verified, true, 'Sara ha la candidatura approvata');
+  await assert.rejects(asUser(sara, () => db.query('select * from public.agency_team($1)', [agency])), /non consentita/);
+  await assert.rejects(asUser(luca, () => db.query('select public.assign_agency_license($1)', [saraMember])), /non consentita/);
+
+  // Licenze (AG-09): servono licenze libere; assegnare dà subito il Coordinatore Premium, revocare lo toglie.
+  const rights = async () => (await asUser(sara, () => db.query<{ plan: string; entitlements: string[] }>('select plan, entitlements from public.my_entitlements()'))).rows[0];
+  const before = await rights();
+  await assert.rejects(asUser(owner, () => db.query('select public.assign_agency_license($1)', [saraMember])), /licenze libere/);
+  await assert.rejects(asUser(luca, () => db.query(`select public.set_agency_license_seats($1, 2, 'monthly')`, [agency])), /Solo il proprietario/);
+  await asUser(owner, () => db.query(`select public.set_agency_license_seats($1, 1, 'annual')`, [agency]));
+  await asUser(owner, () => db.query('select public.assign_agency_license($1)', [saraMember]));
+  assert.ok((await rights()).entitlements.includes('analytics.coordinator'));
+  await assert.rejects(asUser(owner, () => db.query(`select public.set_agency_license_seats($1, 0, 'monthly')`, [agency])), /licenze assegnate/);
+  await asUser(owner, () => db.query('select public.revoke_agency_license($1)', [saraMember]));
+  assert.deepEqual(await rights(), before, 'dopo la revoca tornano i diritti di prima');
+
+  // Pagina pubblica (AG-01) e storico (licenze e inviti nel registro).
+  const profile = await asAnon(() => db.query<{ display_name: string; coordinator_ids: string[] }>('select display_name, coordinator_ids from public.agency_profiles where slug = $1', ['viaggi-lenti']));
+  assert.deepEqual([profile.rows[0].display_name, profile.rows[0].coordinator_ids], ['Viaggi Lenti', [sara]]);
+  const log = await asUser(owner, () => db.query<{ action: string }>(`select action from public.audit_log where action like 'agency.%' order by id`));
+  assert.ok(['agency.create', 'agency.invite', 'agency.license_seats', 'agency.license_assign', 'agency.license_revoke'].every((action) => log.rows.some((row) => row.action === action)));
+  await assert.rejects(asUser(owner, () => db.query('select public.remove_agency_member(m.id) from public.agency_members m where m.user_id = $1 and m.agency_id = $2', [owner, agency])), /proprietario/);
+});

@@ -1,3 +1,4 @@
+import { supabaseAgency } from './supabase-agency';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { asSavedTrip, PLAN_LABELS, type AccountEntitlements, type Entitlement, type Itinerary, type PlanTier } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
@@ -233,5 +234,6 @@ export function supabaseDataStore(config: AppConfig): DataStore {
     ...supabaseCommunity(config),
     ...supabaseCreator(config),
     ...supabaseSplit(config),
+    ...supabaseAgency(config),
   };
 }

@@ -1,3 +1,4 @@
+import type { AgencyStore } from './agency';
 import type { AccountEntitlements, Itinerary, SavedTrip } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { CatalogFactory, CoordinatorRepository, SavedTripsRepository } from './catalog';
@@ -107,7 +108,7 @@ export interface AccountRepository {
 }
 
 /** Fabbrica dei repository per l'utente della richiesta. */
-export interface DataStore extends CommunityStore, CreatorStore, SplitStore {
+export interface DataStore extends CommunityStore, CreatorStore, SplitStore, AgencyStore {
   trips(user: AuthUser): TripsRepository;
   account(user: AuthUser): AccountRepository;
   /** Catalogo pubblico: leggibile anche senza accesso; con l'utente include i viaggi «Solo follower» di chi segue. */

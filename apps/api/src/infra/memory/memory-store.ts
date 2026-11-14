@@ -15,6 +15,7 @@ import type {
 } from '../../shared/data';
 import { HttpError } from '../../shared/http';
 import { MemoryCreatorData, memoryCreator } from './memory-creator';
+import { memoryAgency, type MemoryAgency, type MemoryAgencyMember } from './memory-agency';
 import {
   COORDINATOR_GUIDELINES_VERSION,
   displayName,
@@ -101,6 +102,8 @@ export class MemoryDatabase {
   readonly participations = new Map<string, MemoryParticipation>();
   readonly applications: MemoryApplication[] = [];
   readonly creator = new MemoryCreatorData();
+  readonly agencies = new Map<string, MemoryAgency>();
+  readonly agencyMembers = new Map<string, MemoryAgencyMember>();
   readonly reports: Array<ReportReview & { reporterId: string }> = [];
   readonly users = new Map<string, MemoryUser>();
   /** follower → coordinatori seguiti. */
@@ -854,6 +857,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     social: (user) => new MemorySocialRepository(db, user.id),
     split: (user) => new MemorySplitRepository(db, user.id),
     ...memoryCreator(db, db.creator),
+    ...memoryAgency(db, card),
   };
 }
 

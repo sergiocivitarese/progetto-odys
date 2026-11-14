@@ -24,7 +24,7 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | ✅ Fatto · da collaudare con un account reale (il generatore usa il motore locale, non ancora un modello AI) |
 | R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | ✅ Fatto · da collaudare con un account reale: creazione in 4 passi con itinerario dal generatore o da un viaggio salvato e modificabile nell’offerta (CB-02, CB-03), costi e pareggio (CB-04), kit social (CB-06), posti venduti e avvisi (CB-07), feed profilo con badge verificato, lingue, highlight e schede Post · Video · Viaggi · Recensioni in griglia 4:5 (CB-09), invito alle statistiche (CB-11); candidatura, visibilità, partecipanti e post c’erano già |
 | R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | ✅ Fatto · da collaudare con un account reale: pagina Dati (`/dati`, diritto `analytics.coordinator`) con guadagni del periodo e variazione, prenotazioni per settimana, posti venduti, valutazione e follower, saldi da sollecitare e bozze incomplete, viaggi in vendita, funnel e post che vendono; numeri calcolati dagli eventi registrati dal server (migrazione 0019). CP-07 resta in Fase 2 |
-| R5 | **Agenzia**: profilo, ruoli interni, catalogo multi-partenza, team, AI per i coordinatori, licenze a scaglioni, modalità ombrello | AG-01…AG-12 | Da fare (sostituisce la vecchia Fase 5) |
+| R5 | **Agenzia**: profilo, ruoli interni, catalogo multi-partenza, team, AI per i coordinatori, licenze a scaglioni, modalità ombrello | AG-01…AG-12 | In corso · fatti profilo e pagina pubblica (AG-01), ruoli interni (AG-02), team con inviti e stato dei coordinatori (AG-05), licenze che danno il Coordinatore Premium (AG-09) e prezzo a scaglioni (AG-10), migrazione 0020. Restano catalogo multi-partenza e assegnazione (AG-03, AG-04), proposte da approvare (AG-05), AI per i coordinatori (AG-06), dashboard (AG-07), moduli a piano (AG-08), ombrello e trasparenza (AG-11, AG-12) |
 | Fase 2 | Chat di gruppo, suggerimenti dai dati | TB-13, CP-07 | Rinviata |
 
 ### Punti aperti del cliente e valore provvisorio usato nel codice
@@ -43,6 +43,10 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Regola di attribuzione delle prenotazioni ai post (CP-06) | Ultimo post dell’autore, collegato a quel viaggio, visto da chi prenota nei 30 giorni prima della conferma (`POST_ATTRIBUTION_DAYS`) |
 | Compenso del coordinatore nella dashboard (CP-01) | Pagamenti confermati del periodo meno il servizio Odys stimato; i costi del viaggio non sono sottratti |
 | «Sollecita» un saldo (CP-03) | Promemoria in app visibile in Prossimo viaggio, al massimo uno ogni 24 ore; nessuna email finché non c’è un fornitore di notifiche |
+| Prezzi delle licenze agenzia (AG-10) | Valori d’esempio in `LICENSE_TIERS` (49 / 39 / 29 / 24 € al mese per licenza), annuale = 10 mesi su 12; l’acquisto delle licenze è simulato, senza pagamento |
+| Licenza a chi non è coordinatore approvato | Riceve i diritti Premium da viaggiatore; vendere viaggi richiede comunque la candidatura approvata |
+| Inviti dell’agenzia | Solo ad account Odys esistenti, per email; l’invito compare nel profilo (nessuna email inviata) |
+| Coordinatore che paga già il proprio Premium e riceve una licenza | Le due righe convivono: nessuna sospensione o rimborso automatico |
 | Durata della riserva del posto nel checkout | 15 minuti |
 | Conferma del pagamento simulato | La chiama il browser di chi paga (`confirm_simulated_payment`): **da togliere** quando arriva il fornitore reale, che conferma solo con il webhook (`confirm_payment`) |
 

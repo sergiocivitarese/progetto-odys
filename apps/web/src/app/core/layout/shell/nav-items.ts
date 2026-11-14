@@ -29,8 +29,8 @@ export function navigationFor(has: (entitlement: Entitlement) => boolean): Navig
         { label: 'Dati', path: '/in-arrivo/dati-agenzia', icon: 'chart-column' },
         { label: 'Catalogo', path: '/coordinatore', icon: 'box' },
         { label: 'AI', path: '/in-arrivo/ai-agenzia', icon: 'sparkles' },
-        { label: 'Team', path: '/in-arrivo/team', icon: 'users' },
-        { label: 'Impostazioni', path: '/account', icon: 'settings' },
+        { label: 'Team', path: '/agenzia/team', icon: 'users' },
+        { label: 'Impostazioni', path: '/agenzia', icon: 'settings', exact: true },
       ],
     };
   }

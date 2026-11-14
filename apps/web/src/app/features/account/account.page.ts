@@ -1,3 +1,4 @@
+import { AgencyInvitesComponent } from '../agency/agency-invites.component';
 import { DatePipe } from '@angular/common';
 import { CreatorApi, type Post } from '../../core/api/creator.api';
 import { PostTileComponent } from '../../shared/travel/post-tile.component';
@@ -55,7 +56,7 @@ const ACTION_LABELS: Record<string, string> = {
 /** Area personale (U-12): profilo, preferenze, idee salvate, attività, sicurezza. */
 @Component({
   selector: 'odys-account-page',
-  imports: [FormsModule, DatePipe, RouterLink, PostTileComponent, ButtonComponent, ChipComponent, DialogComponent, NoticeComponent, TextFieldComponent, ThemeSwitchComponent],
+  imports: [AgencyInvitesComponent, FormsModule, DatePipe, RouterLink, PostTileComponent, ButtonComponent, ChipComponent, DialogComponent, NoticeComponent, TextFieldComponent, ThemeSwitchComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account.page.html',
   styleUrl: './account.page.scss',

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "src/app/features/agency/agency-public.page.ts"
+        ],
+        "createdAt": "2026-11-14T17:50:34.555Z",
+        "reason": "Claude: src is an Angular binding ([src]=logoUrl/avatarUrl) rendered only inside @if when the URL exists; not a placeholder"
+      }
+    ]
+  }
+}

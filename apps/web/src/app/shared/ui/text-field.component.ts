@@ -9,14 +9,15 @@ let nextId = 0;
   selector: 'odys-text-field',
   imports: [IconComponent, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.is-disabled]': 'disabled()' },
   template: `
     <label [for]="id" class="label">{{ label() }}</label>
     <div class="control" [class.control--multiline]="multiline()">
       @if (icon()) {<odys-icon [name]="icon()!" [size]="17" class="icon" />}
       @if (multiline()) {
-        <textarea [id]="id" [ngModel]="value()" (ngModelChange)="value.set($event)" [placeholder]="placeholder()" rows="3" [attr.aria-describedby]="hint() ? id + '-hint' : null"></textarea>
+        <textarea [id]="id" [ngModel]="value()" (ngModelChange)="value.set($event)" [placeholder]="placeholder()" rows="3" [disabled]="disabled()" [attr.aria-describedby]="hint() ? id + '-hint' : null"></textarea>
       } @else {
-        <input [id]="id" [type]="type()" [attr.required]="required() || null" [attr.aria-required]="required() || null" [ngModel]="value()" (ngModelChange)="value.set($event)" [placeholder]="placeholder()" [attr.inputmode]="inputMode() ?? null" [attr.autocomplete]="autocomplete()" [attr.aria-describedby]="hint() ? id + '-hint' : null" />
+        <input [id]="id" [type]="type()" [attr.required]="required() || null" [attr.aria-required]="required() || null" [ngModel]="value()" (ngModelChange)="value.set($event)" [placeholder]="placeholder()" [attr.inputmode]="inputMode() ?? null" [attr.autocomplete]="autocomplete()" [disabled]="disabled()" [attr.aria-describedby]="hint() ? id + '-hint' : null" />
       }
     </div>
     @if (hint()) {<p [id]="id + '-hint'" class="hint">{{ hint() }}</p>}
@@ -37,6 +38,8 @@ let nextId = 0;
     textarea { resize: vertical; padding: 0; min-height: 64px; }
     input::placeholder, textarea::placeholder { color: var(--color-text-muted); opacity: 0.8; }
     .hint { font-size: var(--text-xs); color: var(--color-text-muted); }
+    :host(.is-disabled) .control { background: var(--color-surface-muted); }
+    input:disabled, textarea:disabled { color: var(--color-text-muted); cursor: not-allowed; }
   `,
 })
 export class TextFieldComponent {
@@ -50,5 +53,7 @@ export class TextFieldComponent {
   readonly autocomplete = input('off');
   readonly required = input(false);
   readonly multiline = input(false);
+  /** Solo lettura per chi non ha il permesso di modificare. */
+  readonly disabled = input(false);
   protected readonly id = `odys-field-${nextId++}`;
 }

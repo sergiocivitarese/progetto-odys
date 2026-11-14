@@ -78,7 +78,18 @@ const server = app.listen(config.port, async () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   await call('POST', `/coordinator/trips/${onSale.id}/participants/${booking.id}/confirm`, {});
+  // Agenzia di prova (R5): titolare con piano Agenzia, Nora coordinatrice nel team, la viaggiatrice invitata come operatrice.
+  const AGENCY = 'demo-agenzia';
+  const agencyOwner = db.addUser(AGENCY, 'demo-agenzia', 'titolare@odys.test');
+  Object.assign(db.user(agencyOwner).profile, { firstName: 'Olga', lastName: 'Ferri' });
+  db.user(agencyOwner).plans = ['agency'];
+  const agency = await as<{ id: string }>(AGENCY, 'POST', '/agency', { legalName: 'Sud Lento Viaggi Srl', displayName: 'Sud Lento', slug: 'sud-lento' });
+  await as(AGENCY, 'PUT', `/agency/${agency.id}`, { description: 'Viaggi in piccoli gruppi tra Puglia, Basilicata e Calabria, con coordinatori del posto.', city: 'Matera', country: 'Italia', website: 'https://sudlento.example', email: 'ciao@sudlento.example' });
+  const noraInvite = await as<{ id: string }>(AGENCY, 'POST', `/agency/${agency.id}/team`, { email: 'coordinatrice@odys.test', role: 'coordinator' });
+  await call('POST', `/agency/invites/${noraInvite.id}/accept`, {});
+  await as(AGENCY, 'POST', `/agency/${agency.id}/team`, { email: 'viaggiatrice@odys.test', role: 'operator' });
   console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);
+  console.log(`Agenzia di prova: token «${AGENCY}», pagina pubblica /agenzie/sud-lento`);
 });
 
 process.on('SIGTERM', () => server.close());

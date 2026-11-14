@@ -849,3 +849,61 @@ test('dashboard del Coordinatore Premium: guadagni, funnel, saldi da sollecitare
   const next = await call<{ balanceRemindedAt?: string }>('GET', '/me/next-trip', undefined, traveler);
   assert.ok(next.data.balanceRemindedAt);
 });
+
+test('agenzia: profilo pubblico, team con inviti, licenze a scaglioni che danno il Coordinatore Premium (AG-01, AG-02, AG-05, AG-09, AG-10)', async () => {
+  const owner = 'token-agenzia';
+  const ownerId = db.addUser(owner, undefined, 'titolare@agenzia.example');
+  Object.assign(db.user(ownerId).profile, { firstName: 'Olga', lastName: 'Tour' });
+  const coach = 'token-agenzia-coord';
+  const coachId = db.addUser(coach, undefined, 'coach@agenzia.example');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Ciro', lastName: 'Esposito' });
+  const operator = 'token-agenzia-operatore';
+  db.addUser(operator, undefined, 'operatore@agenzia.example');
+
+  const body = { legalName: 'Viaggi Lenti Srl', displayName: 'Viaggi Lenti', slug: 'viaggi-lenti-api' };
+  assert.equal((await call('POST', '/agency', body, owner)).status, 403, 'serve il piano Agenzia');
+  db.user(ownerId).plans = ['agency'];
+  assert.equal((await call('POST', '/agency', { ...body, slug: 'No Valido' }, owner)).status, 400);
+  const created = await call<{ id: string }>('POST', '/agency', body, owner);
+  assert.equal(created.status, 201);
+  const id = created.data.id;
+  const updated = await call<{ city: string }>('PUT', `/agency/${id}`, { description: 'Piccoli gruppi in Italia dal 2012.', city: 'Bologna', website: 'https://viaggilenti.example' }, owner);
+  assert.equal(updated.data.city, 'Bologna');
+  assert.equal((await call('PUT', `/agency/${id}`, { website: 'ftp://x' }, owner)).status, 400);
+
+  // Inviti (AG-05): l'invitato vede e accetta; un estraneo no.
+  assert.equal((await call('POST', `/agency/${id}/team`, { email: 'nessuno@example.com', role: 'coordinator' }, owner)).status, 404);
+  assert.equal((await call('POST', `/agency/${id}/team`, { email: 'coach@agenzia.example', role: 'owner' }, owner)).status, 400);
+  const coachInvite = (await call<{ id: string }>('POST', `/agency/${id}/team`, { email: 'coach@agenzia.example', role: 'coordinator' }, owner)).data.id;
+  const operatorInvite = (await call<{ id: string }>('POST', `/agency/${id}/team`, { email: 'operatore@agenzia.example', role: 'operator' }, owner)).data.id;
+  const invites = await call<Array<{ id: string; agencyName: string }>>('GET', '/agency/invites/mine', undefined, coach);
+  assert.deepEqual(invites.data.map((item) => [item.id, item.agencyName]), [[coachInvite, 'Viaggi Lenti']]);
+  assert.equal((await call('POST', `/agency/invites/${coachInvite}/accept`, {}, operator)).status, 404);
+  await call('POST', `/agency/invites/${coachInvite}/accept`, {}, coach);
+  await call('POST', `/agency/invites/${operatorInvite}/accept`, {}, operator);
+
+  // Ruoli (AG-02): l'operatore vede il team, non assegna licenze e non ne compra.
+  const team = await call<Array<{ role: string; linkType?: string; status: string }>>('GET', `/agency/${id}/team`, undefined, operator);
+  assert.deepEqual(team.data.map((member) => [member.role, member.linkType ?? null, member.status]), [['owner', null, 'active'], ['operator', null, 'active'], ['coordinator', 'associated', 'active']]);
+  assert.equal((await call('POST', `/agency/members/${coachInvite}/license`, {}, operator)).status, 403);
+  assert.equal((await call('PUT', `/agency/${id}/licenses`, { seats: 3 }, operator)).status, 403);
+  assert.equal((await call('GET', `/agency/${id}/team`, undefined, coach)).status, 403);
+
+  // Licenze (AG-09, AG-10): scaglione e totale dal server; la licenza dà il Coordinatore Premium.
+  assert.equal((await call('POST', `/agency/members/${coachInvite}/license`, {}, owner)).status, 422, 'nessuna licenza libera');
+  const seats = await call<{ quote: { perLicenseMonthlyCents: number; totalCents: number; next: { missing: number } } }>('PUT', `/agency/${id}/licenses`, { seats: 3, billingCycle: 'monthly' }, owner);
+  assert.deepEqual([seats.data.quote.perLicenseMonthlyCents, seats.data.quote.totalCents, seats.data.quote.next.missing], [4900, 14700, 2]);
+  assert.equal((await call('POST', `/agency/members/${coachInvite}/license`, {}, owner)).status, 204);
+  const rights = async () => (await call<{ plan: string; entitlements: string[] }>('GET', '/me/entitlements', undefined, coach)).data;
+  assert.equal((await rights()).plan, 'coordinator_premium');
+  assert.equal((await call('PUT', `/agency/${id}/licenses`, { seats: 0 }, owner)).status, 422);
+  assert.equal((await call('DELETE', `/agency/members/${coachInvite}/license`, undefined, owner)).status, 204);
+  assert.equal((await rights()).plan, 'coordinator_base', 'la revoca toglie i diritti dal momento successivo');
+
+  // Pagina pubblica (AG-01): dati pubblici e coordinatori attivi, niente licenze né ragione sociale.
+  const page = await call<{ displayName: string; coordinators: Array<{ id: string }>; licenseSeats?: number }>('GET', '/agencies/viaggi-lenti-api');
+  assert.deepEqual([page.data.displayName, page.data.coordinators.map((item) => item.id), page.data.licenseSeats], ['Viaggi Lenti', [coachId], undefined]);
+  assert.equal((await call('GET', '/agencies/non-esiste')).status, 404);
+  const mine = await call<{ role: string; quote: { totalCents: number } }>('GET', '/agency', undefined, owner);
+  assert.deepEqual([mine.data.role, mine.data.quote.totalCents], ['owner', 14700]);
+});

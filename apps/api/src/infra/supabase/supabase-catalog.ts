@@ -147,6 +147,9 @@ async function withStories(db: SupabaseClient, trip: PublishedTrip): Promise<Pub
   return { ...trip, placeStories: list ?? undefined, placeStoriesCount: count.error ? list?.length ?? 0 : Number(count.data ?? 0) };
 }
 
+/** Card pubbliche dei coordinatori per id (usate anche dalla pagina dell'agenzia, AG-01). */
+export const coordinatorCardsById = (db: SupabaseClient, ids: string[]) => coordinatorCards(db, ids);
+
 async function coordinatorCards(db: SupabaseClient, ids: string[]): Promise<Map<string, CoordinatorCard>> {
   const unique = Array.from(new Set(ids));
   if (!unique.length) return new Map();
