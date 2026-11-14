@@ -48,8 +48,24 @@ export interface PublicReview {
   createdAt: string;
 }
 
+/** Agenzia organizzatrice responsabile di un viaggio in ombrello (AG-11, AG-12). */
+export interface OrganizerAgency {
+  id: string;
+  name: string;
+  slug: string;
+  /** Condizioni di vendita dell'agenzia, mostrate nel checkout. */
+  saleTerms: string;
+}
+
 export interface PublishedTripSummary {
   id: string;
+  /** Chi organizza ed è responsabile: il coordinatore o l'agenzia (ombrello, AG-11). */
+  organizer: 'coordinator' | 'agency';
+  organizerAgency?: OrganizerAgency;
+  /** Agenzia del catalogo (`agencyOwned`) o della copertura; serie delle partenze dello stesso viaggio (AG-03). */
+  agencyId?: string;
+  agencyOwned?: boolean;
+  seriesId?: string;
   status: PublishedTripStatus;
   /** Stato reale considerando le date: un viaggio pubblicato in corso è "active". */
   effectiveStatus: PublishedTripStatus;
@@ -170,6 +186,8 @@ export interface PublishedTripInput {
   ageMin?: number | null;
   ageMax?: number | null;
   placeStories?: PlaceStory[];
+  /** Viaggio del catalogo di un'agenzia (AG-03): nasce senza coordinatore. */
+  agencyId?: string;
 }
 
 /** Composizione del prezzo (CB-04): dati riservati al coordinatore del viaggio. */

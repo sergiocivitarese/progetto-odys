@@ -11,6 +11,7 @@ import {
   type CoordinatorCard,
   type CoordinatorRepository,
   type CoordinatorAnalytics,
+  type OrganizerAgency,
   type TripPricing,
   type PublishedTrip,
   type PublishedTripInput,
@@ -26,7 +27,11 @@ import { dbError, userClient } from './client';
 
 interface PublishedRow {
   id: string;
-  coordinator_id: string;
+  coordinator_id: string | null;
+  agency_id?: string | null;
+  agency_owned?: boolean;
+  series_id?: string | null;
+  organizer?: 'coordinator' | 'agency';
   source_trip_id: string | null;
   status: PublishedTripStatus;
   title: string;
@@ -73,7 +78,7 @@ interface CoordinatorRow {
   verified?: boolean | null;
 }
 
-const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max';
+const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max, agency_id, agency_owned, series_id, organizer';
 // `place_stories` non è tra le colonne leggibili: il testo esce solo dalla funzione che verifica il diritto (TP-08).
 const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary`;
 
@@ -96,8 +101,38 @@ function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
   };
 }
 
-function toSummary(row: PublishedRow, coordinator: CoordinatorCard): PublishedTripSummary {
+/** Partenza d'agenzia ancora senza coordinatore (AG-04). */
+const UNASSIGNED: CoordinatorCard = { id: '', displayName: 'Coordinatore da assegnare', interests: [] };
+
+interface Context { cards: Map<string, CoordinatorCard>; agencies: Map<string, OrganizerAgency> }
+
+/** Card dei coordinatori e agenzie organizzatrici (AG-12) di un gruppo di righe, in due letture. */
+async function contextFor(db: SupabaseClient, rows: PublishedRow[]): Promise<Context> {
+  const agencyIds = Array.from(new Set(rows.filter((row) => row.organizer === 'agency' && row.agency_id).map((row) => row.agency_id!)));
+  const [cards, agencies] = await Promise.all([
+    coordinatorCards(db, rows.map((row) => row.coordinator_id).filter((id): id is string => Boolean(id))),
+    agencyIds.length ? db.from('agency_profiles').select('id, display_name, slug, sale_terms').in('id', agencyIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (agencies.error) throw dbError(agencies.error);
+  const byId = new Map((agencies.data as Array<{ id: string; display_name: string; slug: string; sale_terms: string | null }>).map((row) => [row.id, { id: row.id, name: row.display_name, slug: row.slug, saleTerms: row.sale_terms ?? '' }]));
+  return { cards, agencies: byId };
+}
+
+function summaryOf(row: PublishedRow, context: Context): PublishedTripSummary {
+  return toSummary(row, row.coordinator_id ? context.cards.get(row.coordinator_id) ?? UNASSIGNED : UNASSIGNED, row.agency_id ? context.agencies.get(row.agency_id) : undefined);
+}
+
+function detailOf(row: PublishedRow, context: Context): PublishedTrip {
+  return toDetail(row, row.coordinator_id ? context.cards.get(row.coordinator_id) ?? UNASSIGNED : UNASSIGNED, row.agency_id ? context.agencies.get(row.agency_id) : undefined);
+}
+
+function toSummary(row: PublishedRow, coordinator: CoordinatorCard, agency?: OrganizerAgency): PublishedTripSummary {
   return {
+    organizer: row.organizer ?? 'coordinator',
+    organizerAgency: row.organizer === 'agency' ? agency : undefined,
+    agencyId: row.agency_id ?? undefined,
+    agencyOwned: row.agency_owned ?? false,
+    seriesId: row.series_id ?? undefined,
     id: row.id,
     status: row.status,
     effectiveStatus: effectiveStatus(row.status, row.start_date ?? undefined, row.end_date ?? undefined, row.scheduled_for ?? undefined),
@@ -126,9 +161,9 @@ function toSummary(row: PublishedRow, coordinator: CoordinatorCard): PublishedTr
   };
 }
 
-function toDetail(row: PublishedRow, coordinator: CoordinatorCard): PublishedTrip {
+function toDetail(row: PublishedRow, coordinator: CoordinatorCard, agency?: OrganizerAgency): PublishedTrip {
   return {
-    ...toSummary(row, coordinator),
+    ...toSummary(row, coordinator, agency),
     included: row.included ?? [],
     excluded: row.excluded ?? [],
     itinerary: row.itinerary as Itinerary,
@@ -147,11 +182,19 @@ async function withStories(db: SupabaseClient, trip: PublishedTrip): Promise<Pub
   return { ...trip, placeStories: list ?? undefined, placeStoriesCount: count.error ? list?.length ?? 0 : Number(count.data ?? 0) };
 }
 
+/** Colonne e card dei viaggi per il catalogo dell'agenzia (AG-03). */
+export const SUMMARY_COLUMNS_FOR_AGENCY = SUMMARY_COLUMNS;
+export async function summariesOf(db: SupabaseClient, rows: unknown[]): Promise<PublishedTripSummary[]> {
+  const typed = rows as PublishedRow[];
+  const context = await contextFor(db, typed);
+  return typed.map((row) => summaryOf(row, context));
+}
+
 /** Card pubbliche dei coordinatori per id (usate anche dalla pagina dell'agenzia, AG-01). */
 export const coordinatorCardsById = (db: SupabaseClient, ids: string[]) => coordinatorCards(db, ids);
 
 async function coordinatorCards(db: SupabaseClient, ids: string[]): Promise<Map<string, CoordinatorCard>> {
-  const unique = Array.from(new Set(ids));
+  const unique = Array.from(new Set(ids.filter(Boolean)));
   if (!unique.length) return new Map();
   const { data, error } = await db.from('coordinator_profiles').select('*').in('id', unique);
   if (error) throw dbError(error);
@@ -175,9 +218,9 @@ class SupabaseCatalogRepository implements CatalogRepository {
     const { data, error } = await query.order('start_date', { ascending: true, nullsFirst: false }).limit(300);
     if (error) throw dbError(error);
     const rows = data as PublishedRow[];
-    const cards = await coordinatorCards(this.db, rows.map((row) => row.coordinator_id));
+    const context = await contextFor(this.db, rows);
     return rows
-      .map((row) => toSummary(row, cards.get(row.coordinator_id)!))
+      .map((row) => summaryOf(row, context))
       .filter((trip) => filters.includeCompleted || trip.effectiveStatus !== 'completed');
   }
 
@@ -187,8 +230,7 @@ class SupabaseCatalogRepository implements CatalogRepository {
     if (error) throw dbError(error);
     if (!data) return null;
     const row = data as PublishedRow;
-    const cards = await coordinatorCards(this.db, [row.coordinator_id]);
-    return withStories(this.db, toDetail(row, cards.get(row.coordinator_id)!));
+    return withStories(this.db, detailOf(row, await contextFor(this.db, [row])));
   }
 
   async getMany(ids: string[]): Promise<PublishedTripSummary[]> {
@@ -197,8 +239,8 @@ class SupabaseCatalogRepository implements CatalogRepository {
     const { data, error } = await this.db.from('published_trips').select(SUMMARY_COLUMNS).in('id', valid);
     if (error) throw dbError(error);
     const rows = data as PublishedRow[];
-    const cards = await coordinatorCards(this.db, rows.map((row) => row.coordinator_id));
-    const byId = new Map(rows.map((row) => [row.id, toSummary(row, cards.get(row.coordinator_id)!)]));
+    const context = await contextFor(this.db, rows);
+    const byId = new Map(rows.map((row) => [row.id, summaryOf(row, context)]));
     return valid.map((id) => byId.get(id)).filter((trip): trip is PublishedTripSummary => Boolean(trip));
   }
 
@@ -291,8 +333,8 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
   }
 
   private async withCard(rows: PublishedRow[]): Promise<PublishedTrip[]> {
-    const cards = await coordinatorCards(this.db, rows.map((row) => row.coordinator_id));
-    return rows.map((row) => toDetail(row, cards.get(row.coordinator_id)!));
+    const context = await contextFor(this.db, rows);
+    return rows.map((row) => detailOf(row, context));
   }
 
   async list(): Promise<PublishedTrip[]> {
@@ -303,20 +345,34 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
 
   async get(id: string): Promise<PublishedTrip | null> {
     if (!isUuid(id)) return null;
-    const { data, error } = await this.db.from('published_trips').select(DETAIL_COLUMNS).eq('id', id).eq('coordinator_id', this.user.id).maybeSingle();
+    const { data, error } = await this.db.from('published_trips').select(DETAIL_COLUMNS).eq('id', id).maybeSingle();
     if (error) throw dbError(error);
-    return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
+    if (!data || !(await this.manages(data as PublishedRow))) return null;
+    return withStories(this.db, (await this.withCard([data as PublishedRow]))[0]);
+  }
+
+  /** Il viaggio è mio, oppure sono staff della sua agenzia (catalogo o ombrello): come le policy SQL. */
+  private async manages(row: PublishedRow): Promise<boolean> {
+    if (row.coordinator_id === this.user.id) return true;
+    if (!row.agency_id) return false;
+    const { data, error } = await this.db.rpc('agency_staff', { p_agency_id: row.agency_id });
+    if (error) throw dbError(error);
+    return Boolean(data);
   }
 
   async create(input: PublishedTripInput): Promise<PublishedTrip> {
-    const { data, error } = await this.db.from('published_trips').insert({ ...inputToRow(input), coordinator_id: this.user.id, status: 'draft' }).select(DETAIL_COLUMNS).single();
+    const ownership = input.agencyId
+      ? { coordinator_id: null, agency_id: input.agencyId, agency_owned: true, organizer: 'agency' }
+      : { coordinator_id: this.user.id };
+    const { data, error } = await this.db.from('published_trips').insert({ ...inputToRow(input), ...ownership, status: 'draft' }).select(DETAIL_COLUMNS).single();
     if (error) throw dbError(error);
     return withStories(this.db, (await this.withCard([data as PublishedRow]))[0]);
   }
 
   async update(id: string, patch: Partial<PublishedTripInput>): Promise<PublishedTrip | null> {
     if (!isUuid(id)) return null;
-    const { data, error } = await this.db.from('published_trips').update(inputToRow(patch)).eq('id', id).eq('coordinator_id', this.user.id).select(DETAIL_COLUMNS).maybeSingle();
+    if (!(await this.get(id))) return null;
+    const { data, error } = await this.db.from('published_trips').update(inputToRow(patch)).eq('id', id).select(DETAIL_COLUMNS).maybeSingle();
     if (error) throw dbError(error);
     return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
@@ -324,7 +380,8 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
   async setStatus(id: string, status: PublishedTripStatus, scheduledFor?: string): Promise<PublishedTrip | null> {
     if (!isUuid(id)) return null;
     const changes: Record<string, unknown> = { status, scheduled_for: status === 'scheduled' ? scheduledFor ?? null : null };
-    const { data, error } = await this.db.from('published_trips').update(changes).eq('id', id).eq('coordinator_id', this.user.id).select(DETAIL_COLUMNS).maybeSingle();
+    if (!(await this.get(id))) return null;
+    const { data, error } = await this.db.from('published_trips').update(changes).eq('id', id).select(DETAIL_COLUMNS).maybeSingle();
     if (error) throw dbError(error);
     return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }

@@ -25,7 +25,8 @@ export function dbError(error: { code?: string; message?: string } | null | unde
     case 'P0002':
     case 'PGRST116': return new HttpError(404, 'Elemento non trovato.');
     case '28000': return new HttpError(401, 'Accedi per continuare.');
-    case '42501': return new HttpError(403, message.includes('amministratore') ? message : 'Operazione non consentita.');
+    // I messaggi scritti nelle funzioni SQL sono per le persone; quelli tecnici di Postgres no.
+    case '42501': return new HttpError(403, /permission denied|row-level security|violates/i.test(message) ? 'Operazione non consentita.' : message);
     case '23505': return new HttpError(409, error?.message && !error.message.includes('duplicate key') ? error.message : 'Esiste già una richiesta in corso.');
     case '23514':
     case '22023': return new HttpError(422, message);

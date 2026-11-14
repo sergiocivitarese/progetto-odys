@@ -15,7 +15,7 @@ import type {
 } from '../../shared/data';
 import { HttpError } from '../../shared/http';
 import { MemoryCreatorData, memoryCreator } from './memory-creator';
-import { memoryAgency, type MemoryAgency, type MemoryAgencyMember } from './memory-agency';
+import { agencyRoleOf, memoryAgency, type MemoryAgency, type MemoryAgencyMember } from './memory-agency';
 import {
   COORDINATOR_GUIDELINES_VERSION,
   displayName,
@@ -81,8 +81,10 @@ interface MemoryUser {
   plans: SubscriptionPlan[];
 }
 
-interface MemoryPublished extends PublishedTrip {
+interface MemoryPublished extends Omit<PublishedTrip, 'organizer'> {
+  /** Vuoto per una partenza d'agenzia ancora senza coordinatore (AG-04). */
   coordinatorId: string;
+  organizer?: 'coordinator' | 'agency';
 }
 
 interface MemoryParticipation extends ParticipationRequest {
@@ -268,7 +270,14 @@ function publicView(db: MemoryDatabase, trip: MemoryPublished): PublishedTrip {
   const { coordinatorId: _id, ...rest } = structuredClone(trip);
   // Come il trigger SQL: la durata deriva dalle date.
   const durationDays = rest.startDate && rest.endDate ? Math.round((Date.parse(rest.endDate) - Date.parse(rest.startDate)) / 86_400_000) + 1 : rest.durationDays;
-  return { ...rest, durationDays, effectiveStatus: effectiveStatus(rest.status, rest.startDate, rest.endDate, rest.scheduledFor), coordinator: card(db, trip.coordinatorId) };
+  const organizer = trip.organizer ?? 'coordinator';
+  const agency = trip.agencyId ? db.agencies.get(trip.agencyId) : undefined;
+  return {
+    ...rest, durationDays, organizer, agencyOwned: trip.agencyOwned ?? false,
+    organizerAgency: organizer === 'agency' && agency ? { id: agency.id, name: agency.displayName, slug: agency.slug, saleTerms: agency.saleTerms ?? '' } : undefined,
+    effectiveStatus: effectiveStatus(rest.status, rest.startDate, rest.endDate, rest.scheduledFor),
+    coordinator: trip.coordinatorId ? card(db, trip.coordinatorId) : { id: '', displayName: 'Coordinatore da assegnare', interests: [] },
+  };
 }
 
 class MemoryCatalogRepository implements CatalogRepository {
@@ -341,9 +350,12 @@ function normalizeInput(input: Partial<PublishedTripInput>): Partial<MemoryPubli
 
 class MemoryCoordinatorRepository implements CoordinatorRepository {
   constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
+  /** Come le policy SQL: il coordinatore del viaggio, oppure lo staff dell'agenzia del viaggio (catalogo o ombrello). */
   private owned(id: string) {
     const trip = this.db.published.get(id);
-    return trip && trip.coordinatorId === this.userId ? trip : undefined;
+    if (!trip) return undefined;
+    if (trip.coordinatorId === this.userId) return trip;
+    return trip.agencyId && ['owner', 'admin', 'operator'].includes(agencyRoleOf(this.db, this.userId, trip.agencyId) ?? '') ? trip : undefined;
   }
   async isCoordinator() { const role = this.db.user(this.userId).profile.role; return role === 'coordinator' || role === 'admin'; }
   async hasAcceptedGuidelines() { return this.db.user(this.userId).consents.has(COORDINATOR_GUIDELINES_VERSION); }
@@ -351,10 +363,20 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
   async list() { return [...this.db.published.values()].filter((trip) => trip.coordinatorId === this.userId).map((trip) => publicView(this.db, trip)); }
   async get(id: string) { const trip = this.owned(id); return trip ? publicView(this.db, trip) : null; }
   async create(input: PublishedTripInput) {
-    if (!(await this.isCoordinator())) throw new HttpError(403, 'Operazione non consentita.');
+    const agencyId = input.agencyId;
+    if (agencyId) {
+      // Catalogo dell'agenzia (AG-03): lo staff crea il viaggio, il coordinatore si assegna dopo.
+      if (!['owner', 'admin', 'operator'].includes(agencyRoleOf(this.db, this.userId, agencyId) ?? '')) throw new HttpError(403, 'Operazione non consentita.');
+    } else if (!(await this.isCoordinator())) throw new HttpError(403, 'Operazione non consentita.');
     const now = new Date().toISOString();
     if ((input.capacity ?? 0) > 12) throw new HttpError(422, 'Ogni viaggio ha al massimo 12 partecipanti.');
-    const trip: MemoryPublished = { country: '', region: '', interests: [], visibility: 'public', ...normalizeInput(input), id: randomUUID(), coordinatorId: this.userId, status: 'draft', effectiveStatus: 'draft', currency: 'EUR', updatedAt: now, coordinator: card(this.db, this.userId) } as MemoryPublished;
+    const { agencyId: _agency, ...rest } = input;
+    // Ombrello predefinito del coordinatore (AG-11), come il trigger SQL.
+    const umbrella = agencyId ? undefined : [...this.db.agencyMembers.values()].find((member) => member.userId === this.userId && member.status === 'active' && member.role === 'coordinator' && member.umbrellaDefault);
+    const ownership = agencyId
+      ? { coordinatorId: '', agencyId, agencyOwned: true, organizer: 'agency' as const }
+      : { coordinatorId: this.userId, agencyId: umbrella?.agencyId, agencyOwned: false, organizer: umbrella ? 'agency' as const : 'coordinator' as const };
+    const trip: MemoryPublished = { country: '', region: '', interests: [], visibility: 'public', ...normalizeInput(rest), id: randomUUID(), ...ownership, status: 'draft', effectiveStatus: 'draft', currency: 'EUR', updatedAt: now, coordinator: card(this.db, this.userId) } as MemoryPublished;
     this.db.published.set(trip.id, trip);
     return publicView(this.db, trip);
   }
@@ -372,6 +394,11 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
     const trip = this.owned(id);
     if (!trip) return null;
     if (status === 'published' || status === 'scheduled') {
+      // AG-04 e AG-11, come `published_trips_agency_guard`.
+      if (!trip.coordinatorId) throw new HttpError(422, 'Assegna un coordinatore prima di pubblicare questa partenza.');
+      if (trip.organizer === 'agency' && !['owner', 'admin'].includes(agencyRoleOf(this.db, this.userId, trip.agencyId ?? '') ?? '')) {
+        throw new HttpError(403, 'Questo viaggio è coperto dall’agenzia: lo pubblica l’agenzia dopo averlo approvato.');
+      }
       // Stesse validazioni della funzione SQL (C-13).
       if ((trip.summary ?? '').trim().length < 20) throw new HttpError(422, 'Aggiungi una descrizione di almeno 20 caratteri prima di pubblicare.');
       if (!trip.startDate || !trip.endDate || trip.endDate < trip.startDate) throw new HttpError(422, 'Indica date di partenza e rientro valide.');
@@ -578,7 +605,8 @@ class MemoryParticipationRepository implements ParticipationRepository {
 
   private coordinated(tripId: string): MemoryPublished {
     const trip = this.db.published.get(tripId);
-    if (!trip || trip.coordinatorId !== this.userId) throw new HttpError(403, 'Operazione non consentita.');
+    const staff = trip?.agencyId && ['owner', 'admin', 'operator'].includes(agencyRoleOf(this.db, this.userId, trip.agencyId) ?? '');
+    if (!trip || (trip.coordinatorId !== this.userId && !staff)) throw new HttpError(403, 'Operazione non consentita.');
     return trip;
   }
 
@@ -857,7 +885,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     social: (user) => new MemorySocialRepository(db, user.id),
     split: (user) => new MemorySplitRepository(db, user.id),
     ...memoryCreator(db, db.creator),
-    ...memoryAgency(db, card),
+    ...memoryAgency(db, card, (database, id) => { const trip = database.published.get(id); return trip ? publicView(database, trip) : null; }),
   };
 }
 

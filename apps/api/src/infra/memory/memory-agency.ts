@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { agencyCan, describeEntitlements, isValidAgencySlug, type AgencyAction, type AgencyLinkType, type AgencyMemberStatus, type AgencyRole, type BillingCycle } from '@odys/domain';
 import type { Agency, AgencyMember, AgencyProfileInput, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
-import type { CoordinatorCard } from '../../shared/catalog';
+import type { CoordinatorCard, PublishedTrip, PublishedTripSummary } from '../../shared/catalog';
 import { HttpError } from '../../shared/http';
 import type { MemoryDatabase } from './memory-store';
 
@@ -14,13 +14,21 @@ export interface MemoryAgencyMember {
   linkType?: AgencyLinkType;
   status: AgencyMemberStatus;
   licensed: boolean;
+  umbrellaDefault?: boolean;
   createdAt: string;
   acceptedAt?: string;
 }
 
+/** Ruolo attivo di un utente in un'agenzia (come `agency_role_of`). */
+export function agencyRoleOf(db: MemoryDatabase, userId: string, agencyId: string): AgencyRole | null {
+  return [...db.agencyMembers.values()].find((member) => member.agencyId === agencyId && member.userId === userId && member.status === 'active')?.role ?? null;
+}
+
+type TripView = (db: MemoryDatabase, id: string) => PublishedTrip | null;
+
 /** Stesse regole delle funzioni SQL della migrazione 0020. */
 class MemoryAgencyRepository implements AgencyRepository {
-  constructor(private readonly db: MemoryDatabase, private readonly userId: string) {}
+  constructor(private readonly db: MemoryDatabase, private readonly userId: string, private readonly tripView: TripView) {}
 
   private roleIn(agencyId: string): AgencyRole | null {
     return [...this.db.agencyMembers.values()].find((member) => member.agencyId === agencyId && member.userId === this.userId && member.status === 'active')?.role ?? null;
@@ -63,7 +71,7 @@ class MemoryAgencyRepository implements AgencyRepository {
     if (!isValidAgencySlug(input.slug)) throw new HttpError(422, 'Indirizzo non valido.');
     if ([...this.db.agencies.values()].some((agency) => agency.slug === input.slug)) throw new HttpError(409, 'Questo indirizzo è già usato da un’altra agenzia.');
     const now = new Date().toISOString();
-    const agency: MemoryAgency = { id: randomUUID(), ownerId: this.userId, legalName: input.legalName, displayName: input.displayName, slug: input.slug, description: '', licenseSeats: 0, billingCycle: 'monthly', createdAt: now };
+    const agency: MemoryAgency = { id: randomUUID(), ownerId: this.userId, legalName: input.legalName, displayName: input.displayName, slug: input.slug, description: '', licenseSeats: 0, billingCycle: 'monthly', saleTerms: '', createdAt: now };
     this.db.agencies.set(agency.id, agency);
     const owner: MemoryAgencyMember = { id: randomUUID(), agencyId: agency.id, userId: this.userId, role: 'owner', status: 'active', licensed: false, createdAt: now, acceptedAt: now };
     this.db.agencyMembers.set(owner.id, owner);
@@ -96,7 +104,7 @@ class MemoryAgencyRepository implements AgencyRepository {
         const trips = [...this.db.published.values()].filter((trip) => trip.coordinatorId === member.userId && trip.status === 'published');
         return {
           id: member.id, userId: member.userId, firstName: profile.firstName, lastName: profile.lastName, email: profile.email,
-          role: member.role, linkType: member.linkType, status: member.status, licensed: member.licensed, createdAt: member.createdAt, acceptedAt: member.acceptedAt,
+          role: member.role, linkType: member.linkType, status: member.status, licensed: member.licensed, umbrellaDefault: member.umbrellaDefault ?? false, createdAt: member.createdAt, acceptedAt: member.acceptedAt,
           isCoordinator: profile.role === 'coordinator' || profile.role === 'admin',
           verified: this.db.applications.some((item) => item.userId === member.userId && item.status === 'approved'),
           tripsOnSale: trips.filter((trip) => !trip.startDate || trip.startDate > today).length,
@@ -176,11 +184,76 @@ class MemoryAgencyRepository implements AgencyRepository {
     this.audit('agency.license_seats', agencyId, { seats, billingCycle: cycle });
     return this.view(agency);
   }
+
+  private staff(agencyId: string | undefined, roles: AgencyRole[] = ['owner', 'admin', 'operator']): boolean {
+    return Boolean(agencyId && roles.includes(this.roleIn(agencyId) as AgencyRole));
+  }
+
+  private hasCoordinator(agencyId: string, userId: string): boolean {
+    const profile = this.db.users.get(userId)?.profile;
+    return [...this.db.agencyMembers.values()].some((member) => member.agencyId === agencyId && member.userId === userId && member.status === 'active' && member.role === 'coordinator')
+      && Boolean(profile && ['coordinator', 'admin'].includes(profile.role) && profile.status === 'active');
+  }
+
+  async catalog(agencyId: string) {
+    this.require(agencyId, 'team.view');
+    const views = (ids: string[]) => ids.map((id) => this.tripView(this.db, id)).filter((trip): trip is PublishedTrip => Boolean(trip)) as PublishedTripSummary[];
+    const all = [...this.db.published.values()];
+    const coordinators = [...this.db.agencyMembers.values()].filter((member) => member.agencyId === agencyId && member.status === 'active' && member.role === 'coordinator').map((member) => member.userId);
+    return {
+      trips: views(all.filter((trip) => trip.agencyId === agencyId && trip.agencyOwned).map((trip) => trip.id)),
+      coordinatorTrips: this.staff(agencyId, ['owner', 'admin'])
+        ? views(all.filter((trip) => !trip.agencyOwned && coordinators.includes(trip.coordinatorId)).map((trip) => trip.id))
+        : [],
+    };
+  }
+
+  async addDeparture(tripId: string, startDate: string, endDate: string): Promise<string> {
+    const trip = this.db.published.get(tripId);
+    if (!trip || !trip.agencyOwned || !this.staff(trip.agencyId)) throw new HttpError(404, 'Viaggio non trovato.');
+    if (!startDate || !endDate || endDate < startDate) throw new HttpError(422, 'Indica date di partenza e rientro valide.');
+    trip.seriesId ??= trip.id;
+    const copy = structuredClone(trip);
+    const id = randomUUID();
+    Object.assign(copy, { id, coordinatorId: '', status: 'draft', effectiveStatus: 'draft', startDate, endDate, balanceDueDate: undefined, publishedAt: undefined, scheduledFor: undefined, updatedAt: new Date().toISOString() });
+    this.db.published.set(id, copy);
+    this.audit('agency.departure_add', id, { agency: trip.agencyId, series: trip.seriesId });
+    return id;
+  }
+
+  async assignCoordinator(tripId: string, userId: string | null): Promise<void> {
+    const trip = this.db.published.get(tripId);
+    if (!trip || !trip.agencyOwned || !this.staff(trip.agencyId)) throw new HttpError(404, 'Viaggio non trovato.');
+    if (userId && !this.hasCoordinator(trip.agencyId!, userId)) throw new HttpError(422, 'Scegli un coordinatore del team dell’agenzia.');
+    if (!userId && (trip.status === 'published' || trip.status === 'scheduled')) throw new HttpError(422, 'Una partenza pubblicata ha sempre un coordinatore: scegline un altro invece di toglierlo.');
+    trip.coordinatorId = userId ?? '';
+    this.audit('agency.departure_coordinator', tripId, { agency: trip.agencyId, coordinator: userId });
+  }
+
+  async setUmbrella(agencyId: string, tripId: string, on: boolean): Promise<void> {
+    if (!this.staff(agencyId, ['owner', 'admin'])) throw new HttpError(403, 'Operazione non consentita.');
+    const trip = this.db.published.get(tripId);
+    if (!trip || trip.agencyOwned || !trip.coordinatorId || !this.hasCoordinator(agencyId, trip.coordinatorId)) throw new HttpError(404, 'Viaggio non trovato.');
+    if (trip.agencyId && trip.agencyId !== agencyId) throw new HttpError(422, 'Questo viaggio è già coperto da un’altra agenzia.');
+    if ((trip.organizer === 'agency') === on) return;
+    const paid = this.db.payments.some((payment) => payment.status === 'confirmed' && this.db.participations.get(payment.requestId)?.tripId === tripId);
+    if (paid) throw new HttpError(422, 'Il viaggio ha già pagamenti confermati: la copertura non si cambia.');
+    Object.assign(trip, { agencyId: on ? agencyId : undefined, organizer: on ? 'agency' : 'coordinator' });
+    this.audit(on ? 'agency.umbrella_on' : 'agency.umbrella_off', tripId, { agency: agencyId, coordinator: trip.coordinatorId });
+  }
+
+  async setUmbrellaDefault(memberId: string, on: boolean): Promise<void> {
+    const member = this.db.agencyMembers.get(memberId);
+    if (!member || !this.staff(member.agencyId, ['owner', 'admin'])) throw new HttpError(403, 'Operazione non consentita.');
+    if (member.role !== 'coordinator' || member.status !== 'active') throw new HttpError(422, 'L’ombrello predefinito vale per i coordinatori del team.');
+    member.umbrellaDefault = on;
+    this.audit('agency.umbrella_default', memberId, { agency: member.agencyId, on });
+  }
 }
 
-export function memoryAgency(db: MemoryDatabase, card: (db: MemoryDatabase, id: string) => CoordinatorCard): AgencyStore {
+export function memoryAgency(db: MemoryDatabase, card: (db: MemoryDatabase, id: string) => CoordinatorCard, tripView: TripView): AgencyStore {
   return {
-    agency: (user) => new MemoryAgencyRepository(db, user.id),
+    agency: (user) => new MemoryAgencyRepository(db, user.id, tripView),
     async agencyBySlug(slug: string) {
       const agency = [...db.agencies.values()].find((item) => item.slug === slug);
       if (!agency) return null;
@@ -188,7 +261,7 @@ export function memoryAgency(db: MemoryDatabase, card: (db: MemoryDatabase, id: 
         .filter((member) => member.agencyId === agency.id && member.status === 'active' && member.role === 'coordinator')
         .filter((member) => ['coordinator', 'admin'].includes(db.user(member.userId).profile.role))
         .map((member) => card(db, member.userId));
-      const { ownerId: _owner, legalName: _legal, licenseSeats: _seats, billingCycle: _cycle, createdAt: _created, ...rest } = agency;
+      const { ownerId: _owner, legalName: _legal, licenseSeats: _seats, billingCycle: _cycle, createdAt: _created, saleTerms: _terms, ...rest } = agency;
       return { ...structuredClone(rest), coordinators };
     },
   };

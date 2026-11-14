@@ -5,20 +5,21 @@ import type { Agency, AgencyInvite, AgencyMember, AgencyProfileInput, AgencyPubl
 import type { AuthUser } from '../../shared/auth';
 import { HttpError } from '../../shared/http';
 import { dbError, userClient } from './client';
-import { coordinatorCardsById } from './supabase-catalog';
+import { coordinatorCardsById, summariesOf, SUMMARY_COLUMNS_FOR_AGENCY } from './supabase-catalog';
+import type { PublishedTripSummary } from '../../shared/catalog';
 
 interface AgencyRow {
   id: string; legal_name: string; display_name: string; slug: string; description: string; logo_url: string | null; email: string | null;
-  phone: string | null; website: string | null; city: string | null; country: string | null; license_seats: number; billing_cycle: BillingCycle; created_at: string;
+  phone: string | null; website: string | null; city: string | null; country: string | null; license_seats: number; billing_cycle: BillingCycle; sale_terms: string | null; created_at: string;
 }
 
-const AGENCY_COLUMNS = 'id, legal_name, display_name, slug, description, logo_url, email, phone, website, city, country, license_seats, billing_cycle, created_at';
+const AGENCY_COLUMNS = 'id, legal_name, display_name, slug, description, logo_url, email, phone, website, city, country, license_seats, billing_cycle, sale_terms, created_at';
 
 function toAgency(row: AgencyRow): Agency {
   return {
     id: row.id, legalName: row.legal_name, displayName: row.display_name, slug: row.slug, description: row.description,
     logoUrl: row.logo_url ?? undefined, email: row.email ?? undefined, phone: row.phone ?? undefined, website: row.website ?? undefined,
-    city: row.city ?? undefined, country: row.country ?? undefined, licenseSeats: row.license_seats, billingCycle: row.billing_cycle, createdAt: row.created_at,
+    city: row.city ?? undefined, country: row.country ?? undefined, licenseSeats: row.license_seats, billingCycle: row.billing_cycle, saleTerms: row.sale_terms ?? '', createdAt: row.created_at,
   };
 }
 
@@ -63,8 +64,8 @@ class SupabaseAgencyRepository implements AgencyRepository {
   async updateProfile(agencyId: string, patch: AgencyProfileInput): Promise<Agency> {
     if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
     const row: Record<string, unknown> = {};
-    const map: Record<keyof AgencyProfileInput, string> = { legalName: 'legal_name', displayName: 'display_name', slug: 'slug', description: 'description', logoUrl: 'logo_url', email: 'email', phone: 'phone', website: 'website', city: 'city', country: 'country' };
-    for (const [key, column] of Object.entries(map) as Array<[keyof AgencyProfileInput, string]>) if (patch[key] !== undefined) row[column] = patch[key] || (key === 'description' ? '' : null);
+    const map: Record<keyof AgencyProfileInput, string> = { legalName: 'legal_name', displayName: 'display_name', slug: 'slug', description: 'description', logoUrl: 'logo_url', email: 'email', phone: 'phone', website: 'website', city: 'city', country: 'country', saleTerms: 'sale_terms' };
+    for (const [key, column] of Object.entries(map) as Array<[keyof AgencyProfileInput, string]>) if (patch[key] !== undefined) row[column] = patch[key] || (key === 'description' || key === 'saleTerms' ? '' : null);
     const { data, error } = await this.db.from('agencies').update(row).eq('id', agencyId).select(AGENCY_COLUMNS).maybeSingle();
     if (error) throw agencyError(error);
     if (!data) throw new HttpError(403, 'Operazione non consentita.');
@@ -77,7 +78,7 @@ class SupabaseAgencyRepository implements AgencyRepository {
     return rows.map((row) => ({
       id: String(row['id']), userId: String(row['user_id']), firstName: String(row['first_name'] ?? ''), lastName: String(row['last_name'] ?? ''),
       email: (row['email'] as string | null) ?? undefined, role: row['role'] as AgencyRole, linkType: (row['link_type'] as AgencyLinkType | null) ?? undefined,
-      status: row['status'] as AgencyMemberStatus, licensed: Boolean(row['licensed']), createdAt: String(row['created_at']),
+      status: row['status'] as AgencyMemberStatus, licensed: Boolean(row['licensed']), umbrellaDefault: Boolean(row['umbrella_default']), createdAt: String(row['created_at']),
       acceptedAt: (row['accepted_at'] as string | null) ?? undefined, isCoordinator: Boolean(row['is_coordinator']), verified: Boolean(row['verified']),
       tripsOnSale: Number(row['trips_on_sale'] ?? 0), tripsRunning: Number(row['trips_running'] ?? 0),
     }));
@@ -119,6 +120,40 @@ class SupabaseAgencyRepository implements AgencyRepository {
   async remove(memberId: string): Promise<void> {
     if (!isUuid(memberId)) throw new HttpError(404, 'Membro non trovato.');
     await this.call('remove_agency_member', { p_member_id: memberId });
+  }
+
+  async catalog(agencyId: string): Promise<{ trips: PublishedTripSummary[]; coordinatorTrips: PublishedTripSummary[] }> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    const team = await this.team(agencyId);
+    const coordinators = team.filter((member) => member.role === 'coordinator' && member.status === 'active').map((member) => member.userId);
+    const own = await this.db.from('published_trips').select(SUMMARY_COLUMNS_FOR_AGENCY).eq('agency_id', agencyId).eq('agency_owned', true).order('start_date', { ascending: true, nullsFirst: false });
+    if (own.error) throw dbError(own.error);
+    // I viaggi dei coordinatori li vedono proprietario e amministratori (regola di accesso `agency_staff_sees_trip`).
+    const theirs = coordinators.length
+      ? await this.db.from('published_trips').select(SUMMARY_COLUMNS_FOR_AGENCY).in('coordinator_id', coordinators).eq('agency_owned', false).order('start_date', { ascending: true, nullsFirst: false })
+      : { data: [], error: null };
+    if (theirs.error) throw dbError(theirs.error);
+    return { trips: await summariesOf(this.db, own.data ?? []), coordinatorTrips: await summariesOf(this.db, theirs.data ?? []) };
+  }
+
+  async addDeparture(tripId: string, startDate: string, endDate: string): Promise<string> {
+    if (!isUuid(tripId)) throw new HttpError(404, 'Viaggio non trovato.');
+    return String(await this.call('add_agency_departure', { p_trip_id: tripId, p_start: startDate, p_end: endDate }));
+  }
+
+  async assignCoordinator(tripId: string, userId: string | null): Promise<void> {
+    if (!isUuid(tripId) || (userId !== null && !isUuid(userId))) throw new HttpError(404, 'Viaggio non trovato.');
+    await this.call('assign_departure_coordinator', { p_trip_id: tripId, p_user_id: userId });
+  }
+
+  async setUmbrella(agencyId: string, tripId: string, on: boolean): Promise<void> {
+    if (!isUuid(agencyId) || !isUuid(tripId)) throw new HttpError(404, 'Viaggio non trovato.');
+    await this.call('set_trip_umbrella', { p_trip_id: tripId, p_agency_id: agencyId, p_on: on });
+  }
+
+  async setUmbrellaDefault(memberId: string, on: boolean): Promise<void> {
+    if (!isUuid(memberId)) throw new HttpError(404, 'Membro non trovato.');
+    await this.call('set_member_umbrella_default', { p_member_id: memberId, p_on: on });
   }
 
   async setSeats(agencyId: string, seats: number, cycle: BillingCycle): Promise<Agency> {

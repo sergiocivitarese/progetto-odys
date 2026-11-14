@@ -1,6 +1,6 @@
 import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
 import type { AuthUser } from './auth';
-import type { CoordinatorCard } from './catalog';
+import type { CoordinatorCard, PublishedTripSummary } from './catalog';
 
 /*
  * Agenzia (AG-01, AG-02, AG-05, AG-09, AG-10): contratti dell'area agenzia.
@@ -22,10 +22,12 @@ export interface Agency {
   country?: string;
   licenseSeats: number;
   billingCycle: BillingCycle;
+  /** Condizioni di vendita mostrate nel checkout dei viaggi in ombrello (AG-12). */
+  saleTerms: string;
   createdAt: string;
 }
 
-export type AgencyProfileInput = Partial<Pick<Agency, 'legalName' | 'displayName' | 'slug' | 'description' | 'logoUrl' | 'email' | 'phone' | 'website' | 'city' | 'country'>>;
+export type AgencyProfileInput = Partial<Pick<Agency, 'legalName' | 'displayName' | 'slug' | 'description' | 'logoUrl' | 'email' | 'phone' | 'website' | 'city' | 'country' | 'saleTerms'>>;
 
 /** Membro del team visto da proprietario, amministratori e operatori (AG-05). */
 export interface AgencyMember {
@@ -38,6 +40,8 @@ export interface AgencyMember {
   linkType?: AgencyLinkType;
   status: AgencyMemberStatus;
   licensed: boolean;
+  /** I viaggi nuovi del coordinatore nascono coperti dall'agenzia (AG-11). */
+  umbrellaDefault: boolean;
   createdAt: string;
   acceptedAt?: string;
   /** Profilo coordinatore attivo e candidatura approvata («documenti verificati»). */
@@ -93,6 +97,12 @@ export interface AgencyRepository {
   revokeLicense(memberId: string): Promise<void>;
   remove(memberId: string): Promise<void>;
   setSeats(agencyId: string, seats: number, cycle: BillingCycle): Promise<Agency>;
+  /** Catalogo (AG-03): viaggi dell'agenzia e viaggi dei coordinatori del team (per l'ombrello). */
+  catalog(agencyId: string): Promise<{ trips: PublishedTripSummary[]; coordinatorTrips: PublishedTripSummary[] }>;
+  addDeparture(tripId: string, startDate: string, endDate: string): Promise<string>;
+  assignCoordinator(tripId: string, userId: string | null): Promise<void>;
+  setUmbrella(agencyId: string, tripId: string, on: boolean): Promise<void>;
+  setUmbrellaDefault(memberId: string, on: boolean): Promise<void>;
 }
 
 export interface AgencyStore {

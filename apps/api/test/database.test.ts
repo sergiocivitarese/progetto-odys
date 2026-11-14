@@ -645,3 +645,54 @@ test('agenzia: profilo, ruoli interni, inviti e licenze che danno il Coordinator
   assert.ok(['agency.create', 'agency.invite', 'agency.license_seats', 'agency.license_assign', 'agency.license_revoke'].every((action) => log.rows.some((row) => row.action === action)));
   await assert.rejects(asUser(owner, () => db.query('select public.remove_agency_member(m.id) from public.agency_members m where m.user_id = $1 and m.agency_id = $2', [owner, agency])), /proprietario/);
 });
+
+test('catalogo dell’agenzia: partenze con coordinatore del team, ombrello deciso dall’agenzia (AG-03, AG-04, AG-11)', async () => {
+  const owner = (await db.query<{ id: string }>(`select id from auth.users where email = 'agenzia@example.com'`)).rows[0].id;
+  const agency = (await db.query<{ id: string }>('select id from public.agencies where owner_id = $1', [owner])).rows[0].id;
+  const saraMember = (await db.query<{ id: string }>('select id from public.agency_members where agency_id = $1 and user_id = $2', [agency, sara])).rows[0].id;
+  const trip = (await asUser(owner, () => db.query<{ id: string; organizer: string }>(
+    `insert into public.published_trips (coordinator_id, agency_id, agency_owned, title, summary, itinerary, start_date, end_date, capacity, price_cents)
+     values (null, $1, true, 'Cilento a piedi', 'Cinque giorni di cammini tra mare e borghi del Cilento.', $2, current_date + 90, current_date + 94, 12, 79000) returning id, organizer`,
+    [agency, JSON.stringify(itinerary)]))).rows[0];
+  assert.equal(trip.organizer, 'agency');
+  await assert.rejects(asUser(marco, () => db.query(`insert into public.published_trips (coordinator_id, agency_id, agency_owned, title, itinerary) values (null, $1, true, 'Intruso', $2)`, [agency, JSON.stringify(itinerary)])), /non consentita|row-level/);
+
+  // AG-04: senza coordinatore la partenza non si pubblica; il coordinatore lo sceglie lo staff tra quelli del team.
+  await assert.rejects(asUser(owner, () => db.query(`update public.published_trips set status = 'published' where id = $1`, [trip.id])), /Assegna un coordinatore/);
+  await assert.rejects(asUser(owner, () => db.query('select public.assign_departure_coordinator($1, $2)', [trip.id, luca])), /del team/);
+  await assert.rejects(asUser(owner, () => db.query(`update public.published_trips set coordinator_id = $2 where id = $1`, [trip.id, sara])), /area agenzia/);
+  await asUser(owner, () => db.query('select public.assign_departure_coordinator($1, $2)', [trip.id, sara]));
+  await asUser(owner, () => db.query(`update public.published_trips set status = 'published' where id = $1`, [trip.id]));
+
+  // AG-03: seconda partenza dello stesso viaggio, in bozza e senza coordinatore.
+  const second = (await asUser(owner, () => db.query<{ id: string }>(`select public.add_agency_departure($1, current_date + 120, current_date + 124) as id`, [trip.id]))).rows[0].id;
+  const series = await asUser(owner, () => db.query<{ id: string; series_id: string; coordinator_id: string | null; status: string }>('select id, series_id, coordinator_id, status from public.published_trips where agency_id = $1 order by start_date', [agency]));
+  assert.equal(series.rows.length, 2);
+  assert.equal(series.rows[0].series_id, series.rows[1].series_id);
+  assert.deepEqual([series.rows[1].id, series.rows[1].coordinator_id, series.rows[1].status], [second, null, 'draft']);
+  // La coordinatrice assegnata vede e gestisce la sua partenza; un estraneo non vede le bozze dell'agenzia.
+  assert.equal((await asUser(sara, () => db.query('select id from public.published_trips where id = $1', [trip.id]))).rows.length, 1);
+  assert.equal((await asUser(marco, () => db.query('select id from public.published_trips where id = $1', [second]))).rows.length, 0);
+
+  // AG-11: ombrello su un viaggio della coordinatrice. Lei non può cambiarlo, l'agenzia sì; dopo, lo pubblica l'agenzia.
+  const own = (await asUser(sara, () => db.query<{ id: string }>(
+    `insert into public.published_trips (title, summary, itinerary, start_date, end_date, capacity, price_cents)
+     values ('Sila d’autunno', 'Quattro giorni tra boschi, laghi e funghi della Sila.', $1, current_date + 60, current_date + 63, 10, 52000) returning id`,
+    [JSON.stringify(itinerary)]))).rows[0].id;
+  await assert.rejects(asUser(sara, () => db.query(`update public.published_trips set organizer = 'agency', agency_id = $2 where id = $1`, [own, agency])), /area agenzia/);
+  await assert.rejects(asUser(luca, () => db.query('select public.set_trip_umbrella($1, $2, true)', [own, agency])), /non consentita/);
+  await asUser(owner, () => db.query('select public.set_trip_umbrella($1, $2, true)', [own, agency]));
+  await assert.rejects(asUser(sara, () => db.query(`update public.published_trips set status = 'published' where id = $1`, [own])), /lo pubblica l’agenzia/);
+  await asUser(owner, () => db.query(`update public.published_trips set status = 'published' where id = $1`, [own]));
+  const covered = await asAnon(() => db.query<{ organizer: string; agency_id: string }>('select organizer, agency_id from public.published_trips where id = $1', [own]));
+  assert.deepEqual([covered.rows[0].organizer, covered.rows[0].agency_id], ['agency', agency], 'il viaggiatore vede chi organizza (AG-12)');
+  // Lo staff vede i partecipanti del viaggio in ombrello.
+  await asUser(owner, () => db.query('select * from public.trip_participants($1)', [own]));
+
+  // Ombrello predefinito: i viaggi nuovi della coordinatrice nascono coperti.
+  await asUser(owner, () => db.query('select public.set_member_umbrella_default($1, true)', [saraMember]));
+  const next = (await asUser(sara, () => db.query<{ organizer: string }>(`insert into public.published_trips (title, itinerary) values ('Aspromonte', $1) returning organizer`, [JSON.stringify(itinerary)]))).rows[0];
+  assert.equal(next.organizer, 'agency');
+  const log = await asUser(owner, () => db.query<{ action: string }>(`select action from public.audit_log where action in ('agency.umbrella_on', 'agency.departure_add', 'agency.departure_coordinator', 'agency.umbrella_default')`));
+  assert.equal(new Set(log.rows.map((row) => row.action)).size, 4, 'ogni cambio di copertura e assegnazione è registrato');
+});
