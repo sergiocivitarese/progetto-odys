@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import type { Affinity, CostItem, Itinerary } from '@odys/domain';
+import type { Affinity, CostItem, DashboardPeriodKey, DashboardSummary, Itinerary } from '@odys/domain';
 import { ApiClient } from './api-client';
 import type { GeneratorRequest } from './generator.api';
 import type { StoredTrip } from './trips.api';
@@ -134,6 +134,8 @@ export interface ParticipationRequest {
   depositCents?: number;
   currency: string;
   balanceDueDate?: string;
+  /** Ultimo sollecito del saldo da parte del coordinatore (CP-03). */
+  balanceRemindedAt?: string;
 }
 
 export interface Payment {
@@ -317,6 +319,8 @@ export class CatalogApi {
   acceptGuidelines() { return this.api.post<void>('/coordinator/guidelines', {}); }
   myPublished() { return this.api.get<PublishedTrip[]>('/coordinator/trips'); }
   myPublishedTrip(id: string) { return this.api.get<PublishedTrip>(`/coordinator/trips/${encodeURIComponent(id)}`); }
+  dashboard(periodo: DashboardPeriodKey) { return this.api.get<CoordinatorDashboard>('/coordinator/dashboard', { periodo }); }
+  remindBalance(tripId: string, requestId: string) { return this.api.post<{ remindedAt: string }>(`/coordinator/trips/${encodeURIComponent(tripId)}/participants/${encodeURIComponent(requestId)}/remind`, {}); }
   /** Composizione del prezzo (CB-04): voci di costo riservate al coordinatore. */
   pricing(id: string) { return this.api.get<TripPricing>(`/coordinator/trips/${encodeURIComponent(id)}/pricing`); }
   savePricing(id: string, pricing: Pick<TripPricing, 'costs' | 'targetEarningsCents'>) { return this.api.put<TripPricing>(`/coordinator/trips/${encodeURIComponent(id)}/pricing`, pricing); }
@@ -333,6 +337,17 @@ export interface CoordinatorAlert {
   kind: 'missing_fields' | 'balance_due' | 'requests_pending';
   tone: 'warning' | 'danger' | 'info';
   message: string;
+}
+
+/** Dashboard del Coordinatore Premium (CP-01…CP-06). */
+export interface CoordinatorDashboard {
+  summary: DashboardSummary;
+  periods: Record<DashboardPeriodKey, string>;
+  serviceRate: number;
+  kpis: { rating: number | null; reviewsCount: number; followers: number };
+  balances: Array<{ requestId: string; tripId: string; tripTitle: string; name: string; balanceDueDate?: string; amountDueCents?: number; currency: string; remindedAt?: string; overdue: boolean; dueSoon: boolean }>;
+  drafts: Array<{ tripId: string; title: string; missing: string }>;
+  posts: Array<{ postId: string; caption: string; tripId?: string; publishedAt?: string; views: number; saves: number; bookings: number }>;
 }
 
 /** Voci di costo e compenso desiderato del coordinatore (CB-04). */

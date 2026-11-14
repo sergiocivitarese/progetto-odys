@@ -551,3 +551,46 @@ test('composizione del prezzo: solo chi coordina il viaggio la legge e la scrive
   assert.equal(updated.rowCount, 0);
   await assert.rejects(asUser(giulia, () => db.query(`update public.published_trip_pricing set cost_items = '{}'::jsonb where published_trip_id = $1`, [trip])), /check constraint/);
 });
+
+test('dashboard del coordinatore: eventi dal server, sollecito del saldo, post che vendono (CP-01…CP-06)', async () => {
+  const trip = (await asUser(giulia, () => db.query<{ id: string }>(
+    `insert into public.published_trips (title, summary, itinerary, start_date, end_date, capacity, price_cents, status)
+     values ('Roma dei numeri', 'Tre giorni tra Fori, Colosseo e Appia Antica.', $1, current_date + 70, current_date + 72, 12, 50000, 'published') returning id`,
+    [JSON.stringify(itinerary)]))).rows[0].id;
+  // Post pubblicato di Giulia collegato al viaggio (inserito dal sistema: qui interessa la statistica).
+  await db.query('set session_replication_role = replica'); // senza i controlli di pubblicazione (media), non oggetto del test
+  const post = (await db.query<{ id: string }>(
+    `insert into public.creator_posts (author_id, status, caption, published_trip_id, published_at, rights_confirmed_at)
+     values ($1, 'published', 'Il Colosseo all’alba', $2, now(), now()) returning id`, [giulia, trip])).rows[0].id;
+  await db.query('set session_replication_role = origin');
+  const marta = (await db.query<{ id: string }>(`select id from auth.users where email = 'marta@example.com'`)).rows[0].id;
+
+  await asUser(marta, () => db.query('select public.record_post_view($1)', [post]));
+  await asUser(marta, () => db.query('select public.record_post_view($1)', [post])); // stesso giorno: non conta
+  await asUser(giulia, () => db.query('select public.record_post_view($1)', [post])); // l'autore non conta
+  await assert.rejects(asUser(marta, () => db.query('select * from public.creator_post_views')), /permission denied/);
+
+  const request = await bookWithDeposit(marta, trip);
+  await asUser(giulia, () => db.query(`update public.participation_requests set status = 'confirmed' where id = $1`, [request]));
+
+  // Senza il diritto la dashboard non si apre.
+  await assert.rejects(asUser(giulia, () => db.query(`select public.coordinator_analytics(now() - interval '30 days')`)), /piano superiore/);
+  const admin = (await db.query<{ id: string }>(`select id from public.profiles where role = 'admin' limit 1`)).rows[0].id;
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, 'coordinator_premium')`, [giulia]));
+  const data = (await asUser(giulia, () => db.query<{ a: { events: Array<{ tripId: string; kind: string }>; payments: Array<{ tripId: string; kind: string; amountCents: number }>; posts: Array<{ postId: string; views: number; bookings: number }> } }>(
+    `select public.coordinator_analytics(now() - interval '30 days') as a`))).rows[0].a;
+  const kinds = data.events.filter((event) => event.tripId === trip).map((event) => event.kind);
+  assert.deepEqual(kinds, ['request', 'payment_confirmed', 'booking_confirmed']);
+  assert.deepEqual(data.payments.filter((payment) => payment.tripId === trip).map((payment) => payment.kind), ['deposit']);
+  const stats = data.posts.find((item) => item.postId === post);
+  assert.deepEqual([stats?.views, stats?.bookings], [1, 1], 'una visualizzazione e una prenotazione attribuita');
+  // Nessun dato personale dei viaggiatori nella risposta.
+  assert.ok(!JSON.stringify(data).includes(marta));
+
+  // Sollecito del saldo: solo chi coordina, solo ai confermati, al massimo uno ogni 24 ore.
+  await assert.rejects(asUser(sara, () => db.query('select public.remind_balance($1)', [request])), /non trovata/);
+  await asUser(giulia, () => db.query('select public.remind_balance($1)', [request]));
+  await assert.rejects(asUser(giulia, () => db.query('select public.remind_balance($1)', [request])), /ultime 24 ore/);
+  const seen = await asUser(marta, () => db.query<{ balance_reminded_at: string | null }>('select balance_reminded_at from public.participation_requests where id = $1', [request]));
+  assert.ok(seen.rows[0].balance_reminded_at, 'il viaggiatore vede il sollecito');
+});

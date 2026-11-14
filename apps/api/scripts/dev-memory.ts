@@ -26,6 +26,12 @@ db.applications.push({
   languages: ['Italiano', 'Inglese', 'Spagnolo'], links: [], guidelinesVersion: 'demo',
 });
 
+// Coordinatore Premium: apre la pagina Dati (CP-01…CP-06). Una viaggiatrice di prova prenota.
+db.user(userId).plans = ['coordinator_premium'];
+const TRAVELER = 'demo-viaggiatrice';
+const travelerId = db.addUser(TRAVELER, 'demo-viaggiatrice', 'viaggiatrice@odys.test');
+Object.assign(db.user(travelerId).profile, { firstName: 'Lia', lastName: 'Bassi' });
+
 const app = createApp(config, { auth: memoryAuthProvider(db), store: memoryDataStore(db) });
 const server = app.listen(config.port, async () => {
   const base = `http://localhost:${config.port}/api`;
@@ -53,6 +59,25 @@ const server = app.listen(config.port, async () => {
     targetEarningsCents: 150000,
   });
   await call('POST', '/coordinator/trips', { sourceTripId: own.id, title: 'Bozza: Basilicata d’autunno', price: 540, capacity: 8 });
+  const as = async <T>(token: string, method: string, path: string, body?: unknown): Promise<T> => {
+    const response = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);
+    return (response.status === 204 ? undefined : await response.json()) as T;
+  };
+  // Post collegato al viaggio, visto dalla viaggiatrice prima di prenotare (CP-06).
+  const post = await call<{ id: string }>('POST', '/studio/posts', { caption: 'Alba sui Sassi dal belvedere di Murgia Timone', rightsConfirmed: true, publishedTripId: onSale.id });
+  const media = await call<{ id: string }>('POST', `/studio/posts/${post.id}/media`, { mimeType: 'image/jpeg', sizeBytes: 1000, extension: 'jpg' });
+  await call('PATCH', `/studio/posts/${post.id}/media/${media.id}`, { status: 'ready' });
+  await call('POST', `/studio/posts/${post.id}/publish`, {});
+  await as(TRAVELER, 'GET', `/posts/${post.id}`);
+  await as(TRAVELER, 'GET', `/catalog/trips/${onSale.id}`);
+  const booking = await as<{ id: string }>(TRAVELER, 'POST', `/bookings/trips/${onSale.id}`, {});
+  await as(TRAVELER, 'POST', `/bookings/${booking.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true });
+  for (let i = 0; i < 30; i += 1) {
+    if ((await as<{ status: string }>(TRAVELER, 'GET', `/bookings/${booking.id}`)).status === 'pending') break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  await call('POST', `/coordinator/trips/${onSale.id}/participants/${booking.id}/confirm`, {});
   console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);
 });
 

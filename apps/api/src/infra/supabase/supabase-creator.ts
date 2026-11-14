@@ -237,6 +237,12 @@ class SupabaseFeedRepository implements CreatorFeedRepository {
     return (data as PostRow[]).map(toPost).filter((post) => post.effectiveStatus === 'published');
   }
 
+  async recordView(id: string): Promise<void> {
+    if (!isUuid(id)) return;
+    const { error } = await this.db.rpc('record_post_view', { p_post_id: id });
+    if (error) throw dbError(error);
+  }
+
   async get(id: string): Promise<CreatorPost | null> {
     if (!isUuid(id)) return null;
     const { data, error } = await this.db.from('creator_posts').select(POST_COLUMNS).eq('id', id).is('deleted_at', null).maybeSingle();

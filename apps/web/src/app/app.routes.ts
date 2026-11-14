@@ -14,6 +14,7 @@ export const routes: Routes = [
   { path: 'prossimo-viaggio', title: 'Prossimo viaggio · Odys', canActivate: [authGuard], loadComponent: () => import('./features/booking/next-trip.page') },
   { path: 'crea', title: 'Crea il tuo itinerario · Odys', canActivate: [entitlementGuard('ai.generate')], loadComponent: () => import('./features/generator/generator.page') },
   { path: 'split', title: 'Cassa comune · Odys', canActivate: [entitlementGuard('split.use')], loadComponent: () => import('./features/split/split.page') },
+  { path: 'dati', title: 'Dati · Odys', canActivate: [entitlementGuard('analytics.coordinator')], loadComponent: () => import('./features/coordinator/coordinator-data.page') },
   { path: 'salvati', title: 'Salvati · Odys', canActivate: [authGuard], loadComponent: () => import('./features/discover/saved.page') },
   { path: 'pianifica', title: 'Pianifica il viaggio · Odys', loadChildren: () => import('./features/planner/planner.routes') },
   { path: 'viaggi', title: 'I miei viaggi · Odys', canActivate: [authGuard], loadChildren: () => import('./features/trips/trips.routes') },

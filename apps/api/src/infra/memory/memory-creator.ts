@@ -30,6 +30,9 @@ export class MemoryCreatorData {
   readonly posts = new Map<string, MemoryPost>();
   readonly likes = new Set<string>();
   readonly saves = new Set<string>();
+  /** Data del salvataggio per chiave «utente|post» e visualizzazioni del dettaglio (CP-06). */
+  readonly saveTimes = new Map<string, string>();
+  readonly views: Array<{ postId: string; userId?: string; at: string }> = [];
   readonly removedKeys: string[] = [];
 }
 
@@ -182,6 +185,14 @@ class MemoryFeedRepository implements CreatorFeedRepository {
     }
     return counts;
   }
+
+  async recordView(id: string) {
+    const post = this.data.posts.get(id);
+    if (!post || !isPublic(post) || post.authorId === this.viewerId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (this.viewerId && this.data.views.some((view) => view.postId === id && view.userId === this.viewerId && view.at.startsWith(today))) return;
+    this.data.views.push({ postId: id, userId: this.viewerId, at: new Date().toISOString() });
+  }
 }
 
 class MemoryInteractionsRepository implements CreatorInteractionsRepository {
@@ -193,6 +204,7 @@ class MemoryInteractionsRepository implements CreatorInteractionsRepository {
   private toggle(set: Set<string>, id: string, on: boolean) {
     const post = this.data.posts.get(id);
     if (on && (!post || !isPublic(post))) throw new HttpError(404, 'Elemento non trovato.');
+    if (on && set === this.data.saves && !set.has(this.key(id))) this.data.saveTimes.set(this.key(id), new Date().toISOString());
     if (on) set.add(this.key(id)); else set.delete(this.key(id));
   }
   async setLike(id: string, on: boolean) { this.toggle(this.data.likes, id, on); }

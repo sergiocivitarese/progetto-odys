@@ -23,7 +23,7 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | R1 | **Traveller Base**: Esplora, ricerca per intento, filtri, affinità, card e dettaglio, acconto (pagamento simulato), Prossimo viaggio, follower e recensioni | TB-01…TB-12 | ✅ Fatto · da collaudare con un account reale |
 | R2 | **Traveller Premium**: generatore AI, viaggio salvato con meteo, mappa e storia dei luoghi, Split | TP-01…TP-09 | ✅ Fatto · da collaudare con un account reale (il generatore usa il motore locale, non ancora un modello AI) |
 | R3 | **Coordinatore Base**: creazione del viaggio in 4 passi, prezzo con punto di pareggio, visibilità, kit social, feed profilo | CB-01…CB-11 | ✅ Fatto · da collaudare con un account reale: creazione in 4 passi con itinerario dal generatore o da un viaggio salvato e modificabile nell’offerta (CB-02, CB-03), costi e pareggio (CB-04), kit social (CB-06), posti venduti e avvisi (CB-07), feed profilo con badge verificato, lingue, highlight e schede Post · Video · Viaggi · Recensioni in griglia 4:5 (CB-09), invito alle statistiche (CB-11); candidatura, visibilità, partecipanti e post c’erano già |
-| R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | Da fare (gli eventi si registrano già da R1) |
+| R4 | **Coordinatore Premium**: guadagni, indicatori, avvisi, funnel, post che vendono | CP-01…CP-06 | ✅ Fatto · da collaudare con un account reale: pagina Dati (`/dati`, diritto `analytics.coordinator`) con guadagni del periodo e variazione, prenotazioni per settimana, posti venduti, valutazione e follower, saldi da sollecitare e bozze incomplete, viaggi in vendita, funnel e post che vendono; numeri calcolati dagli eventi registrati dal server (migrazione 0019). CP-07 resta in Fase 2 |
 | R5 | **Agenzia**: profilo, ruoli interni, catalogo multi-partenza, team, AI per i coordinatori, licenze a scaglioni, modalità ombrello | AG-01…AG-12 | Da fare (sostituisce la vecchia Fase 5) |
 | Fase 2 | Chat di gruppo, suggerimenti dai dati | TB-13, CP-07 | Rinviata |
 
@@ -40,6 +40,9 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Algoritmo dell'affinità «X% per te» | Quota degli interessi del viaggio che l'utente condivide (`packages/domain/src/lib/affinity.ts`) |
 | Rimborso dell'acconto, richiesta non confermata | Nessun rimborso automatico: il pagamento è simulato |
 | Fornitore dei pagamenti | Simulato lato server dietro l'interfaccia `PaymentProvider`, da sostituire con quello reale |
+| Regola di attribuzione delle prenotazioni ai post (CP-06) | Ultimo post dell’autore, collegato a quel viaggio, visto da chi prenota nei 30 giorni prima della conferma (`POST_ATTRIBUTION_DAYS`) |
+| Compenso del coordinatore nella dashboard (CP-01) | Pagamenti confermati del periodo meno il servizio Odys stimato; i costi del viaggio non sono sottratti |
+| «Sollecita» un saldo (CP-03) | Promemoria in app visibile in Prossimo viaggio, al massimo uno ogni 24 ore; nessuna email finché non c’è un fornitore di notifiche |
 | Durata della riserva del posto nel checkout | 15 minuti |
 | Conferma del pagamento simulato | La chiama il browser di chi paga (`confirm_simulated_payment`): **da togliere** quando arriva il fornitore reale, che conferma solo con il webhook (`confirm_payment`) |
 

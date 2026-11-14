@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describeEntitlements, migrateItinerary, type SplitExpense, type SubscriptionPlan } from '@odys/domain';
+import { describeEntitlements, migrateItinerary, type AnalyticsEventKind, type SplitExpense, type SubscriptionPlan } from '@odys/domain';
 import type { NewSplitExpense, SplitRepository } from '../../shared/split';
 import type { AuthProvider } from '../../shared/auth';
 import type {
@@ -27,6 +27,8 @@ import {
   type PublishedTripStatus,
   type SavedTripsRepository,
   type TripPricing,
+  type CoordinatorAnalytics,
+  POST_ATTRIBUTION_DAYS,
 } from '../../shared/catalog';
 import { holdsSeat, SEAT_RESERVATION_MINUTES } from '../../shared/community';
 import type {
@@ -107,7 +109,7 @@ export class MemoryDatabase {
   readonly reviews: Array<Review & { authorId: string }> = [];
   readonly splitExpenses: Array<SplitExpense & { tripId: string; createdBy: string; deleted: boolean }> = [];
   /** Eventi dei viaggi (CP-05). */
-  readonly events: Array<{ tripId: string; kind: 'view' | 'save' | 'request' | 'payment_confirmed'; userId?: string; createdAt: string }> = [];
+  readonly events: Array<{ tripId: string; kind: AnalyticsEventKind; userId?: string; createdAt: string }> = [];
   /** token → utente, per simulare l'autenticazione nei test. */
   readonly tokens = new Map<string, { id: string; email: string }>();
 
@@ -386,6 +388,52 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
     const saved = this.db.pricing.get(id);
     return saved ? structuredClone(saved) : { costs: [], targetEarningsCents: null };
   }
+  /** Stessi dati e stessa attribuzione di `coordinator_analytics()` (migrazione 0019). */
+  async analytics(since: string): Promise<CoordinatorAnalytics> {
+    const sinceMs = Date.parse(since);
+    const mine = new Set([...this.db.published.values()].filter((trip) => trip.coordinatorId === this.userId).map((trip) => trip.id));
+    const events = this.db.events
+      .filter((event) => mine.has(event.tripId) && Date.parse(event.createdAt) >= sinceMs)
+      .map((event) => ({ tripId: event.tripId, kind: event.kind, at: event.createdAt }));
+    const payments = this.db.payments.flatMap((payment) => {
+      const request = this.db.participations.get(payment.requestId);
+      if (!request || !mine.has(request.tripId) || payment.status !== 'confirmed' || !payment.confirmedAt || Date.parse(payment.confirmedAt) < sinceMs) return [];
+      return [{ tripId: request.tripId, kind: payment.kind, amountCents: payment.amountCents, currency: payment.currency, at: payment.confirmedAt }];
+    });
+    const creator = this.db.creator;
+    const posts = [...creator.posts.values()].filter((post) => post.authorId === this.userId && !post.deleted && post.status === 'published');
+    const window = POST_ATTRIBUTION_DAYS * 86_400_000;
+    const attributed = new Map<string, number>();
+    for (const booking of this.db.events.filter((event) => event.kind === 'booking_confirmed' && mine.has(event.tripId) && event.userId && Date.parse(event.createdAt) >= sinceMs)) {
+      const at = Date.parse(booking.createdAt);
+      const touch = creator.views
+        .filter((view) => view.userId === booking.userId && Date.parse(view.at) <= at && Date.parse(view.at) >= at - window)
+        .filter((view) => posts.some((post) => post.id === view.postId && post.publishedTripId === booking.tripId))
+        .sort((a, b) => b.at.localeCompare(a.at))[0];
+      if (touch) attributed.set(touch.postId, (attributed.get(touch.postId) ?? 0) + 1);
+    }
+    return {
+      events,
+      payments,
+      posts: posts.sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')).map((post) => ({
+        postId: post.id, caption: post.caption.slice(0, 120), tripId: post.publishedTripId, publishedAt: post.publishedAt,
+        views: creator.views.filter((view) => view.postId === post.id && Date.parse(view.at) >= sinceMs).length,
+        saves: [...creator.saveTimes.entries()].filter(([key, at]) => key.endsWith(`|${post.id}`) && creator.saves.has(key) && Date.parse(at) >= sinceMs).length,
+        bookings: attributed.get(post.id) ?? 0,
+      })),
+    };
+  }
+
+  async remindBalance(requestId: string) {
+    const request = this.db.participations.get(requestId);
+    if (!request || !this.owned(request.tripId)) throw new HttpError(404, 'Richiesta non trovata.');
+    if (request.status !== 'confirmed') throw new HttpError(422, 'Si sollecita solo chi è confermato e non ha ancora pagato il saldo.');
+    if (request.balanceRemindedAt && Date.parse(request.balanceRemindedAt) > Date.now() - 86_400_000) throw new HttpError(422, 'Hai già inviato un sollecito nelle ultime 24 ore.');
+    request.balanceRemindedAt = new Date().toISOString();
+    this.db.user(this.userId).audit.unshift({ action: 'participation.remind_balance', entity: 'participation_request', entityId: requestId, metadata: { trip: request.tripId }, createdAt: request.balanceRemindedAt });
+    return request.balanceRemindedAt;
+  }
+
   async savePricing(id: string, pricing: TripPricing) {
     if (!this.owned(id)) return null;
     const saved = { costs: structuredClone(pricing.costs), targetEarningsCents: pricing.targetEarningsCents, updatedAt: new Date().toISOString() };
@@ -551,6 +599,8 @@ class MemoryParticipationRepository implements ParticipationRepository {
     if (!item || item.tripId !== tripId) return null;
     if (!['pending', 'confirmed', 'declined'].includes(item.status)) throw new HttpError(403, 'Operazione non consentita.');
     if (status === 'confirmed' && trip.capacity !== undefined && seatsTaken(this.db, tripId, item.id) >= trip.capacity) throw new HttpError(422, 'I posti di questo viaggio sono esauriti.');
+    // Come il trigger SQL `participation_confirmed_event` (CP-01, CP-05).
+    if (status === 'confirmed' && item.status !== 'confirmed') this.db.events.push({ tripId, kind: 'booking_confirmed', userId: item.userId, createdAt: new Date().toISOString() });
     Object.assign(item, { status, decidedAt: new Date().toISOString() });
     return publicRequest(item);
   }

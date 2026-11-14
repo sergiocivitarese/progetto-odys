@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { MAX_TRIP_PARTICIPANTS, normalizeCostItems, SERVICE_RATE, type Itinerary } from '@odys/domain';
+import { dashboardRange, DASHBOARD_PERIODS, isDashboardPeriod, MAX_TRIP_PARTICIPANTS, normalizeCostItems, SERVICE_RATE, summarizeDashboard, type Itinerary } from '@odys/domain';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
 import { COORDINATOR_GUIDELINES_VERSION, coordinatorAlerts, type PlaceStory, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
 import type { CoordinatorApplicationInput, ParticipationCounts } from '../../shared/community';
 import type { DataStore } from '../../shared/data';
 import { handle, HttpError, requireObject } from '../../shared/http';
-import { UpgradeRequired } from '../../shared/entitlements';
+import { requireEntitlement, UpgradeRequired } from '../../shared/entitlements';
 import { generateFromBody } from '../generator/generator.routes';
 
 const MAX_ITINERARY_DAYS = 60;
@@ -209,6 +209,61 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
     const trip = await repo(res).get(String(req.params.id));
     if (!trip) throw new HttpError(404, 'Viaggio non trovato.');
     res.json(await store.participation(currentUser(res)).participants(trip.id));
+  }));
+
+  // Sollecito del saldo (CP-03): promemoria in app per chi è confermato e non ha ancora saldato.
+  router.post('/trips/:id/participants/:requestId/remind', handle(async (req, res) => {
+    const trip = await repo(res).get(String(req.params.id));
+    if (!trip) throw new HttpError(404, 'Viaggio non trovato.');
+    const remindedAt = await repo(res).remindBalance(String(req.params.requestId));
+    res.json({ remindedAt });
+  }));
+
+  // Dashboard del Coordinatore Premium (CP-01…CP-06): numeri calcolati dagli eventi registrati dal server.
+  router.get('/dashboard', requireEntitlement(store, 'analytics.coordinator'), handle(async (req, res) => {
+    const user = currentUser(res);
+    const periodo = req.query['periodo'] ?? 'month';
+    if (!isDashboardPeriod(periodo)) throw new HttpError(400, 'Periodo non valido.');
+    const now = new Date();
+    const range = dashboardRange(periodo, now);
+    const eightWeeksAgo = new Date(now.getTime() - 8 * 7 * 86_400_000).toISOString();
+    const since = range.previousFrom < eightWeeksAgo ? range.previousFrom : eightWeeksAgo;
+    const coordinator = repo(res);
+    const [trips, analytics] = await Promise.all([coordinator.list(), coordinator.analytics(since)]);
+    const participation = store.participation(user);
+    const counts = await participation.counts(trips.map((trip) => trip.id));
+    const summary = summarizeDashboard({
+      range, now, serviceRate: SERVICE_RATE,
+      events: analytics.events,
+      payments: analytics.payments,
+      trips: trips.map((trip) => ({ id: trip.id, title: trip.title, destination: trip.destination, capacity: trip.capacity, sold: counts.get(trip.id)?.confirmed ?? 0, effectiveStatus: trip.effectiveStatus, startDate: trip.startDate })),
+    });
+    // Saldi in sospeso, i più urgenti per primi (CP-03).
+    const today = now.toISOString().slice(0, 10);
+    const soon = new Date(now.getTime() + 14 * 86_400_000).toISOString().slice(0, 10);
+    const balances = (await Promise.all(trips.filter((trip) => (counts.get(trip.id)?.balanceDue ?? 0) > 0).map(async (trip) =>
+      (await participation.participants(trip.id)).filter((item) => item.status === 'confirmed').map((item) => {
+        const due = item.balanceDueDate ?? trip.balanceDueDate;
+        return {
+          requestId: item.id, tripId: trip.id, tripTitle: trip.title, name: `${item.firstName} ${item.lastName.slice(0, 1)}.`.trim(),
+          balanceDueDate: due, amountDueCents: item.priceCents !== undefined ? item.priceCents - (item.depositCents ?? 0) : undefined, currency: item.currency,
+          remindedAt: item.balanceRemindedAt, overdue: Boolean(due && due < today), dueSoon: Boolean(due && due >= today && due <= soon),
+        };
+      })))).flat().sort((a, b) => (a.balanceDueDate ?? '9999').localeCompare(b.balanceDueDate ?? '9999'));
+    const drafts = trips
+      .filter((trip) => trip.status === 'draft')
+      .map((trip) => ({ tripId: trip.id, title: trip.title, missing: coordinatorAlerts(trip, { pending: 0, balanceDue: 0 }).find((alert) => alert.kind === 'missing_fields')?.message }))
+      .filter((draft) => draft.missing);
+    const card = (await store.catalog(user).coordinator(user.id)) ?? undefined;
+    res.json({
+      summary,
+      periods: DASHBOARD_PERIODS,
+      serviceRate: SERVICE_RATE,
+      kpis: { rating: card?.rating ?? null, reviewsCount: card?.reviewsCount ?? 0, followers: card?.followers ?? 0 },
+      balances,
+      drafts,
+      posts: analytics.posts,
+    });
   }));
 
   router.post('/trips/:id/participants/:requestId/:decision', handle(async (req, res) => {

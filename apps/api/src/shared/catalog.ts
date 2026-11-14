@@ -1,4 +1,4 @@
-import { affinity, searchKey, sharesInterest, type Affinity, type CostItem, type Itinerary } from '@odys/domain';
+import { affinity, searchKey, sharesInterest, type Affinity, type AnalyticsEvent, type AnalyticsPayment, type CostItem, type Itinerary } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { StoredTrip } from './data';
 
@@ -179,6 +179,27 @@ export interface TripPricing {
   updatedAt?: string;
 }
 
+/** Rendimento di un post nel periodo (CP-06): prenotazioni attribuite all'ultimo post visto nei 30 giorni prima. */
+export interface PostPerformance {
+  postId: string;
+  caption: string;
+  tripId?: string;
+  publishedAt?: string;
+  views: number;
+  saves: number;
+  bookings: number;
+}
+
+/** Dati grezzi della dashboard (CP-01…CP-06), senza dati personali dei viaggiatori. */
+export interface CoordinatorAnalytics {
+  events: AnalyticsEvent[];
+  payments: AnalyticsPayment[];
+  posts: PostPerformance[];
+}
+
+/** Finestra dell'attribuzione provvisoria di una prenotazione a un post (punto aperto CP-06). */
+export const POST_ATTRIBUTION_DAYS = 30;
+
 /** Operazioni del coordinatore sui propri viaggi pubblicati (C-09…C-14). */
 export interface CoordinatorRepository {
   isCoordinator(): Promise<boolean>;
@@ -192,6 +213,10 @@ export interface CoordinatorRepository {
   /** Voci di costo del viaggio; vuote se non ancora indicate. null se il viaggio non è del coordinatore. */
   pricing(id: string): Promise<TripPricing | null>;
   savePricing(id: string, pricing: TripPricing): Promise<TripPricing | null>;
+  /** Eventi, pagamenti e post da `since` (richiede il diritto `analytics.coordinator`). */
+  analytics(since: string): Promise<CoordinatorAnalytics>;
+  /** Sollecito del saldo a un partecipante confermato (CP-03): restituisce l'istante del sollecito. */
+  remindBalance(requestId: string): Promise<string>;
 }
 
 /** Salvataggi e copie dei viaggi pubblicati per l'utente (U-08, U-21). */

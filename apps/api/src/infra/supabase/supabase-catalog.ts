@@ -10,6 +10,7 @@ import {
   type CatalogRepository,
   type CoordinatorCard,
   type CoordinatorRepository,
+  type CoordinatorAnalytics,
   type TripPricing,
   type PublishedTrip,
   type PublishedTripInput,
@@ -330,6 +331,20 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     const { data, error } = await this.db.from('published_trip_pricing').select('cost_items, target_earnings_cents, updated_at').eq('published_trip_id', id).maybeSingle();
     if (error) throw dbError(error);
     return data ? toPricing(data as PricingRow) : { costs: [], targetEarningsCents: null };
+  }
+
+  async analytics(since: string): Promise<CoordinatorAnalytics> {
+    const { data, error } = await this.db.rpc('coordinator_analytics', { p_since: since });
+    if (error) throw dbError(error);
+    const raw = (data ?? {}) as Partial<CoordinatorAnalytics>;
+    return { events: raw.events ?? [], payments: raw.payments ?? [], posts: (raw.posts ?? []).map((post) => ({ ...post, views: Number(post.views), saves: Number(post.saves), bookings: Number(post.bookings) })) };
+  }
+
+  async remindBalance(requestId: string): Promise<string> {
+    if (!isUuid(requestId)) throw dbError({ code: 'P0002', message: 'Richiesta non trovata.' });
+    const { data, error } = await this.db.rpc('remind_balance', { p_request_id: requestId });
+    if (error) throw dbError(error);
+    return String(data);
   }
 
   async savePricing(id: string, pricing: TripPricing): Promise<TripPricing | null> {

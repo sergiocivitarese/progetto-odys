@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { apiErrorMessage } from '../../core/api/api-client';
 import { CatalogApi, daysUntil, formatAmount, type Booking, type PublishedTripSummary } from '../../core/api/catalog.api';
@@ -19,7 +20,7 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
  */
 @Component({
   selector: 'odys-next-trip-page',
-  imports: [RouterLink, EmptyStateComponent, IconComponent, NoticeComponent, ReviewCardComponent],
+  imports: [DatePipe, RouterLink, EmptyStateComponent, IconComponent, NoticeComponent, ReviewCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page next">
@@ -54,6 +55,9 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
               </li>
             }
           </ol>
+          @if (b.status === 'confirmed' && b.balanceRemindedAt) {
+            <p class="reminder" role="status"><odys-icon name="bell" [size]="16" /> Il coordinatore ti ricorda il saldo ({{ b.balanceRemindedAt | date: 'd MMM, HH:mm' }}).</p>
+          }
           @if (b.status === 'confirmed') {
             <button type="button" class="pay" [disabled]="paying()" (click)="payBalance()">
               <odys-icon [name]="paying() ? 'loader' : 'lock'" [size]="18" [class.spin]="paying()" />
@@ -99,6 +103,7 @@ const STATUS: Record<string, string> = { pending: 'Richiesta inviata', confirmed
     </div>
   `,
   styles: `
+    .reminder { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-accent-soft); font-size: var(--text-sm); font-weight: 700; }
     .next { display: flex; flex-direction: column; gap: var(--space-5); max-width: 640px; }
     h1 { font-size: clamp(2.25rem, 1.5rem + 3vw, 3rem); }
     .skeleton { min-height: 280px; border-radius: var(--radius-xl); background: var(--color-surface-muted); }

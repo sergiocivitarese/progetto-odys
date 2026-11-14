@@ -124,6 +124,8 @@ export interface CreatorFeedRepository {
   feed(query: FeedQuery): Promise<CreatorPost[]>;
   get(id: string): Promise<CreatorPost | null>;
   likeCounts(ids: string[]): Promise<Map<string, number>>;
+  /** Visualizzazione del dettaglio (CP-06): una al giorno per utente, l'autore non conta. */
+  recordView(id: string): Promise<void>;
 }
 
 /** Like e salvataggi dell'utente (U-20). */

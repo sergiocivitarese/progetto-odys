@@ -31,6 +31,8 @@ export interface ParticipationRequest {
   depositCents?: number;
   currency: string;
   balanceDueDate?: string;
+  /** Ultimo sollecito del saldo inviato dal coordinatore (CP-03). */
+  balanceRemindedAt?: string;
 }
 
 export type PaymentKind = 'deposit' | 'balance';

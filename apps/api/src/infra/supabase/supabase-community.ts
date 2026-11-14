@@ -39,6 +39,7 @@ interface RequestRow {
   deposit_cents: number | null;
   currency: string;
   balance_due_date: string | null;
+  balance_reminded_at?: string | null;
 }
 
 interface ParticipantRow extends Omit<RequestRow, 'published_trip_id'> {
@@ -92,7 +93,7 @@ interface ReviewRow extends ApplicationRow {
   interests: string[] | null;
 }
 
-const REQUEST_COLUMNS = 'id, published_trip_id, status, message, created_at, decided_at, reserved_until, seat_number, price_cents, deposit_cents, currency, balance_due_date';
+const REQUEST_COLUMNS = 'id, published_trip_id, status, message, created_at, decided_at, reserved_until, seat_number, price_cents, deposit_cents, currency, balance_due_date, balance_reminded_at';
 // La nota interna dell'amministratore non è leggibile dal candidato (permessi di colonna).
 const APPLICATION_COLUMNS = 'id, status, motivation, experience, trips_led, languages, links, reviewer_message, created_at, decided_at';
 
@@ -104,7 +105,7 @@ function toRequest(row: RequestRow): ParticipationRequest {
   return {
     id: row.id, tripId: row.published_trip_id, status: row.status, message: row.message ?? undefined, createdAt: row.created_at, decidedAt: row.decided_at ?? undefined,
     reservedUntil: row.reserved_until ?? undefined, seatNumber: row.seat_number ?? undefined, priceCents: row.price_cents ?? undefined, depositCents: row.deposit_cents ?? undefined,
-    currency: row.currency ?? 'EUR', balanceDueDate: row.balance_due_date ?? undefined,
+    currency: row.currency ?? 'EUR', balanceDueDate: row.balance_due_date ?? undefined, balanceRemindedAt: row.balance_reminded_at ?? undefined,
   };
 }
 

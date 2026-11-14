@@ -39,7 +39,7 @@ export function navigationFor(has: (entitlement: Entitlement) => boolean): Navig
     return {
       tone: 'default',
       items: [
-        analytics ? { label: 'Dati', path: '/in-arrivo/dati', icon: 'chart-column' } : { label: 'Esplora', path: '/', icon: 'compass', exact: true },
+        analytics ? { label: 'Dati', path: '/dati', icon: 'chart-column' } : { label: 'Esplora', path: '/', icon: 'compass', exact: true },
         { label: 'Viaggi', path: '/coordinatore', icon: 'bag' },
         { label: 'Crea viaggio', path: '/coordinatore/nuovo', icon: 'plus', primary: true },
         { label: 'Feed', path: '/studio', icon: 'grid' },

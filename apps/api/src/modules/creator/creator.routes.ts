@@ -86,6 +86,8 @@ export function postsRouter(auth: AuthProvider, store: DataStore): Router {
     const viewer = await optionalUser(auth, req);
     const post = await store.feed(viewer).get(String(req.params.id));
     if (!post) throw new HttpError(404, 'Contenuto non trovato o non più disponibile.');
+    // CP-06: la visualizzazione la registra il server; un errore qui non blocca la lettura.
+    await store.feed(viewer).recordView(post.id).catch(() => undefined);
     res.json((await decorate(store, [post], viewer))[0]);
   }));
 

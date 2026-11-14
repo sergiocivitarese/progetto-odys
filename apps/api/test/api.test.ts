@@ -787,3 +787,65 @@ test('viaggio del coordinatore dal generatore e itinerario modificato nell’off
   db.addUser(traveler, undefined, 'base-itinerario@example.com');
   assert.equal((await call('POST', '/coordinator/trips', { generator }, traveler)).status, 403);
 });
+
+test('dashboard del Coordinatore Premium: guadagni, funnel, saldi da sollecitare, post che vendono (CP-01…CP-06)', async () => {
+  const coach = 'token-dashboard-coord';
+  const coachId = db.addUser(coach, undefined, 'dashboard@example.com');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Dario', lastName: 'Neri' });
+  await call('POST', '/coordinator/guidelines', {}, coach);
+  const traveler = 'token-dashboard-viaggiatore';
+  const travelerId = db.addUser(traveler, undefined, 'dash-viaggio@example.com');
+  Object.assign(db.user(travelerId).profile, { firstName: 'Lia', lastName: 'Bassi' });
+
+  // Coordinatore Base: la dashboard porta all'upgrade, non a un errore generico.
+  const locked = await call<{ code: string }>('GET', '/coordinator/dashboard', undefined, coach);
+  assert.deepEqual([locked.status, locked.data.code], [403, 'upgrade_required']);
+  db.user(coachId).plans = ['coordinator_premium'];
+
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Bologna' } });
+  const own = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coach);
+  const year = new Date().getFullYear() + 1;
+  const trip = (await call<{ id: string }>('POST', '/coordinator/trips', {
+    sourceTripId: own.data.id, title: 'Bologna da gustare', price: 400, capacity: 4,
+    summary: 'Tre giorni tra portici, mercati e cucina emiliana.', startDate: `${year}-04-10`, endDate: `${year}-04-12`,
+  }, coach)).data.id;
+  await call('POST', `/coordinator/trips/${trip}/publish`, {}, coach);
+
+  // Un post collegato al viaggio, visto dalla viaggiatrice prima di prenotare.
+  const post = (await call<{ id: string }>('POST', '/studio/posts', { caption: 'Tortellini a mano', rightsConfirmed: true, publishedTripId: trip }, coach)).data.id;
+  const media = await call<{ id: string }>('POST', `/studio/posts/${post}/media`, { mimeType: 'image/jpeg', sizeBytes: 1000, extension: 'jpg' }, coach);
+  await call('PATCH', `/studio/posts/${post}/media/${media.data.id}`, { status: 'ready' }, coach);
+  await call('POST', `/studio/posts/${post}/publish`, {}, coach);
+  await call('GET', `/posts/${post}`, undefined, traveler);
+  await call('GET', `/posts/${post}`, undefined, coach); // l'autore non conta
+
+  await call('GET', `/catalog/trips/${trip}`, undefined, traveler);
+  const reserved = await call<{ id: string }>('POST', `/bookings/trips/${trip}`, {}, traveler);
+  await call('POST', `/bookings/${reserved.data.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true }, traveler);
+  await waitFor(() => call<{ status: string }>('GET', `/bookings/${reserved.data.id}`, undefined, traveler), (booking) => booking.data.status === 'pending');
+  await call('POST', `/coordinator/trips/${trip}/participants/${reserved.data.id}/confirm`, {}, coach);
+
+  type Dashboard = {
+    summary: { earnings: { grossCents: number; netCents: number }; funnel: Array<{ key: string; count: number }>; seats: { sold: number; offered: number }; weeklyBookings: Array<{ count: number }>; activeTrips: Array<{ id: string; fill: number }> };
+    balances: Array<{ requestId: string; name: string; amountDueCents: number; remindedAt?: string }>;
+    posts: Array<{ postId: string; views: number; bookings: number }>;
+  };
+  const dash = await call<Dashboard>('GET', '/coordinator/dashboard?periodo=month', undefined, coach);
+  assert.equal(dash.status, 200);
+  assert.equal(dash.data.summary.earnings.grossCents, 10000, 'acconto di un quarto della quota');
+  assert.deepEqual(dash.data.summary.funnel.map((stage) => [stage.key, stage.count]), [['view', 1], ['save', 0], ['request', 1], ['booking_confirmed', 1]]);
+  assert.deepEqual(dash.data.summary.seats, { sold: 1, offered: 4 });
+  assert.equal(dash.data.summary.weeklyBookings.at(-1)?.count, 1);
+  assert.deepEqual(dash.data.summary.activeTrips.map((item) => [item.id, item.fill]), [[trip, 0.25]]);
+  assert.deepEqual(dash.data.balances.map((item) => [item.requestId, item.name, item.amountDueCents]), [[reserved.data.id, 'Lia B.', 30000]]);
+  assert.deepEqual(dash.data.posts.map((item) => [item.postId, item.views, item.bookings]), [[post, 1, 1]]);
+  assert.equal((await call('GET', '/coordinator/dashboard?periodo=boh', undefined, coach)).status, 400);
+
+  // Sollecita (CP-03): una volta ogni 24 ore; il viaggiatore lo vede in Prossimo viaggio.
+  const remind = `/coordinator/trips/${trip}/participants/${reserved.data.id}/remind`;
+  assert.equal((await call('POST', remind, {}, traveler)).status, 403);
+  assert.equal((await call('POST', remind, {}, coach)).status, 200);
+  assert.equal((await call('POST', remind, {}, coach)).status, 422);
+  const next = await call<{ balanceRemindedAt?: string }>('GET', '/me/next-trip', undefined, traveler);
+  assert.ok(next.data.balanceRemindedAt);
+});
