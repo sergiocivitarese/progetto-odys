@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { IconComponent, LogoComponent } from '../../../shared/ui';
 import { OnboardingStore } from '../../state/onboarding.store';
@@ -31,6 +31,8 @@ export class ShellComponent {
     return navigationFor((key) => this.entitlements.has(key));
   });
   protected readonly short = shortLabel;
+  /** Senza rete l'app mostra le pagine salvate dal service worker (lettura offline). */
+  protected readonly offline = signal(typeof navigator !== 'undefined' && !navigator.onLine);
   protected readonly onboarding = inject(OnboardingStore);
   // Istanziato qui così il tema salvato viene applicato all'avvio.
   protected readonly theme = inject(ThemeStore);
@@ -39,6 +41,10 @@ export class ShellComponent {
   private readonly account = inject(AccountStore);
 
   constructor() {
+    const update = () => this.offline.set(!navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    inject(DestroyRef).onDestroy(() => { window.removeEventListener('online', update); window.removeEventListener('offline', update); });
     void this.auth.start();
   }
 

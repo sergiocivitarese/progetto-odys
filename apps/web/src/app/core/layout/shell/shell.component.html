@@ -25,6 +25,9 @@
   </div>
 </header>
 
+@if (offline()) {
+  <p class="offline" role="status"><odys-icon name="wifi-off" [size]="16" /> Sei offline: vedi i viaggi e i giorni già aperti su questo dispositivo. Le modifiche tornano disponibili con la rete.</p>
+}
 <main id="main" class="main">
   <router-outlet />
 </main>

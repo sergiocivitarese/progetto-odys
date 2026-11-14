@@ -1,0 +1,14 @@
+{
+  "name": "Odys",
+  "short_name": "Odys",
+  "description": "Pianifica itinerari chiari, scopri viaggi di gruppo e parti con fiducia.",
+  "lang": "it",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F8F6F2",
+  "theme_color": "#121212",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

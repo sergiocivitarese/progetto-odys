@@ -1,0 +1,33 @@
+{
+  "$schema": "../../node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "resources": {
+        "files": ["/favicon.svg", "/index.html", "/manifest.webmanifest", "/*.css", "/*.js"]
+      }
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": ["/assets/**", "/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"]
+      }
+    }
+  ],
+  "dataGroups": [
+    {
+      "name": "viaggi-aperti",
+      "urls": ["/api/catalog/trips/*", "/api/trips/*", "/api/trips", "/api/me/next-trip", "/api/me/participations", "/api/bookings/*"],
+      "cacheConfig": { "strategy": "freshness", "maxSize": 60, "maxAge": "30d", "timeout": "5s" }
+    },
+    {
+      "name": "configurazione",
+      "urls": ["/api/config", "/api/me/entitlements", "/api/me"],
+      "cacheConfig": { "strategy": "freshness", "maxSize": 10, "maxAge": "30d", "timeout": "4s" }
+    }
+  ]
+}

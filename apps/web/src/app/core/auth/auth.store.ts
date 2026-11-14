@@ -135,12 +135,14 @@ export class AuthStore {
   async signOut(): Promise<void> {
     await this.client?.auth.signOut();
     this.session.set(null);
+    await clearOfflineData();
   }
 
   /** Dopo l'eliminazione dell'account: pulisce la sessione locale senza chiamare il server. */
   async clearLocalSession(): Promise<void> {
     await this.client?.auth.signOut({ scope: 'local' });
     this.session.set(null);
+    await clearOfflineData();
   }
 
   /** Carica un file nell'archivio dei media (Supabase Storage) con i permessi dell'utente (M-06). */
@@ -164,4 +166,18 @@ function readLinkError(): string | null {
   return code === 'otp_expired'
     ? 'Il link è scaduto o è già stato usato.'
     : params.get('error_description')?.replace(/\+/g, ' ') ?? 'Il link non è valido.';
+}
+
+/**
+ * All'uscita si cancellano i dati salvati per la lettura offline (viaggi, profilo, diritti):
+ * su un dispositivo condiviso il prossimo utente non deve vedere i viaggi di chi è uscito.
+ */
+async function clearOfflineData(): Promise<void> {
+  try {
+    if (typeof caches === 'undefined') return;
+    const names = await caches.keys();
+    await Promise.all(names.filter((name) => name.includes(':data:')).map((name) => caches.delete(name)));
+  } catch {
+    // Cache non disponibile (navigazione privata): niente da pulire.
+  }
 }
