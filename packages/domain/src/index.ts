@@ -23,5 +23,6 @@ export * from './lib/affinity';
 export * from './lib/split';
 export * from './lib/tripGenerator';
 export * from './lib/tripPricing';
+export * from './lib/socialKit';
 export * from './data/places';
 export * from './data/demo';

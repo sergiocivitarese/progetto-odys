@@ -9,6 +9,7 @@ import { TripsStore } from '../../core/state/trips.store';
 import { ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent } from '../../shared/ui';
 import { CoordinatorAccessComponent } from './coordinator-access.component';
 import { PricingPanelComponent } from './pricing-panel.component';
+import { SocialKitComponent } from './social-kit.component';
 
 function lines(value: string): string[] {
   return value.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -21,7 +22,7 @@ function lines(value: string): string[] {
  */
 @Component({
   selector: 'odys-published-trip-editor-page',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent, PricingPanelComponent],
+  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent, PricingPanelComponent, SocialKitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './published-trip-editor.page.html',
   styleUrl: './published-trip-editor.page.scss',
@@ -77,6 +78,8 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   protected readonly status = computed(() => this.existing()?.effectiveStatus ?? 'draft');
   protected readonly statusLabel = computed(() => PUBLISHED_STATUS_LABELS[this.status()]);
   protected readonly isPublic = computed(() => ['published', 'active', 'completed'].includes(this.status()));
+  /** Il kit social (CB-06) compare da quando il viaggio è pubblicato o programmato, finché è in vendita. */
+  protected readonly showKit = computed(() => ['published', 'scheduled'].includes(this.status()));
 
   async ngAfterViewInit(): Promise<void> {
     if (!(await this.access().check())) return;
@@ -228,7 +231,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
       const scheduled = action === 'schedule' ? new Date(this.scheduledFor()).toISOString() : undefined;
       this.fill(await this.api.changeStatus(saved.id, action, scheduled));
       const messages: Record<CoordinatorAction, string> = {
-        publish: this.visibility() === 'public' ? 'Viaggio pubblicato: ora è visibile a tutti in Esplora.' : this.visibility() === 'followers' ? 'Viaggio pubblicato per chi ti segue.' : 'Viaggio pubblicato su invito: resta fuori dal catalogo.',
+        publish: `${this.visibility() === 'public' ? 'Viaggio pubblicato: ora è visibile a tutti in Esplora.' : this.visibility() === 'followers' ? 'Viaggio pubblicato per chi ti segue.' : 'Viaggio pubblicato su invito: resta fuori dal catalogo.'} Il kit social è pronto: story, post e link per la bio.`,
         schedule: 'Pubblicazione programmata.',
         unpublish: 'Il viaggio è tornato in bozza e non è più visibile al pubblico.',
         cancel: 'Viaggio annullato.',

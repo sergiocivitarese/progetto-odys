@@ -148,6 +148,7 @@
               <button odysButton variant="ghost" icon="list" [block]="true" [disabled]="busy()" (click)="act('archive')">Archivia</button>
             }
           </section>
+          @if (showKit()) {<odys-social-kit [trip]="trip" />}
           <section class="card">
             <h2>Itinerario</h2>
             <p class="muted small">{{ trip.itinerary.days.length }} giornate, copiate dal tuo viaggio. Se l’hai modificato, aggiorna l’offerta con l’ultima versione.</p>

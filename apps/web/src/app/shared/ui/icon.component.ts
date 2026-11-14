@@ -4,7 +4,7 @@ import {
   CheckCircle2, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Cloud, CloudOff, Compass, Copy,
   CreditCard, Download, Edit3, Home, Info, List, Loader2, LucideAngularModule, LucideIconData, Map, MapPin, Menu, Minus,
   Navigation, Plane, Plus, RefreshCw, RotateCcw, Search, Share2, SlidersHorizontal, Sparkles, Square, Sun, Trash2, Upload,
-  Users, WifiOff, X, Zap, Heart, ShoppingBag, ChartPie, LayoutGrid, MessageSquare, ChartColumn, Box, Settings, Bell, BookOpen, Timer, Funnel, BadgeCheck, Play, Images, Moon, Monitor, Mail, Lock, LogOut, User, History, ShieldCheck, Footprints, Train, Bus, Car, Ship, Route, Star, Umbrella, Wind, Thermometer, Droplets,
+  Users, WifiOff, X, Zap, Heart, ShoppingBag, ChartPie, LayoutGrid, MessageSquare, ChartColumn, Box, Settings, Bell, BookOpen, Timer, Funnel, BadgeCheck, Play, Images, Moon, Monitor, Mail, Link, Lock, LogOut, User, History, ShieldCheck, Footprints, Train, Bus, Car, Ship, Route, Star, Umbrella, Wind, Thermometer, Droplets,
 } from 'lucide-angular';
 
 /** Registro delle icone disponibili nell'app: aggiungi qui una nuova icona Lucide. */
@@ -47,6 +47,7 @@ const ICONS = {
   menu: Menu,
   minus: Minus,
   mail: Mail,
+  link: Link,
   lock: Lock,
   'log-out': LogOut,
   user: User,
