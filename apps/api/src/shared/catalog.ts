@@ -27,6 +27,10 @@ export interface CoordinatorCard {
   followers?: number;
   /** Viaggi pubblicati e conclusi. */
   tripsCompleted?: number;
+  /** Lingue dichiarate nella candidatura approvata (CB-09). */
+  languages?: string[];
+  /** Candidatura approvata dall'amministratore: badge «verificato» (CB-09). */
+  verified?: boolean;
 }
 
 /** Recensione pubblica sul profilo del coordinatore (TB-12). */

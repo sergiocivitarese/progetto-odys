@@ -318,6 +318,10 @@ test('l’amministratore valuta la candidatura: l’approvazione attiva il ruolo
   assert.deepEqual(mine.rows, [{ status: 'approved', reviewer_message: 'Benvenuta in Odys!' }]);
   const audit = await asUser(admin, () => db.query(`select action from public.audit_log where action = 'coordinator_application.approve' and entity_id = $1`, [id]));
   assert.equal(audit.rows.length, 1);
+  // Profilo pubblico (CB-09): badge verificato dopo la candidatura approvata; chi non è passato dalla candidatura non lo ha.
+  const card = (who: string) => asAnon(() => db.query<{ verified: boolean; languages: string[] }>('select verified, languages from public.coordinator_profiles where id = $1', [who]));
+  assert.equal((await card(sara)).rows[0].verified, true);
+  assert.equal((await card(giulia)).rows[0].verified, false);
   await assert.rejects(asUser(admin, () => db.query('select public.admin_decide_coordinator_application($1, false)', [id])), /già stata valutata/);
 });
 

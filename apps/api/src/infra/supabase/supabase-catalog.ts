@@ -68,6 +68,8 @@ interface CoordinatorRow {
   reviews_count: number | null;
   followers: number | null;
   trips_completed: number | null;
+  languages?: string[] | null;
+  verified?: boolean | null;
 }
 
 const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max';
@@ -88,6 +90,8 @@ function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
     reviewsCount: row.reviews_count ?? 0,
     followers: row.followers ?? 0,
     tripsCompleted: row.trips_completed ?? 0,
+    languages: row.languages ?? [],
+    verified: Boolean(row.verified),
   };
 }
 

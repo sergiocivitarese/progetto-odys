@@ -336,6 +336,9 @@ test('candidatura a coordinatore: requisiti, revisione dell’amministratore e a
   const status = await call<{ isCoordinator: boolean; guidelinesAccepted: boolean }>('GET', '/coordinator/status', undefined, candidate);
   assert.deepEqual(status.data, { isCoordinator: true, guidelinesAccepted: true, guidelinesVersion: 'linee-guida-2026-10', application: null });
   assert.equal((await call('GET', '/coordinator/trips', undefined, candidate)).status, 200);
+  // Feed profilo (CB-09): lingue della candidatura e badge verificato.
+  const profile = await call<{ coordinator: { verified: boolean; languages: string[] } }>('GET', `/catalog/coordinators/${candidateId}`);
+  assert.deepEqual([profile.data.coordinator.verified, profile.data.coordinator.languages], [true, ['Italiano', 'Inglese']]);
 });
 
 test('suggerimenti OpenStreetMap: pubblici, con attribuzione e messi in cache', async () => {

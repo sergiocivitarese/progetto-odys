@@ -253,6 +253,9 @@ function card(db: MemoryDatabase, id: string) {
     reviewsCount: reviews.length,
     followers: [...db.follows.values()].filter((set) => set.has(id)).length,
     tripsCompleted: trips.filter((trip) => isPublic(trip) && !!trip.endDate && trip.endDate < today).length,
+    // Come la vista SQL: lingue e badge dalla candidatura approvata più recente.
+    languages: [...db.applications].reverse().find((item) => item.userId === id && item.status === 'approved')?.languages ?? [],
+    verified: db.applications.some((item) => item.userId === id && item.status === 'approved'),
   };
 }
 

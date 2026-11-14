@@ -21,6 +21,7 @@ export function countdown(iso: string | undefined, now: number): string {
   selector: 'odys-post-tile',
   imports: [RouterLink, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '[class.is-portrait]': "ratio() === 'portrait'" },
   template: `
     <a class="tile" [routerLink]="link()" [attr.aria-label]="label()">
       @if (cover(); as url) {
@@ -30,7 +31,7 @@ export function countdown(iso: string | undefined, now: number): string {
       }
       <span class="badges" aria-hidden="true">
         @if (post().media.length > 1) {<span class="badge"><odys-icon name="copy" [size]="14" /></span>}
-        @else if (post().media[0]?.kind === 'video') {<span class="badge"><odys-icon name="zap" [size]="14" /></span>}
+        @else if (post().media[0]?.kind === 'video') {<span class="badge"><odys-icon name="play" [size]="14" /></span>}
       </span>
       @if (showStatus()) {
         <span class="status status--{{ post().effectiveStatus }}">
@@ -41,7 +42,8 @@ export function countdown(iso: string | undefined, now: number): string {
   `,
   styles: `
     :host { display: block; }
-    .tile { position: relative; display: block; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-md); background: var(--color-surface-muted); }
+    :host(.is-portrait) { --tile-ratio: 4 / 5; }
+    .tile { position: relative; display: block; aspect-ratio: var(--tile-ratio, 1); overflow: hidden; border-radius: var(--radius-md); background: var(--color-surface-muted); }
     .tile:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
     img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; transition: transform var(--duration-base); }
     .tile:hover img { transform: scale(1.03); }
@@ -58,6 +60,8 @@ export class PostTileComponent {
   /** Bacheca privata: stato e link all'editor. */
   readonly showStatus = input(false);
   readonly now = input(Date.now());
+  /** `portrait` = griglia 4:5 del feed profilo (CB-09). */
+  readonly ratio = input<'square' | 'portrait'>('square');
 
   protected readonly link = computed(() => this.showStatus() ? ['/studio', this.post().id] : ['/esplora', this.post().id]);
   protected readonly cover = computed(() => this.post().media[0]?.urls?.thumbnail ?? this.post().media[0]?.urls?.display);

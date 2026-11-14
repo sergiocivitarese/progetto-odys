@@ -19,6 +19,9 @@ export interface CoordinatorCard {
   reviewsCount?: number;
   followers?: number;
   tripsCompleted?: number;
+  /** Lingue della candidatura approvata e badge «verificato» (CB-09). */
+  languages?: string[];
+  verified?: boolean;
 }
 
 export interface PublishedTripSummary {

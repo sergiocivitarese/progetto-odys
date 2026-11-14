@@ -7,13 +7,12 @@ import { AuthStore } from '../../core/auth/auth.store';
 import { AccountStore } from '../../core/state/account.store';
 import { CreatorApi, type Post } from '../../core/api/creator.api';
 import { PostTileComponent } from '../../shared/travel/post-tile.component';
-import { PublishedTripCardComponent } from '../../shared/travel/published-trip-card.component';
 import { EmptyStateComponent, IconComponent } from '../../shared/ui';
 
 /** Profilo pubblico del coordinatore (U-09, C-06…C-08): presentazione, viaggi pubblicati e contenuti. */
 @Component({
   selector: 'odys-coordinator-profile-page',
-  imports: [DatePipe, RouterLink, PublishedTripCardComponent, PostTileComponent, EmptyStateComponent, IconComponent],
+  imports: [DatePipe, RouterLink, PostTileComponent, EmptyStateComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
@@ -22,66 +21,103 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
         <odys-empty-state icon="user" title="Coordinatore non trovato" [description]="error()" />
       } @else if (coordinator(); as c) {
         <header class="head">
-          <span class="avatar" aria-hidden="true">{{ initials() }}</span>
+          <span class="avatar">
+            @if (c.avatarUrl) {<img [src]="c.avatarUrl" alt="" />} @else {<span aria-hidden="true">{{ initials() }}</span>}
+            @if (c.verified) {<span class="avatar__badge" title="Coordinatore verificato da Odys"><odys-icon name="verified" [size]="18" /></span>}
+          </span>
           <dl class="stats">
             <div><dd>{{ c.tripsCompleted ?? past().length }}</dd><dt>viaggi fatti</dt></div>
             <div><dd>@if (c.rating) {{{ rating() }}<span class="star">★</span>} @else {—}</dd><dt>{{ c.reviewsCount ?? 0 }} {{ c.reviewsCount === 1 ? 'recensione' : 'recensioni' }}</dt></div>
             <div><dd>{{ followersLabel() }}</dd><dt>follower</dt></div>
           </dl>
         </header>
-        <h1>{{ c.displayName }}@if (c.memberSince) {<span class="since"> · Coordinatore dal {{ c.memberSince | date: 'y' }}</span>}</h1>
+        <h1>{{ c.displayName }}@if (c.verified) {<span class="verified"><odys-icon name="verified" [size]="18" /><span class="sr-only">verificato</span></span>}</h1>
+        <p class="meta">@if (c.verified) {Coordinatore verificato}@else {Coordinatore Odys}@if (c.memberSince) { · dal {{ c.memberSince | date: 'y' }}}</p>
         @if (c.headline) {<p class="headline">{{ c.headline }}</p>}
         @if (c.bio) {<p class="bio">{{ c.bio }}</p>}
-        @if (c.interests.length) {<ul class="tags">@for (tag of c.interests; track tag) {<li>{{ tag }}</li>}</ul>}
+        @if (c.interests.length || c.languages?.length) {
+          <ul class="tags" aria-label="Interessi e lingue">
+            @for (tag of c.interests; track tag) {<li>{{ tag }}</li>}
+            @for (lang of c.languages ?? []; track lang) {<li class="tag--lang"><odys-icon name="message" [size]="13" /> {{ lang }}</li>}
+          </ul>
+        }
         <div class="actions">
           @if (!isMe()) {
             <button type="button" class="follow" [class.is-on]="following()" [attr.aria-pressed]="following()" [disabled]="busy()" (click)="toggleFollow()">{{ following() ? 'Segui già' : 'Segui' }}</button>
           }
-          @if (upcoming().length) {<a class="departures" href="#prossimi">Viaggi in partenza · {{ upcoming().length }}</a>}
+          @if (upcoming().length) {<button type="button" class="departures" (click)="tab.set('trips')">Viaggi in partenza · {{ upcoming().length }}</button>}
         </div>
-        @if (reviews()[0]; as review) {
-          <a class="quote" href="#recensioni">
-            <span class="quote__avatar" aria-hidden="true">{{ review.authorInitials }}</span>
-            <span><span class="stars" [attr.aria-label]="review.coordinatorRating + ' stelle su 5'">{{ stars(review.coordinatorRating) }}</span> <strong>{{ review.authorName }} · {{ review.tripDestination }}</strong><span class="quote__body">{{ review.body || 'Nessun commento' }}</span></span>
-          </a>
-        }
-        <a class="report-link" routerLink="/segnala" [queryParams]="{ tipo: 'profilo', id: c.id }"><odys-icon name="alert-triangle" [size]="14" /> Segnala questo profilo</a>
 
-        <h2 id="prossimi">Prossimi viaggi</h2>
-        <div class="grid">
-          @for (trip of upcoming(); track trip.id) {
-            <odys-published-trip-card [trip]="trip" [saved]="account.savedTrips().has(trip.id)" (toggleSave)="toggleSaved($event)" />
-          } @empty {
-            <p class="muted">Nessun viaggio in programma al momento.</p>
-          }
-        </div>
-        @if (posts().length) {
-          <h2>Contenuti</h2>
-          <div class="posts">
-            @for (post of posts(); track post.id) {<odys-post-tile [post]="post" />}
-          </div>
-        }
-        @if (reviews().length) {
-          <h2 id="recensioni">Recensioni</h2>
-          <ul class="reviews">
-            @for (review of reviews(); track review.id) {
+        @if (highlights().length) {
+          <ul class="highlights" aria-label="Highlight dei viaggi">
+            @for (trip of highlights(); track trip.id) {
               <li>
-                <span class="quote__avatar" aria-hidden="true">{{ review.authorInitials }}</span>
-                <div>
-                  <p><span class="stars" [attr.aria-label]="review.coordinatorRating + ' stelle su 5'">{{ stars(review.coordinatorRating) }}</span> <strong>{{ review.authorName }}</strong></p>
-                  <p class="muted small">{{ review.tripTitle }}@if (review.tripEnd) { · {{ review.tripEnd | date: 'MMM y' }}}</p>
-                  @if (review.body) {<p class="review__body">{{ review.body }}</p>}
-                </div>
+                <a [routerLink]="['/gruppi', trip.id]" class="hl">
+                  <span class="hl__ring" [class.hl__ring--done]="trip.effectiveStatus === 'completed'">
+                    @if (trip.coverImageUrl) {<img [src]="trip.coverImageUrl" alt="" loading="lazy" />} @else {<span class="hl__initial" aria-hidden="true">{{ trip.destination.slice(0, 1) }}</span>}
+                  </span>
+                  <span class="hl__label">{{ trip.destination }}</span>
+                </a>
               </li>
             }
           </ul>
         }
-        @if (past().length) {
-          <h2>Viaggi svolti</h2>
-          <div class="grid">
-            @for (trip of past(); track trip.id) {<odys-published-trip-card [trip]="trip" [showSave]="false" />}
-          </div>
-        }
+
+        <div class="tabs" role="tablist" aria-label="Contenuti del profilo">
+          @for (item of tabs(); track item.id) {
+            <button type="button" role="tab" class="tab" [id]="'tab-' + item.id" [attr.aria-selected]="tab() === item.id" [attr.aria-controls]="'panel-' + item.id" [attr.aria-label]="item.label + (item.count ? ', ' + item.count : '')" [class.is-on]="tab() === item.id" (click)="tab.set(item.id)">
+              <odys-icon [name]="item.icon" [size]="18" /><span>{{ item.label }}</span>@if (item.count) {<span class="tab__count">{{ item.count }}</span>}
+            </button>
+          }
+        </div>
+
+        <section class="panel" role="tabpanel" [id]="'panel-' + tab()" [attr.aria-labelledby]="'tab-' + tab()">
+          @switch (tab()) {
+            @case ('posts') {
+              <div class="grid45">
+                @for (post of posts(); track post.id) {<odys-post-tile [post]="post" ratio="portrait" />}
+                @empty {<p class="muted empty">Ancora nessun post.</p>}
+              </div>
+            }
+            @case ('videos') {
+              <div class="grid45">
+                @for (post of videos(); track post.id) {<odys-post-tile [post]="post" ratio="portrait" />}
+                @empty {<p class="muted empty">Ancora nessun video.</p>}
+              </div>
+            }
+            @case ('trips') {
+              <div class="grid45">
+                @for (trip of tripsOrdered(); track trip.id) {
+                  <a class="trip" [routerLink]="['/gruppi', trip.id]" [class.trip--done]="trip.effectiveStatus === 'completed'">
+                    @if (trip.coverImageUrl) {<img [src]="trip.coverImageUrl" alt="" loading="lazy" />}
+                    <span class="trip__shade"></span>
+                    <span class="trip__state">{{ trip.effectiveStatus === 'completed' ? 'Svolto' : trip.effectiveStatus === 'active' ? 'In corso' : 'In partenza' }}</span>
+                    <span class="trip__text">
+                      <strong>{{ trip.destination }}</strong>
+                      <span>{{ trip.startDate ? (trip.startDate | date: 'd MMM y') : 'Date in arrivo' }}</span>
+                    </span>
+                  </a>
+                } @empty {<p class="muted empty">Nessun viaggio da mostrare.</p>}
+              </div>
+            }
+            @case ('reviews') {
+              <ul class="reviews">
+                @for (review of reviews(); track review.id) {
+                  <li>
+                    <span class="quote__avatar" aria-hidden="true">{{ review.authorInitials }}</span>
+                    <div>
+                      <p><span class="stars" [attr.aria-label]="review.coordinatorRating + ' stelle su 5'">{{ stars(review.coordinatorRating) }}</span> <strong>{{ review.authorName }}</strong></p>
+                      <p class="muted small">{{ review.tripTitle }}@if (review.tripEnd) { · {{ review.tripEnd | date: 'MMM y' }}}</p>
+                      @if (review.body) {<p class="review__body">{{ review.body }}</p>}
+                    </div>
+                  </li>
+                } @empty {<li class="muted empty">Ancora nessuna recensione.</li>}
+              </ul>
+            }
+          }
+        </section>
+
+        <a class="report-link" routerLink="/segnala" [queryParams]="{ tipo: 'profilo', id: c.id }"><odys-icon name="alert-triangle" [size]="14" /> Segnala questo profilo</a>
       }
     </div>
   `,
@@ -117,7 +153,37 @@ import { EmptyStateComponent, IconComponent } from '../../shared/ui';
     h2 { font-size: var(--text-xl); margin: var(--space-8) 0 var(--space-4); }
     .grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
     .report-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-muted); }
-    .posts { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fill, minmax(min(45%, 200px), 1fr)); }
+    .avatar { position: relative; overflow: visible; img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; } }
+    .avatar__badge { position: absolute; right: -2px; bottom: -2px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--odys-blue); color: #fff; box-shadow: 0 0 0 3px var(--color-bg); }
+    .verified { display: inline-flex; vertical-align: -2px; margin-left: 6px; color: var(--odys-blue); }
+    .meta { margin-top: 2px; font-size: var(--text-sm); font-weight: 700; color: var(--color-text-muted); }
+    .tag--lang { display: inline-flex; align-items: center; gap: 4px; background: var(--color-primary-soft) !important; color: var(--color-link); }
+    .highlights { display: flex; gap: var(--space-4); margin: var(--space-6) calc(-1 * var(--layout-gutter, 16px)) 0; padding: 0 var(--layout-gutter, 16px) var(--space-2); list-style: none; overflow-x: auto; scrollbar-width: none; }
+    .hl { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 72px; color: var(--color-text); text-decoration: none; }
+    .hl__ring { display: grid; place-items: center; width: 68px; height: 68px; padding: 3px; border-radius: 50%; background: conic-gradient(from 40deg, var(--odys-blue) 0 300deg, transparent 300deg 330deg, var(--odys-coral) 330deg 360deg);
+      img, .hl__initial { width: 100%; height: 100%; border-radius: 50%; border: 3px solid var(--color-bg); object-fit: cover; } }
+    .hl__ring--done { background: var(--color-border-strong); }
+    .hl__initial { display: grid; place-items: center; background: var(--odys-ink); color: var(--odys-lime); font-weight: 900; font-size: var(--text-xl); }
+    .hl__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); font-weight: 700; }
+    .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: var(--space-6); border-bottom: var(--border-width) solid var(--color-border); }
+    .tab { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 4px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--color-text-muted); font: inherit; font-size: var(--text-sm); font-weight: 800; cursor: pointer;
+      &.is-on { color: var(--color-text); border-bottom-color: var(--color-text); } }
+    .tab__count { font-size: var(--text-xs); font-weight: 700; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+    @media (max-width: 479px) { .tab span:not(.tab__count) { display: none; } .tab.is-on span { display: inline; } }
+    .panel { padding-top: var(--space-3); }
+    .grid45 { display: grid; gap: 4px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 479px) { .grid45 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .empty { grid-column: 1 / -1; padding: var(--space-6) 0; text-align: center; }
+    .trip { position: relative; display: block; aspect-ratio: 4 / 5; overflow: hidden; border-radius: var(--radius-md); background: var(--odys-blue); color: #fff; text-decoration: none;
+      img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; } }
+    .trip--done { background: var(--odys-ink); }
+    .trip__shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgb(18 18 18 / 0) 40%, rgb(18 18 18 / 0.75)); }
+    .trip__state { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--odys-lime); color: var(--odys-ink); font-size: var(--text-xs); font-weight: 800; }
+    .trip--done .trip__state { background: rgb(255 255 255 / 0.85); }
+    .trip__text { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 2px;
+      strong { font-family: var(--font-brand); font-weight: 900; font-size: var(--text-lg); line-height: 1.05; text-transform: uppercase; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+      span { font-size: var(--text-xs); font-weight: 600; opacity: 0.9; } }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `,
 })
 export default class CoordinatorProfilePage {
@@ -143,6 +209,18 @@ export default class CoordinatorProfilePage {
     return value >= 1000 ? `${(value / 1000).toLocaleString('it-IT', { maximumFractionDigits: 1 })}k` : String(value);
   });
   protected readonly upcoming = computed(() => this.trips().filter((trip) => trip.effectiveStatus !== 'completed'));
+  /** Schede del feed (CB-09). Si apre su Post se ci sono contenuti, altrimenti su Viaggi. */
+  protected readonly tab = signal<'posts' | 'videos' | 'trips' | 'reviews' | null>(null);
+  protected readonly videos = computed(() => this.posts().filter((post) => post.media.some((media) => media.kind === 'video')));
+  protected readonly tripsOrdered = computed(() => [...this.upcoming(), ...this.past()]);
+  /** Highlight: i prossimi viaggi e poi gli ultimi svolti, come cerchi da scorrere. */
+  protected readonly highlights = computed(() => [...this.upcoming(), ...this.past()].slice(0, 12));
+  protected readonly tabs = computed(() => [
+    { id: 'posts' as const, label: 'Post', icon: 'grid' as const, count: this.posts().length },
+    { id: 'videos' as const, label: 'Video', icon: 'play' as const, count: this.videos().length },
+    { id: 'trips' as const, label: 'Viaggi', icon: 'bag' as const, count: this.trips().length },
+    { id: 'reviews' as const, label: 'Recensioni', icon: 'star' as const, count: this.reviews().length },
+  ]);
   protected readonly past = computed(() => this.trips().filter((trip) => trip.effectiveStatus === 'completed'));
 
   constructor() {
@@ -157,6 +235,7 @@ export default class CoordinatorProfilePage {
           this.coordinator.set(result.coordinator);
           this.trips.set(result.trips);
           this.posts.set(await this.creator.feed(id).catch(() => []));
+          if (!this.tab()) this.tab.set(this.posts().length ? 'posts' : 'trips');
         } catch (error) {
           this.error.set(apiErrorMessage(error, 'Profilo non disponibile.'));
         }
@@ -186,14 +265,5 @@ export default class CoordinatorProfilePage {
     } finally {
       this.busy.set(false);
     }
-  }
-
-  protected async toggleSaved(id: string): Promise<void> {
-    await this.auth.start();
-    if (!this.auth.isAuthenticated()) {
-      await this.router.navigate(['/accedi'], { queryParams: { ritorno: `/coordinatori/${this.id()}` } });
-      return;
-    }
-    await this.account.toggleSavedTrip(id).catch(() => undefined);
   }
 }

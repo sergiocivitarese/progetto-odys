@@ -18,6 +18,13 @@ const config = loadConfig();
 const db = new MemoryDatabase();
 const userId = db.addUser(TOKEN, 'demo-coordinatore', 'coordinatrice@odys.test');
 Object.assign(db.user(userId).profile, { role: 'coordinator', firstName: 'Nora', lastName: 'Conti' });
+Object.assign(db.user(userId).profile, { bio: 'Accompagno piccoli gruppi nel Sud Italia da dieci anni: ritmo lento, cucina di casa, luoghi fuori dalle guide.', interests: ['Storia', 'Cibo', 'Natura'] });
+// Candidatura approvata: badge «verificato» e lingue nel profilo pubblico (CB-09).
+db.applications.push({
+  id: 'demo-candidatura', userId, status: 'approved', createdAt: new Date().toISOString(), decidedAt: new Date().toISOString(),
+  motivation: 'Organizzo viaggi lenti in piccoli gruppi.', experience: 'Dieci anni di viaggi di gruppo nel Sud Italia.', tripsLed: 24,
+  languages: ['Italiano', 'Inglese', 'Spagnolo'], links: [], guidelinesVersion: 'demo',
+});
 
 const app = createApp(config, { auth: memoryAuthProvider(db), store: memoryDataStore(db) });
 const server = app.listen(config.port, async () => {
