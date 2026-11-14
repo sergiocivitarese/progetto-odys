@@ -95,3 +95,16 @@ test('upsert dei viaggi salvati mantiene createdAt e ordina per ultima modifica'
   assert.equal(second.trip.createdAt, first.trip.createdAt);
   assert.equal(second.trip.title, 'Roma rinominata');
 });
+
+test('spostare un giorno muove il programma, non numeri e date (CB-03)', () => {
+  const plan = domain.fallbackItinerary();
+  assert.ok(plan.days.length >= 3);
+  const labels = plan.days.map((day) => day.label);
+  const moved = domain.moveDay(plan, 0, 2);
+  assert.deepEqual(moved.days.map((day) => day.label), [labels[1], labels[2], labels[0], ...labels.slice(3)]);
+  assert.deepEqual(moved.days.map((day) => [day.day, day.date]), plan.days.map((day) => [day.day, day.date]));
+  assert.ok(moved.days[2].activities.every((activity, order) => activity.dayId === `day-${moved.days[2].date}` && activity.order === order));
+  assert.equal(domain.moveDay(plan, 0, 99), plan);
+  assert.deepEqual(domain.changedDayIndexes(plan, moved), [0, 1, 2]);
+  assert.deepEqual(domain.changedDayIndexes(plan, plan), []);
+});

@@ -1,8 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { AfterViewInit, ChangeDetectionStrategy, Component, computed, inject, input, signal, viewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MAX_TRIP_PARTICIPANTS, TRIP_INTERESTS } from '@odys/domain';
+import { changedDayIndexes, finalizeDraft, MAX_TRIP_PARTICIPANTS, TRIP_INTERESTS, type GeneratorDuration, type Itinerary } from '@odys/domain';
+import type { GeneratorRequest } from '../../core/api/generator.api';
 import { apiErrorMessage } from '../../core/api/api-client';
 import { CatalogApi, PUBLISHED_STATUS_LABELS, type CoordinatorAction, type PlaceStory, type PublishedTrip, type PublishedTripForm, type TripVisibility } from '../../core/api/catalog.api';
 import { TripsStore } from '../../core/state/trips.store';
@@ -10,19 +11,29 @@ import { ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFie
 import { CoordinatorAccessComponent } from './coordinator-access.component';
 import { PricingPanelComponent } from './pricing-panel.component';
 import { SocialKitComponent } from './social-kit.component';
+import { OfferItineraryEditorComponent } from './offer-itinerary-editor.component';
 
 function lines(value: string): string[] {
   return value.split('\n').map((line) => line.trim()).filter(Boolean);
 }
 
+type Step = 1 | 2 | 3 | 4;
+
+/** Durata del generatore più vicina al numero di giorni scelto. */
+function durationFor(days: number): GeneratorDuration {
+  if (days <= 3) return 'weekend';
+  if (days <= 5) return '3-5';
+  return days <= 7 ? '7' : '7+';
+}
+
 /**
- * Creazione e modifica di un viaggio pubblicato (C-09, C-12, C-13).
- * Si parte da un itinerario salvato; si aggiungono i dati di vendita;
- * poi si pubblica subito, si programma o si lascia in bozza.
+ * Crea viaggio in 4 passi (CB-02…CB-05): meta, itinerario, prezzo, pubblicazione.
+ * La bozza nasce alla fine del passo 2, dal generatore o da un viaggio salvato;
+ * da lì l'itinerario si modifica dentro l'offerta (CB-03).
  */
 @Component({
   selector: 'odys-published-trip-editor-page',
-  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent, PricingPanelComponent, SocialKitComponent],
+  imports: [FormsModule, DatePipe, RouterLink, ButtonComponent, ChipComponent, IconComponent, NoticeComponent, TextFieldComponent, CoordinatorAccessComponent, PricingPanelComponent, SocialKitComponent, OfferItineraryEditorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './published-trip-editor.page.html',
   styleUrl: './published-trip-editor.page.scss',
@@ -36,6 +47,25 @@ export default class PublishedTripEditorPage implements AfterViewInit {
 
   /** Parametro di rotta: assente per un nuovo viaggio. */
   readonly id = input<string>();
+  /** `?passo=` per riaprire l'editor su un passo preciso. */
+  readonly passo = input<string>();
+
+  protected readonly steps: Array<{ n: Step; label: string }> = [
+    { n: 1, label: 'Meta' },
+    { n: 2, label: 'Itinerario' },
+    { n: 3, label: 'Prezzo' },
+    { n: 4, label: 'Pubblicazione' },
+  ];
+  protected readonly step = signal<Step>(1);
+  protected readonly origin = signal<'generator' | 'saved'>('generator');
+  /** Itinerario dell'offerta in modifica e versione salvata, per sapere se va inviato. */
+  protected readonly itinerary = signal<Itinerary | null>(null);
+  private readonly savedItinerary = signal<Itinerary | null>(null);
+  protected readonly itineraryDirty = computed(() => {
+    const draft = this.itinerary();
+    const saved = this.savedItinerary();
+    return Boolean(draft && saved && draft !== saved && changedDayIndexes(saved, draft).length);
+  });
 
   protected readonly ready = signal(false);
   protected readonly existing = signal<PublishedTrip | null>(null);
@@ -80,6 +110,101 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   protected readonly isPublic = computed(() => ['published', 'active', 'completed'].includes(this.status()));
   /** Il kit social (CB-06) compare da quando il viaggio è pubblicato o programmato, finché è in vendita. */
   protected readonly showKit = computed(() => ['published', 'scheduled'].includes(this.status()));
+  /** Campi che la pubblicazione richiede (stesse regole del server, C-13). */
+  protected readonly missing = computed(() => [
+    this.summary().trim().length < 20 && 'descrizione (passo 1)',
+    (!this.startDate() || !this.endDate()) && 'date (passo 1)',
+    !this.capacity().trim() && 'posti (passo 1)',
+    !this.price().trim() && 'quota (passo 3)',
+  ].filter((item): item is string => Boolean(item)));
+
+  constructor() {
+    effect(() => {
+      const wanted = Number(this.passo());
+      untracked(() => { if (wanted >= 1 && wanted <= 4 && !(this.isNew() && wanted > 2)) this.step.set(wanted as Step); });
+    });
+  }
+
+  protected stepDone(n: Step): boolean {
+    if (n === 1) return this.title().trim().length >= 3 && Boolean(this.destination().trim() && this.startDate() && this.endDate() && this.capacity().trim());
+    if (n === 2) return Boolean(this.existing()?.itinerary.days.length);
+    if (n === 3) return Boolean(this.existing() && this.price().trim());
+    return ['published', 'scheduled', 'active', 'completed'].includes(this.existing()?.status ?? '');
+  }
+
+  protected async goTo(n: Step): Promise<void> {
+    if (this.isNew() && n > 2) return;
+    if (n === this.step()) return;
+    // Cambiando passo si salva, così nulla si perde (solo per i viaggi già creati).
+    if (!this.isNew() && !(await this.save(false))) return;
+    this.setStep(n);
+  }
+
+  private setStep(n: Step): void {
+    this.step.set(n);
+    const id = this.existing()?.id;
+    if (id) void this.router.navigate(['/coordinatore', id], { queryParams: { passo: n }, replaceUrl: true });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  protected async next(): Promise<void> {
+    const current = this.step();
+    if (this.isNew()) {
+      if (current === 1) {
+        if (this.title().trim() && this.title().trim().length < 3) { this.error.set('Il titolo deve avere almeno 3 caratteri.'); return; }
+        if (!this.destination().trim()) { this.error.set('Indica la meta del viaggio.'); return; }
+        if (this.startDate() && this.endDate() && this.endDate() < this.startDate()) { this.error.set('Il rientro non può precedere la partenza.'); return; }
+        this.error.set('');
+        if (!this.trips.trips().length) this.origin.set('generator');
+        this.setStep(2);
+        return;
+      }
+      await this.create();
+      return;
+    }
+    if (current < 4 && (await this.save(false))) this.setStep((current + 1) as Step);
+  }
+
+  protected async back(): Promise<void> {
+    const current = this.step();
+    if (current > 1) await this.goTo((current - 1) as Step);
+  }
+
+  /** Parametri del generatore presi dal passo 1. */
+  private generatorRequest(): GeneratorRequest {
+    const start = this.startDate();
+    const end = this.endDate();
+    const days = start && end ? Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1 : 4;
+    const price = Number(this.price().replace(',', '.'));
+    const nextMonth = ((new Date().getMonth() + 1) % 12) + 1;
+    return {
+      destination: this.destination().trim(),
+      surprise: false,
+      dates: start && end ? { mode: 'precise', departure: start, returnDate: end } : { mode: 'flexible', months: [nextMonth] },
+      duration: durationFor(days),
+      budget: Number.isFinite(price) && price >= 50 ? Math.min(price, 20000) : 800,
+      interests: this.interests().length ? this.interests() : ['Cibo', 'Storia'],
+      seed: Math.floor(Math.random() * 1000),
+    };
+  }
+
+  /** Fine del passo 2 per un viaggio nuovo: nasce la bozza e si continua dal suo itinerario. */
+  private async create(): Promise<void> {
+    await this.run(async () => {
+      const base = this.form();
+      const created = this.origin() === 'generator'
+        ? await this.api.createPublished({ ...base, generator: this.generatorRequest() })
+        : await (async () => {
+          if (!this.sourceTripId()) throw new Error('Scegli uno dei tuoi viaggi da cui partire.');
+          return this.api.createPublished({ ...base, sourceTripId: this.sourceTripId() });
+        })();
+      // Da /nuovo a /:id Angular crea una nuova pagina: il messaggio viaggia con la navigazione.
+      const notice = this.origin() === 'generator' ? 'Bozza creata con l’itinerario di Odys: rivedi i giorni e cambia ciò che vuoi.' : 'Bozza creata: l’itinerario è una copia, modificalo qui.';
+      await this.router.navigate(['/coordinatore', created.id], { queryParams: { passo: 2 }, replaceUrl: true, state: { notice } });
+      return created;
+    });
+  }
+
 
   async ngAfterViewInit(): Promise<void> {
     if (!(await this.access().check())) return;
@@ -91,12 +216,14 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     await this.trips.load();
     const id = this.id();
     if (!id) {
-      const first = this.trips.trips()[0];
-      if (first) this.chooseSource(first.id);
+      // Il primo viaggio salvato è pronto come origine, ma non riempie i campi del passo 1.
+      this.sourceTripId.set(this.trips.trips()[0]?.id ?? '');
       return;
     }
     try {
       this.fill(await this.api.myPublishedTrip(id));
+      const notice = (typeof history !== 'undefined' ? (history.state as { notice?: unknown } | null)?.notice : undefined);
+      if (typeof notice === 'string') this.message.set(notice);
     } catch (error) {
       this.error.set(apiErrorMessage(error, 'Viaggio non trovato.'));
     }
@@ -106,10 +233,11 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     this.sourceTripId.set(id);
     const trip = this.trips.trips().find((item) => item.id === id);
     if (!trip) return;
+    // Completa solo ciò che al passo 1 è rimasto vuoto.
     if (!this.title()) this.title.set(trip.title);
-    this.destination.set(trip.itinerary.destination);
-    this.startDate.set(trip.itinerary.departure ?? '');
-    this.endDate.set(trip.itinerary.returnDate ?? '');
+    if (!this.destination()) this.destination.set(trip.itinerary.destination);
+    if (!this.startDate()) this.startDate.set(trip.itinerary.departure ?? '');
+    if (!this.endDate()) this.endDate.set(trip.itinerary.returnDate ?? '');
   }
 
   private fill(trip: PublishedTrip): void {
@@ -132,6 +260,8 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     this.visibility.set(trip.visibility);
     this.ageMin.set(trip.ageMin !== undefined ? String(trip.ageMin) : '');
     this.ageMax.set(trip.ageMax !== undefined ? String(trip.ageMax) : '');
+    this.itinerary.set(trip.itinerary);
+    this.savedItinerary.set(trip.itinerary);
     this.stories.set(structuredClone(trip.placeStories ?? []).map((story) => ({ ...story, milestones: [0, 1, 2].map((index) => story.milestones[index] ?? { when: '', text: '' }) })));
   }
 
@@ -166,7 +296,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     const capacity = this.capacity().trim();
     const deposit = this.deposit().trim().replace(',', '.');
     return {
-      title: this.title().trim(),
+      title: this.title().trim() || undefined,
       summary: this.summary().trim(),
       destination: this.destination().trim(),
       startDate: this.startDate(),
@@ -189,23 +319,20 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     };
   }
 
-  /** Salva i dati; per un nuovo viaggio crea la bozza e passa alla sua pagina. */
-  protected async save(): Promise<PublishedTrip | null> {
+  /** Salva i dati del viaggio già creato, con itinerario (se cambiato) e costi. */
+  protected async save(announce = true): Promise<PublishedTrip | null> {
+    const existing = this.existing();
+    if (!existing) return null;
     return this.run(async () => {
-      const existing = this.existing();
-      if (!existing) {
-        if (!this.sourceTripId()) throw new Error('Scegli uno dei tuoi viaggi da cui partire.');
-        const created = await this.api.createPublished({ ...this.form(), sourceTripId: this.sourceTripId() });
-        this.fill(created);
-        await this.router.navigate(['/coordinatore', created.id], { replaceUrl: true });
-        this.message.set('Bozza salvata. Quando è pronta, pubblicala o programmala.');
-        return created;
-      }
-      const updated = await this.api.updatePublished(existing.id, this.form());
+      const draft = this.itinerary();
+      const saved = this.savedItinerary();
+      const form = this.form();
+      if (draft && saved && this.itineraryDirty()) form.itinerary = finalizeDraft(draft, changedDayIndexes(saved, draft));
+      const updated = await this.api.updatePublished(existing.id, form);
       // I costi (CB-04) si salvano insieme al resto: un solo pulsante.
       await this.pricing()?.save();
       this.fill(updated);
-      this.message.set('Modifiche salvate.');
+      if (announce) this.message.set('Modifiche salvate.');
       return updated;
     });
   }

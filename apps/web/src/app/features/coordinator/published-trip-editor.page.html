@@ -1,163 +1,213 @@
 <div class="page">
-  <a routerLink="/coordinatore" class="back"><odys-icon name="arrow-left" [size]="16" /> Area coordinatore</a>
+  <a routerLink="/coordinatore" class="back"><odys-icon name="arrow-left" [size]="16" /> I tuoi viaggi</a>
   <header class="head">
     <div>
-      <p class="eyebrow">{{ isNew() ? 'Nuovo viaggio pubblicato' : 'Stato: ' + statusLabel() }}</p>
-      <h1>{{ title() || 'Viaggio senza titolo' }}</h1>
+      <p class="eyebrow">{{ isNew() ? 'Crea viaggio' : 'Stato: ' + statusLabel() }}</p>
+      <h1>{{ title() || (isNew() ? 'Nuovo viaggio' : 'Viaggio senza titolo') }}</h1>
     </div>
-    @if (isPublic() && existing()) {
-      <a odysButton variant="secondary" icon="arrow-up-right" [routerLink]="['/gruppi', existing()!.id]">Vedi pagina pubblica</a>
+    @if (existing(); as trip) {
+      <div class="head__links">
+        <a odysButton variant="secondary" size="sm" icon="users" [routerLink]="['/coordinatore', trip.id, 'partecipanti']">Partecipanti</a>
+        @if (isPublic()) {<a odysButton variant="secondary" size="sm" icon="arrow-up-right" [routerLink]="['/gruppi', trip.id]">Pagina pubblica</a>}
+      </div>
     }
   </header>
 
   <odys-coordinator-access (accepted)="start()" />
 
   @if (ready()) {
+    <nav class="steps" aria-label="Passi del viaggio">
+      <ol>
+        @for (item of steps; track item.n) {
+          <li>
+            <button type="button" class="step" [class.is-current]="step() === item.n" [class.is-done]="stepDone(item.n)"
+              [attr.aria-current]="step() === item.n ? 'step' : null" [disabled]="isNew() && item.n > 2" (click)="goTo(item.n)">
+              <span class="step__n">@if (stepDone(item.n) && step() !== item.n) {<odys-icon name="check" [size]="14" />} @else {{{ item.n }}}</span>
+              <span class="step__label">{{ item.label }}</span>
+            </button>
+          </li>
+        }
+      </ol>
+    </nav>
+
     @if (error()) {<odys-notice tone="danger">{{ error() }}</odys-notice>}
     @if (message()) {<odys-notice tone="success">{{ message() }}</odys-notice>}
 
-    <div class="layout">
-      <form class="form" (submit)="$event.preventDefault(); save()" novalidate>
-        @if (isNew()) {
+    <form class="form" (submit)="$event.preventDefault(); next()" novalidate>
+      @switch (step()) {
+        @case (1) {
           <section class="card">
-            <h2>1. Da quale itinerario parti?</h2>
-            @if (trips.trips().length) {
-              <label class="label" for="source">Uno dei tuoi viaggi salvati</label>
-              <select id="source" class="select" [ngModel]="sourceTripId()" (ngModelChange)="chooseSource($event)" name="source">
-                @for (trip of trips.trips(); track trip.id) {<option [value]="trip.id">{{ trip.title }} · {{ trip.itinerary.destination }}</option>}
-              </select>
-              <p class="hint">L’itinerario giorno per giorno viene copiato nell’offerta. Potrai aggiornarlo in seguito dal tuo viaggio.</p>
-            } @else {
-              <odys-notice tone="warning">Prima crea e salva un itinerario: <a routerLink="/pianifica">pianifica un viaggio</a>.</odys-notice>
-            }
-          </section>
-        }
-
-        <section class="card">
-          <h2>{{ isNew() ? '2. ' : '' }}Presentazione</h2>
-          <odys-text-field label="Titolo" [(value)]="title" placeholder="Es. Lisbona slow in piccolo gruppo" />
-          <odys-text-field label="Descrizione" [multiline]="true" hint="Almeno 20 caratteri: cosa si vive, per chi è pensato, il ritmo." [(value)]="summary" />
-          <odys-text-field label="Meta" icon="map-pin" hint="Compare in grande sulla card: una città o un’area, es. «Yucatán»." [(value)]="destination" />
-          <div class="two">
-            <odys-text-field label="Paese" placeholder="Es. Messico" hint="Serve alla ricerca: chi cerca «Messico» trova questo viaggio." [(value)]="country" />
-            <odys-text-field label="Regione (facoltativa)" placeholder="Es. Penisola dello Yucatán" [(value)]="region" />
-          </div>
-          <div>
-            <p class="label" id="interests-label">Interessi del viaggio</p>
-            <div class="chips" role="group" aria-labelledby="interests-label">
-              @for (item of interestOptions; track item) {
-                <button odysChip [selected]="interests().includes(item)" (click)="toggleInterest(item)">{{ item }}</button>
-              }
+            <h2>La meta</h2>
+            <odys-text-field label="Titolo" [(value)]="title" placeholder="Es. Lisbona slow in piccolo gruppo" />
+            <odys-text-field label="Meta" icon="map-pin" hint="Compare in grande sulla card: una città o un’area, es. «Yucatán»." [(value)]="destination" />
+            <div class="two">
+              <odys-text-field label="Paese" placeholder="Es. Messico" hint="Chi cerca «Messico» trova questo viaggio." [(value)]="country" />
+              <odys-text-field label="Regione (facoltativa)" placeholder="Es. Penisola dello Yucatán" [(value)]="region" />
             </div>
-            <p class="hint">Servono ai filtri e all’affinità «X% per te» mostrata ai viaggiatori.</p>
-          </div>
-          <odys-text-field label="Immagine di copertina (facoltativa)" placeholder="https://…" hint="Indirizzo https di un’immagine. Il caricamento delle foto arriverà con il Creator Studio." [(value)]="coverImageUrl" />
-        </section>
-
-        <section class="card">
-          <h2>{{ isNew() ? '3. ' : '' }}Date, posti e quota</h2>
-          <div class="two">
-            <odys-text-field label="Partenza" type="date" [(value)]="startDate" />
-            <odys-text-field label="Rientro" type="date" [(value)]="endDate" />
-          </div>
-          <div class="two">
-            <odys-text-field label="Quota a persona (€)" inputMode="decimal" placeholder="Es. 690" [(value)]="price" />
+            <odys-text-field label="Descrizione" [multiline]="true" hint="Almeno 20 caratteri: cosa si vive, per chi è pensato, il ritmo." [(value)]="summary" />
+            <odys-text-field label="Immagine di copertina (facoltativa)" placeholder="https://…" hint="Indirizzo https di un’immagine: la usano la card e il kit social." [(value)]="coverImageUrl" />
+          </section>
+          <section class="card">
+            <h2>Date, posti e gruppo</h2>
+            <div class="two">
+              <odys-text-field label="Partenza" type="date" [(value)]="startDate" />
+              <odys-text-field label="Rientro" type="date" [(value)]="endDate" />
+            </div>
             <odys-text-field label="Posti disponibili" inputMode="numeric" placeholder="Es. 12" [hint]="'Al massimo ' + maxSeats + ', tu escluso.'" [(value)]="capacity" />
-          </div>
-          <div class="two">
-            <odys-text-field label="Acconto per bloccare il posto (€)" inputMode="decimal" placeholder="Es. 300" hint="Se lo lasci vuoto vale un quarto della quota." [(value)]="deposit" />
-            <odys-text-field label="Saldo entro il" type="date" hint="Se lo lasci vuoto: 30 giorni prima della partenza." [(value)]="balanceDueDate" />
-          </div>
-          <div class="two">
-            <odys-text-field label="Età minima (facoltativa)" inputMode="numeric" placeholder="Es. 25" [(value)]="ageMin" />
-            <odys-text-field label="Età massima (facoltativa)" inputMode="numeric" placeholder="Es. 40" [(value)]="ageMax" />
-          </div>
-          <div>
-            <p class="label" id="visibility-label">Visibilità</p>
-            <div class="segmented" role="radiogroup" aria-labelledby="visibility-label">
-              @for (item of visibilities; track item.value) {
-                <button type="button" role="radio" [attr.aria-checked]="visibility() === item.value" [class.is-on]="visibility() === item.value" (click)="visibility.set(item.value)">{{ item.label }}</button>
-              }
+            <div class="two">
+              <odys-text-field label="Età minima (facoltativa)" inputMode="numeric" placeholder="Es. 25" [(value)]="ageMin" />
+              <odys-text-field label="Età massima (facoltativa)" inputMode="numeric" placeholder="Es. 40" [(value)]="ageMax" />
             </div>
-            <p class="hint">{{ visibilityHint() }}</p>
-          </div>
-        </section>
-
-        @if (!isNew() && existing(); as trip) {
-          <odys-pricing-panel [tripId]="trip.id" [price]="price()" [capacity]="capacity()" [currency]="trip.currency" (usePrice)="price.set(formatEuros($event))" />
-        }
-
-        <section class="card">
-          <h2>{{ isNew() ? '4. ' : '' }}Cosa è incluso</h2>
-          <p class="hint">Una voce per riga. Indicare con chiarezza cosa è escluso (per esempio i voli) evita dubbi prima dell’iscrizione.</p>
-          <div class="two">
-            <odys-text-field label="Incluso" [multiline]="true" placeholder="Alloggio in camera doppia&#10;Coordinatore per tutto il viaggio" [(value)]="included" />
-            <odys-text-field label="Escluso" [multiline]="true" placeholder="Voli&#10;Pasti non indicati" [(value)]="excluded" />
-          </div>
-        </section>
-
-        @if (!isNew()) {
-          <section class="card">
-            <h2>Storia dei luoghi</h2>
-            <p class="hint">Per le attrazioni più importanti: una frase d’apertura, il racconto e fino a tre date chiave. La leggono i viaggiatori Premium nella pagina del viaggio. Solo testo.</p>
-            @for (story of stories(); track story.id) {
-              <div class="story-edit">
-                <div class="two">
-                  <label class="label">Luogo<input class="select" [name]="'st-title-' + story.id" maxlength="80" placeholder="Es. Villa Cimbrone" [ngModel]="story.title" (ngModelChange)="editStory(story.id, { title: $event })" /></label>
-                  <label class="label">Giorno<input class="select" type="number" min="1" max="60" [name]="'st-day-' + story.id" [ngModel]="story.day" (ngModelChange)="editStory(story.id, { day: $event })" /></label>
-                </div>
-                <label class="label">Frase d’apertura (facoltativa)<input class="select" [name]="'st-intro-' + story.id" maxlength="280" [ngModel]="story.intro" (ngModelChange)="editStory(story.id, { intro: $event })" /></label>
-                <label class="label">Testo storico<textarea class="select" rows="4" maxlength="1500" [name]="'st-body-' + story.id" [ngModel]="story.body" (ngModelChange)="editStory(story.id, { body: $event })"></textarea></label>
-                <p class="label">La storia in 3 tappe</p>
-                @for (step of story.milestones; track $index) {
-                  <div class="step-edit">
-                    <input class="select" [attr.aria-label]="'Data della tappa ' + ($index + 1)" maxlength="30" placeholder="Es. 1904" [name]="'st-when-' + story.id + $index" [ngModel]="step.when" (ngModelChange)="editStory(story.id, {}, { index: $index, when: $event })" />
-                    <input class="select" [attr.aria-label]="'Cosa è successo nella tappa ' + ($index + 1)" maxlength="160" placeholder="Cosa è successo" [name]="'st-text-' + story.id + $index" [ngModel]="step.text" (ngModelChange)="editStory(story.id, {}, { index: $index, text: $event })" />
-                  </div>
+            <div>
+              <p class="label" id="interests-label">Interessi del viaggio</p>
+              <div class="chips" role="group" aria-labelledby="interests-label">
+                @for (item of interestOptions; track item) {
+                  <button odysChip [selected]="interests().includes(item)" (click)="toggleInterest(item)">{{ item }}</button>
                 }
-                <button odysButton type="button" variant="ghost" size="sm" icon="trash" (click)="removeStory(story.id)">Togli questa storia</button>
               </div>
-            }
-            <button odysButton type="button" variant="secondary" icon="plus" (click)="addStory()">Aggiungi un luogo</button>
+              <p class="hint">Servono ai filtri, all’affinità «X% per te» e al generatore dell’itinerario.</p>
+            </div>
           </section>
         }
 
-        <button odysButton type="submit" variant="secondary" icon="check" [loading]="busy()">{{ isNew() ? 'Salva come bozza' : 'Salva modifiche' }}</button>
-      </form>
-
-      @if (!isNew() && existing(); as trip) {
-        <aside class="side">
-          <section class="card">
-            <h2>Pubblicazione</h2>
-            <p class="muted small">Stato attuale: <strong>{{ statusLabel() }}</strong>@if (trip.publishedAt) { · pubblicato il {{ trip.publishedAt | date: 'd MMM y' }}}</p>
-            @if (trip.status === 'draft' || trip.status === 'scheduled') {
-              <button odysButton variant="accent" icon="zap" [block]="true" [loading]="busy()" (click)="act('publish')">Pubblica ora</button>
-              <div class="schedule">
-                <label class="label" for="when">Oppure programma la pubblicazione</label>
-                <input id="when" type="datetime-local" class="select" [ngModel]="scheduledFor()" (ngModelChange)="scheduledFor.set($event)" name="when" />
-                <button odysButton variant="secondary" icon="calendar" [block]="true" [disabled]="busy()" (click)="act('schedule')">Programma</button>
+        @case (2) {
+          @if (isNew()) {
+            <section class="card">
+              <h2>Da dove parte l’itinerario?</h2>
+              <div class="segmented" role="radiogroup" aria-label="Origine dell’itinerario">
+                <button type="button" role="radio" [attr.aria-checked]="origin() === 'generator'" [class.is-on]="origin() === 'generator'" (click)="origin.set('generator')">Generalo con Odys</button>
+                <button type="button" role="radio" [attr.aria-checked]="origin() === 'saved'" [class.is-on]="origin() === 'saved'" (click)="origin.set('saved')">Da un mio viaggio</button>
               </div>
-            }
-            @if (trip.status === 'published' || trip.status === 'scheduled') {
-              @if (trip.effectiveStatus !== 'active' && trip.effectiveStatus !== 'completed') {
-                <button odysButton variant="ghost" icon="restore" [block]="true" [disabled]="busy()" (click)="act('unpublish')">Ritira e torna in bozza</button>
+              @if (origin() === 'generator') {
+                <p class="hint">Odys prepara un giorno per ogni data, con meta e interessi del passo 1. Dopo potrai riordinare i giorni e cambiare ogni attività.</p>
+                <dl class="recap">
+                  <div><dt>Meta</dt><dd>{{ destination() || '—' }}</dd></div>
+                  <div><dt>Date</dt><dd>{{ startDate() && endDate() ? (startDate() | date: 'd MMM') + ' – ' + (endDate() | date: 'd MMM y') : 'da scegliere al passo 1' }}</dd></div>
+                  <div><dt>Interessi</dt><dd>{{ interests().length ? interests().join(', ') : 'Cibo, Storia (predefiniti)' }}</dd></div>
+                </dl>
+              } @else {
+                @if (trips.trips().length) {
+                  <label class="label" for="source">Uno dei tuoi viaggi salvati</label>
+                  <select id="source" class="select" [ngModel]="sourceTripId()" (ngModelChange)="chooseSource($event)" name="source">
+                    @for (trip of trips.trips(); track trip.id) {<option [value]="trip.id">{{ trip.title }} · {{ trip.itinerary.destination }}</option>}
+                  </select>
+                  <p class="hint">L’itinerario viene copiato nell’offerta: da lì lo modifichi senza toccare il tuo viaggio.</p>
+                } @else {
+                  <odys-notice tone="warning">Non hai ancora viaggi salvati: genera l’itinerario con Odys oppure <a routerLink="/pianifica">pianificane uno</a>.</odys-notice>
+                }
               }
-              <button odysButton variant="ghost" icon="x" [block]="true" [disabled]="busy()" (click)="act('cancel')">Annulla il viaggio</button>
-            }
-            @if (trip.status !== 'archived') {
-              <button odysButton variant="ghost" icon="list" [block]="true" [disabled]="busy()" (click)="act('archive')">Archivia</button>
-            }
-          </section>
-          @if (showKit()) {<odys-social-kit [trip]="trip" />}
+            </section>
+          } @else if (itinerary()) {
+            <section class="card">
+              <div class="card__head">
+                <h2>Itinerario giorno per giorno</h2>
+                @if (itineraryDirty()) {<span class="badge">Da salvare</span>}
+              </div>
+              <p class="hint">Apri un giorno per cambiarne titolo e attività; le frecce spostano il programma di un giorno prima o dopo, le date restano al loro posto.</p>
+              <odys-offer-itinerary-editor [(itinerary)]="itinerary" />
+              @if (existing()?.sourceTripId) {
+                <p class="hint small">Hai modificato il viaggio di partenza? <button type="button" class="link" [disabled]="busy()" (click)="refreshItinerary()">Ricopia l’itinerario dal tuo viaggio</button> (sostituisce le modifiche fatte qui).</p>
+              }
+            </section>
+            <section class="card">
+              <h2>Storia dei luoghi</h2>
+              <p class="hint">Per le attrazioni più importanti: una frase d’apertura, il racconto e fino a tre date chiave. La leggono i viaggiatori Premium. Solo testo.</p>
+              @for (story of stories(); track story.id) {
+                <div class="story-edit">
+                  <div class="two">
+                    <label class="label">Luogo<input class="select" [name]="'st-title-' + story.id" maxlength="80" placeholder="Es. Villa Cimbrone" [ngModel]="story.title" (ngModelChange)="editStory(story.id, { title: $event })" /></label>
+                    <label class="label">Giorno<input class="select" type="number" min="1" max="60" [name]="'st-day-' + story.id" [ngModel]="story.day" (ngModelChange)="editStory(story.id, { day: $event })" /></label>
+                  </div>
+                  <label class="label">Frase d’apertura (facoltativa)<input class="select" [name]="'st-intro-' + story.id" maxlength="280" [ngModel]="story.intro" (ngModelChange)="editStory(story.id, { intro: $event })" /></label>
+                  <label class="label">Testo storico<textarea class="select" rows="4" maxlength="1500" [name]="'st-body-' + story.id" [ngModel]="story.body" (ngModelChange)="editStory(story.id, { body: $event })"></textarea></label>
+                  <p class="label">La storia in 3 tappe</p>
+                  @for (stepItem of story.milestones; track $index) {
+                    <div class="step-edit">
+                      <input class="select" [attr.aria-label]="'Data della tappa ' + ($index + 1)" maxlength="30" placeholder="Es. 1904" [name]="'st-when-' + story.id + $index" [ngModel]="stepItem.when" (ngModelChange)="editStory(story.id, {}, { index: $index, when: $event })" />
+                      <input class="select" [attr.aria-label]="'Cosa è successo nella tappa ' + ($index + 1)" maxlength="160" placeholder="Cosa è successo" [name]="'st-text-' + story.id + $index" [ngModel]="stepItem.text" (ngModelChange)="editStory(story.id, {}, { index: $index, text: $event })" />
+                    </div>
+                  }
+                  <button odysButton type="button" variant="ghost" size="sm" icon="trash" (click)="removeStory(story.id)">Togli questa storia</button>
+                </div>
+              }
+              <button odysButton type="button" variant="secondary" icon="plus" (click)="addStory()">Aggiungi un luogo</button>
+            </section>
+          }
+        }
+
+        @case (3) {
           <section class="card">
-            <h2>Itinerario</h2>
-            <p class="muted small">{{ trip.itinerary.days.length }} giornate, copiate dal tuo viaggio. Se l’hai modificato, aggiorna l’offerta con l’ultima versione.</p>
-            <a odysButton variant="secondary" icon="users" [block]="true" [routerLink]="['/coordinatore', trip.id, 'partecipanti']">Partecipanti e richieste</a>
-            <button odysButton variant="secondary" icon="refresh" [block]="true" [disabled]="busy() || !trip.sourceTripId" (click)="refreshItinerary()">Aggiorna dal mio viaggio</button>
-            @if (trip.sourceTripId) {<a class="small" [routerLink]="['/itinerario', trip.sourceTripId]">Apri il viaggio di partenza</a>}
+            <h2>Quota e pagamenti</h2>
+            <div class="two">
+              <odys-text-field label="Quota a persona (€)" inputMode="decimal" placeholder="Es. 690" [(value)]="price" />
+              <odys-text-field label="Acconto per bloccare il posto (€)" inputMode="decimal" placeholder="Es. 300" hint="Se lo lasci vuoto vale un quarto della quota." [(value)]="deposit" />
+            </div>
+            <odys-text-field label="Saldo entro il" type="date" hint="Se lo lasci vuoto: 30 giorni prima della partenza." [(value)]="balanceDueDate" />
           </section>
-        </aside>
+          @if (existing(); as trip) {
+            <odys-pricing-panel [tripId]="trip.id" [price]="price()" [capacity]="capacity()" [currency]="trip.currency" (usePrice)="price.set(formatEuros($event))" />
+          }
+          <section class="card">
+            <h2>Cosa è incluso</h2>
+            <p class="hint">Una voce per riga. Indicare con chiarezza cosa è escluso (per esempio i voli) evita dubbi prima dell’iscrizione.</p>
+            <div class="two">
+              <odys-text-field label="Incluso" [multiline]="true" placeholder="Alloggio in camera doppia&#10;Coordinatore per tutto il viaggio" [(value)]="included" />
+              <odys-text-field label="Escluso" [multiline]="true" placeholder="Voli&#10;Pasti non indicati" [(value)]="excluded" />
+            </div>
+          </section>
+        }
+
+        @case (4) {
+          @if (existing(); as trip) {
+            <section class="card">
+              <h2>Chi può vederlo</h2>
+              <div class="segmented" role="radiogroup" aria-label="Visibilità">
+                @for (item of visibilities; track item.value) {
+                  <button type="button" role="radio" [attr.aria-checked]="visibility() === item.value" [class.is-on]="visibility() === item.value" (click)="visibility.set(item.value)">{{ item.label }}</button>
+                }
+              </div>
+              <p class="hint">{{ visibilityHint() }}</p>
+            </section>
+            <section class="card">
+              <h2>Pubblicazione</h2>
+              <p class="muted small">Stato attuale: <strong>{{ statusLabel() }}</strong>@if (trip.publishedAt) { · pubblicato il {{ trip.publishedAt | date: 'd MMM y' }}}</p>
+              @if (missing().length && (trip.status === 'draft' || trip.status === 'scheduled')) {
+                <odys-notice tone="warning">Prima di pubblicare completa: {{ missing().join(', ') }}.</odys-notice>
+              }
+              @if (trip.status === 'draft' || trip.status === 'scheduled') {
+                <button odysButton type="button" variant="accent" icon="zap" [block]="true" [loading]="busy()" (click)="act('publish')">Pubblica ora</button>
+                <div class="schedule">
+                  <label class="label" for="when">Oppure programma la pubblicazione</label>
+                  <input id="when" type="datetime-local" class="select" [ngModel]="scheduledFor()" (ngModelChange)="scheduledFor.set($event)" name="when" />
+                  <button odysButton type="button" variant="secondary" icon="calendar" [block]="true" [disabled]="busy()" (click)="act('schedule')">Programma</button>
+                </div>
+                <p class="hint">Puoi anche lasciarlo in bozza: lo vedi solo tu finché non lo pubblichi.</p>
+              }
+              @if (trip.status === 'published' || trip.status === 'scheduled') {
+                @if (trip.effectiveStatus !== 'active' && trip.effectiveStatus !== 'completed') {
+                  <button odysButton type="button" variant="ghost" icon="restore" [block]="true" [disabled]="busy()" (click)="act('unpublish')">Ritira e torna in bozza</button>
+                }
+                <button odysButton type="button" variant="ghost" icon="x" [block]="true" [disabled]="busy()" (click)="act('cancel')">Annulla il viaggio</button>
+              }
+              @if (trip.status !== 'archived') {
+                <button odysButton type="button" variant="ghost" icon="list" [block]="true" [disabled]="busy()" (click)="act('archive')">Archivia</button>
+              }
+            </section>
+            @if (showKit()) {<odys-social-kit [trip]="trip" />}
+          }
+        }
       }
-    </div>
+
+      <div class="nav">
+        @if (step() > 1) {<button odysButton type="button" variant="ghost" icon="arrow-left" [disabled]="busy()" (click)="back()">Indietro</button>}
+        <span class="nav__spacer"></span>
+        @if (!isNew()) {<button odysButton type="button" variant="secondary" icon="check" [loading]="busy()" (click)="save()">Salva</button>}
+        @if (isNew() && step() === 2) {
+          <button odysButton type="submit" variant="accent" [icon]="origin() === 'generator' ? 'sparkles' : 'check'" [loading]="busy()">{{ origin() === 'generator' ? 'Genera e crea la bozza' : 'Crea la bozza' }}</button>
+        } @else if (step() < 4) {
+          <button odysButton type="submit" variant="accent" trailingIcon="arrow-right" [disabled]="busy()">Avanti</button>
+        }
+      </div>
+    </form>
   }
 </div>

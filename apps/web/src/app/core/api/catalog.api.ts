@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import type { Affinity, CostItem, Itinerary } from '@odys/domain';
 import { ApiClient } from './api-client';
+import type { GeneratorRequest } from './generator.api';
 import type { StoredTrip } from './trips.api';
 
 export type PublishedTripStatus = 'draft' | 'scheduled' | 'published' | 'active' | 'completed' | 'cancelled' | 'archived';
@@ -246,6 +247,10 @@ export interface PublishedTripForm {
   ageMin?: number | null;
   ageMax?: number | null;
   placeStories?: PlaceStory[];
+  /** Itinerario modificato nell'offerta (CB-03). */
+  itinerary?: Itinerary;
+  /** Creazione con il generatore (CB-03): stessi parametri della schermata Generatore. */
+  generator?: GeneratorRequest;
 }
 
 export type CoordinatorAction = 'publish' | 'schedule' | 'unpublish' | 'cancel' | 'archive';

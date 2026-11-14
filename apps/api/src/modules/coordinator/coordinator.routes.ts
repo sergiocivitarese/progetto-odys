@@ -5,6 +5,26 @@ import { COORDINATOR_GUIDELINES_VERSION, coordinatorAlerts, type PlaceStory, typ
 import type { CoordinatorApplicationInput, ParticipationCounts } from '../../shared/community';
 import type { DataStore } from '../../shared/data';
 import { handle, HttpError, requireObject } from '../../shared/http';
+import { UpgradeRequired } from '../../shared/entitlements';
+import { generateFromBody } from '../generator/generator.routes';
+
+const MAX_ITINERARY_DAYS = 60;
+const MAX_DAY_ACTIVITIES = 40;
+const MAX_ITINERARY_BYTES = 1_000_000;
+
+/** Itinerario modificato nell'offerta (CB-03): forma minima e limiti di dimensione. */
+function itineraryFrom(value: unknown): Itinerary {
+  const itinerary = requireObject<Partial<Itinerary>>(value, 'Itinerario non valido.');
+  if (typeof itinerary.destination !== 'string' || !Array.isArray(itinerary.days) || !itinerary.days.length) throw new HttpError(400, 'Itinerario non valido.');
+  if (itinerary.days.length > MAX_ITINERARY_DAYS) throw new HttpError(422, `L’itinerario può avere al massimo ${MAX_ITINERARY_DAYS} giorni.`);
+  for (const day of itinerary.days) {
+    if (!day || typeof day !== 'object' || !Array.isArray(day.activities)) throw new HttpError(400, 'Itinerario non valido.');
+    if (day.activities.length > MAX_DAY_ACTIVITIES) throw new HttpError(422, `Al massimo ${MAX_DAY_ACTIVITIES} attività per giorno.`);
+    if (day.activities.some((activity) => !activity || typeof activity.title !== 'string' || !activity.title.trim())) throw new HttpError(422, `Dai un titolo a ogni attività del giorno ${day.day}.`);
+  }
+  if (JSON.stringify(itinerary).length > MAX_ITINERARY_BYTES) throw new HttpError(413, 'Itinerario troppo grande.');
+  return itinerary as Itinerary;
+}
 
 const MAX_LIST_ITEMS = 20;
 
@@ -205,12 +225,27 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
 
   router.post('/trips', handle(async (req, res) => {
     const user = currentUser(res);
-    const body = requireObject<{ sourceTripId?: unknown }>(req.body, 'Richiesta non valida.');
-    if (typeof body.sourceTripId !== 'string') throw new HttpError(400, 'Scegli uno dei tuoi viaggi da cui partire.');
-    const source = await store.trips(user).get(body.sourceTripId);
-    if (!source) throw new HttpError(404, 'Viaggio di partenza non trovato.');
-    const input = inputFrom(req.body, false);
-    const itinerary: Itinerary = source.itinerary;
+    const body = requireObject<{ sourceTripId?: unknown; generator?: unknown }>(req.body, 'Richiesta non valida.');
+    let itinerary: Itinerary;
+    let sourceTripId: string | undefined;
+    /** Titolo di riserva se il passo 1 non ne ha uno: quello generato o del viaggio di partenza. */
+    let generatedTitle: string | undefined;
+    if (body.generator !== undefined) {
+      // CB-03: l'itinerario lo prepara il generatore, sul server, con i parametri del viaggio.
+      const account = await store.entitlements(user);
+      if (!account.entitlements.includes('ai.generate')) throw new UpgradeRequired('ai.generate');
+      const generated = generateFromBody(body.generator);
+      itinerary = generated.itinerary;
+      generatedTitle = generated.title;
+    } else {
+      if (typeof body.sourceTripId !== 'string') throw new HttpError(400, 'Scegli uno dei tuoi viaggi da cui partire o genera l’itinerario.');
+      const source = await store.trips(user).get(body.sourceTripId);
+      if (!source) throw new HttpError(404, 'Viaggio di partenza non trovato.');
+      itinerary = source.itinerary;
+      sourceTripId = source.id;
+      generatedTitle = source.title;
+    }
+    const input = inputFrom({ ...requireObject<Record<string, unknown>>(req.body, 'Richiesta non valida.'), title: ((req.body as { title?: unknown }).title || generatedTitle) }, false);
     const created = await repo(res).create({
       title: input.title!,
       summary: input.summary ?? '',
@@ -223,7 +258,7 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
       excluded: input.excluded ?? [],
       coverImageUrl: input.coverImageUrl,
       itinerary,
-      sourceTripId: source.id,
+      sourceTripId,
       country: input.country,
       region: input.region,
       interests: input.interests,
@@ -272,7 +307,8 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
   router.put('/trips/:id', handle(async (req, res) => {
     const user = currentUser(res);
     const patch = inputFrom(req.body, true);
-    const { refreshItinerary } = requireObject<{ refreshItinerary?: unknown }>(req.body, 'Richiesta non valida.');
+    const { refreshItinerary, itinerary } = requireObject<{ refreshItinerary?: unknown; itinerary?: unknown }>(req.body, 'Richiesta non valida.');
+    if (itinerary !== undefined) patch.itinerary = itineraryFrom(itinerary);
     const current = await repo(res).get(String(req.params.id));
     if (!current) throw new HttpError(404, 'Viaggio non trovato.');
     if (refreshItinerary === true) {

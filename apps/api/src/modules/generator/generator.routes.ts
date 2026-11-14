@@ -5,8 +5,8 @@ import type { DataStore } from '../../shared/data';
 import { requireEntitlement } from '../../shared/entitlements';
 import { handle, HttpError, requireObject } from '../../shared/http';
 
-/** Valida i parametri della schermata «Generatore AI» (TP-01). */
-function paramsFrom(body: unknown): { params: GeneratorParams; seed: number } {
+/** Valida i parametri della schermata «Generatore AI» (TP-01); li usa anche la creazione di un viaggio del coordinatore (CB-03). */
+export function generatorParamsFrom(body: unknown): { params: GeneratorParams; seed: number } {
   const raw = requireObject<Record<string, unknown>>(body, 'Richiesta non valida.');
   const surprise = raw['surprise'] === true;
   const destination = typeof raw['destination'] === 'string' ? raw['destination'].trim().slice(0, 80) : '';
@@ -25,8 +25,8 @@ function paramsFrom(body: unknown): { params: GeneratorParams; seed: number } {
   return { params: { destination, surprise, dates, duration, budgetPerPersonCents: Math.round(budget * 100), interests }, seed };
 }
 
-function generate(body: unknown) {
-  const { params, seed } = paramsFrom(body);
+export function generateFromBody(body: unknown) {
+  const { params, seed } = generatorParamsFrom(body);
   try {
     return generateTrip(params, seed);
   } catch (error) {
@@ -45,7 +45,7 @@ export function generatorRouter(auth: AuthProvider, store: DataStore): Router {
 
   // Genera (o rigenera, con un `seed` diverso): non salva nulla.
   router.post('/', handle(async (req, res) => {
-    const { itinerary: _itinerary, ...trip } = generate(req.body);
+    const { itinerary: _itinerary, ...trip } = generateFromBody(req.body);
     res.json(trip);
   }));
 
@@ -53,7 +53,7 @@ export function generatorRouter(auth: AuthProvider, store: DataStore): Router {
   // Il server lo rigenera dagli stessi parametri: non si fida dell'itinerario inviato dal client.
   router.post('/accept', handle(async (req, res) => {
     const user = currentUser(res);
-    const trip = generate(req.body);
+    const trip = generateFromBody(req.body);
     const saved = await store.trips(user).save({ itinerary: trip.itinerary, title: trip.title, changeKind: 'created', summary: 'Generato con il generatore di itinerari' });
     await store.account(user).record({ action: 'generator.accept', entity: 'trip', entityId: saved.id, metadata: { destination: trip.destination, days: trip.days.length } });
     res.status(201).json(saved);

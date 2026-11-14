@@ -752,3 +752,35 @@ test('avvisi di «I miei viaggi»: campi mancanti, saldi in sospeso o scaduti, r
   ]);
   assert.deepEqual(coordinatorAlerts(onSale, { pending: 0, balanceDue: 1 }, '2027-02-02').map((alert) => [alert.tone, alert.message]), [['danger', '1 saldo scaduto']]);
 });
+
+test('viaggio del coordinatore dal generatore e itinerario modificato nell’offerta (CB-02, CB-03)', async () => {
+  const coordinatorToken = 'token-itinerario-coord';
+  Object.assign(db.user(db.addUser(coordinatorToken, undefined, 'itinerario@example.com')).profile, { role: 'coordinator', firstName: 'Ivo', lastName: 'Sala' });
+  await call('POST', '/coordinator/guidelines', {}, coordinatorToken);
+  const year = new Date().getFullYear() + 1;
+  const generator = { destination: 'Lisbona', surprise: false, dates: { mode: 'precise', departure: `${year}-05-10`, returnDate: `${year}-05-13` }, duration: '3-5', budget: 900, interests: ['Cibo', 'Storia'], seed: 1 };
+
+  const invalid = await call<{ error: string }>('POST', '/coordinator/trips', { generator: { ...generator, interests: [] } }, coordinatorToken);
+  assert.equal(invalid.status, 400);
+  const created = await call<{ id: string; title: string; sourceTripId?: string; itinerary: Itinerary }>('POST', '/coordinator/trips', { generator, capacity: 10, interests: ['Cibo'] }, coordinatorToken);
+  assert.equal(created.status, 201);
+  assert.match(created.data.title, /Lisbona/);
+  assert.equal(created.data.sourceTripId, undefined);
+  assert.equal(created.data.itinerary.days.length, 4);
+
+  // Il coordinatore riordina e rinomina i giorni direttamente nell'offerta.
+  const itinerary = structuredClone(created.data.itinerary);
+  itinerary.days[0].label = 'Arrivo e Alfama al tramonto';
+  const updated = await call<{ itinerary: Itinerary }>('PUT', `/coordinator/trips/${created.data.id}`, { itinerary }, coordinatorToken);
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.itinerary.days[0].label, 'Arrivo e Alfama al tramonto');
+
+  itinerary.days[1].activities[0].title = '  ';
+  assert.equal((await call('PUT', `/coordinator/trips/${created.data.id}`, { itinerary }, coordinatorToken)).status, 422);
+  assert.equal((await call('PUT', `/coordinator/trips/${created.data.id}`, { itinerary: { destination: 'X', days: [] } }, coordinatorToken)).status, 400);
+
+  // Senza il diritto al generatore non si genera (pagina di upgrade, mai un errore generico).
+  const traveler = 'token-itinerario-base';
+  db.addUser(traveler, undefined, 'base-itinerario@example.com');
+  assert.equal((await call('POST', '/coordinator/trips', { generator }, traveler)).status, 403);
+});

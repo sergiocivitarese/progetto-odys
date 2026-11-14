@@ -454,6 +454,33 @@ export function moveActivityToDay(plan: Itinerary, fromDayIndex: number, activit
   };
 }
 
+/**
+ * Sposta il programma di un giorno in un'altra posizione (CB-03). Numeri e date
+ * restano in ordine: si spostano titolo, attività, alternative e tratte, che
+ * vanno ricalcolate per i giorni toccati (`finalizeDraft`).
+ */
+export function moveDay(plan: Itinerary, fromIndex: number, toIndex: number): Itinerary {
+  const count = plan.days.length;
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= count || toIndex >= count) return plan;
+  const order = plan.days.map((_, index) => index);
+  const [moved] = order.splice(fromIndex, 1);
+  order.splice(toIndex, 0, moved);
+  return {
+    ...plan,
+    days: plan.days.map((slot, index) => {
+      if (order[index] === index) return slot;
+      const { day: _day, date: _date, ...content } = plan.days[order[index]];
+      const dayId = `day-${slot.date ?? slot.day}`;
+      return { ...content, day: slot.day, date: slot.date, activities: content.activities.map((activity, order) => ({ ...activity, dayId, order })) };
+    }),
+  };
+}
+
+/** Indici dei giorni il cui contenuto è cambiato tra due versioni del piano: servono a `finalizeDraft`. */
+export function changedDayIndexes(before: Itinerary, after: Itinerary): number[] {
+  return after.days.map((day, index) => (JSON.stringify(day) === JSON.stringify(before.days[index]) ? -1 : index)).filter((index) => index >= 0);
+}
+
 /** L'utente scrive il nome di un luogo: la posizione torna "da definire". */
 export function updateActivityPlaceQuery(plan: Itinerary, dayIndex: number, activityIndex: number, value: string): Itinerary {
   const activity = plan.days[dayIndex]?.activities[activityIndex];
