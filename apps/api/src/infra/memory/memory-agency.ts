@@ -25,10 +25,11 @@ export function agencyRoleOf(db: MemoryDatabase, userId: string, agencyId: strin
 }
 
 type TripView = (db: MemoryDatabase, id: string) => PublishedTrip | null;
+type Publish = (userId: string, tripId: string) => Promise<void>;
 
 /** Stesse regole delle funzioni SQL della migrazione 0020. */
 class MemoryAgencyRepository implements AgencyRepository {
-  constructor(private readonly db: MemoryDatabase, private readonly userId: string, private readonly tripView: TripView) {}
+  constructor(private readonly db: MemoryDatabase, private readonly userId: string, private readonly tripView: TripView, private readonly publish: Publish) {}
 
   private roleIn(agencyId: string): AgencyRole | null {
     return [...this.db.agencyMembers.values()].find((member) => member.agencyId === agencyId && member.userId === this.userId && member.status === 'active')?.role ?? null;
@@ -242,6 +243,25 @@ class MemoryAgencyRepository implements AgencyRepository {
     this.audit(on ? 'agency.umbrella_on' : 'agency.umbrella_off', tripId, { agency: agencyId, coordinator: trip.coordinatorId });
   }
 
+  async proposals(agencyId: string) {
+    this.require(agencyId, 'team.view');
+    return [...this.db.published.values()]
+      .filter((trip) => trip.agencyId === agencyId && !trip.agencyOwned && trip.approvalStatus === 'pending')
+      .sort((a, b) => (a.approvalRequestedAt ?? '').localeCompare(b.approvalRequestedAt ?? ''))
+      .map((trip) => this.tripView(this.db, trip.id)!) as PublishedTripSummary[];
+  }
+
+  /** Come `decide_agency_proposal()`: approvare pubblica con le validazioni di sempre. */
+  async decideProposal(tripId: string, approve: boolean, note?: string): Promise<void> {
+    const trip = this.db.published.get(tripId);
+    if (!trip || trip.agencyOwned || !this.staff(trip.agencyId, ['owner', 'admin'])) throw new HttpError(404, 'Proposta non trovata.');
+    if (trip.approvalStatus !== 'pending') throw new HttpError(422, 'Questa proposta è già stata decisa o ritirata.');
+    if (!approve && (note ?? '').trim().length < 5) throw new HttpError(422, 'Scrivi al coordinatore perché la proposta non va (almeno 5 caratteri).');
+    if (approve) await this.publish(this.userId, tripId);
+    Object.assign(trip, { approvalStatus: approve ? 'approved' : 'rejected', approvalNote: note?.trim() || undefined });
+    this.audit(approve ? 'agency.proposal_approve' : 'agency.proposal_reject', tripId, { agency: trip.agencyId });
+  }
+
   /** Stessi dati di `agency_dashboard_data()` (migrazione 0022). */
   async dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData> {
     if (!this.staff(agencyId, ['owner', 'admin'])) throw new HttpError(403, 'I dati dell’agenzia li vedono proprietario e amministratori.');
@@ -276,9 +296,9 @@ class MemoryAgencyRepository implements AgencyRepository {
   }
 }
 
-export function memoryAgency(db: MemoryDatabase, card: (db: MemoryDatabase, id: string) => CoordinatorCard, tripView: TripView): AgencyStore {
+export function memoryAgency(db: MemoryDatabase, card: (db: MemoryDatabase, id: string) => CoordinatorCard, tripView: TripView, publish: Publish): AgencyStore {
   return {
-    agency: (user) => new MemoryAgencyRepository(db, user.id, tripView),
+    agency: (user) => new MemoryAgencyRepository(db, user.id, tripView, publish),
     async agencyBySlug(slug: string) {
       const agency = [...db.agencies.values()].find((item) => item.slug === slug);
       if (!agency) return null;

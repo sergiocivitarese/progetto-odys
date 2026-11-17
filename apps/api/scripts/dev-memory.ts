@@ -107,7 +107,16 @@ const server = app.listen(config.port, async () => {
   }
   await as(AGENCY, 'POST', `/coordinator/trips/${catalogTrip.id}/participants/${direct.id}/confirm`, {});
   const draftTrip = (await call<Array<{ id: string; status: string }>>('GET', '/coordinator/trips')).find((trip) => trip.status === 'draft');
-  if (draftTrip) await as(AGENCY, 'PUT', `/agency/${agency.id}/umbrella/${draftTrip.id}`, { on: true });
+  if (draftTrip) {
+    await as(AGENCY, 'PUT', `/agency/${agency.id}/umbrella/${draftTrip.id}`, { on: true });
+    // Nora completa la bozza coperta e la propone all'agenzia (AG-05).
+    await call('PUT', `/coordinator/trips/${draftTrip.id}`, { title: 'Basilicata d’autunno', summary: 'Quattro giorni tra Craco, Aliano e i calanchi, con cene in masseria.', startDate: `${year}-10-08`, endDate: `${year}-10-11`, price: 640, capacity: 8 });
+    await call('PUT', `/coordinator/trips/${draftTrip.id}/pricing`, { costs: [
+      { label: 'Masserie 3 notti', category: 'alloggi', basis: 'per_person', amountCents: 21000 },
+      { label: 'Pulmino', category: 'trasporti', basis: 'group', amountCents: 90000 },
+    ] });
+    await call('POST', `/coordinator/trips/${draftTrip.id}/submit`, {});
+  }
   console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);
   console.log(`Agenzia di prova: token «${AGENCY}», pagina pubblica /agenzie/sud-lento`);
 });

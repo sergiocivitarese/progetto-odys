@@ -721,3 +721,37 @@ test('dashboard dell’agenzia: canale della prenotazione, dati solo a proprieta
 
   // Il trigger rende «diretta» ogni prenotazione di un viaggio «Su invito»: si proverà quando esisteranno gli inviti ai viaggi.
 });
+
+test('proposte all’agenzia: il coordinatore propone, l’agenzia approva pubblicando o rifiuta con una nota (AG-05, AG-11)', async () => {
+  const owner = (await db.query<{ id: string }>(`select id from auth.users where email = 'agenzia@example.com'`)).rows[0].id;
+  const agency = (await db.query<{ id: string }>('select id from public.agencies where owner_id = $1', [owner])).rows[0].id;
+  // Sara ha l'ombrello predefinito (test precedente): il viaggio nuovo nasce coperto.
+  const trip = (await asUser(sara, () => db.query<{ id: string; organizer: string }>(
+    `insert into public.published_trips (title, summary, itinerary, start_date, end_date, capacity, price_cents)
+     values ('Pollino selvaggio', 'Quattro giorni di trekking tra pini loricati e gole del Raganello.', $1, current_date + 80, current_date + 83, 10, 61000) returning id, organizer`,
+    [JSON.stringify(itinerary)]))).rows[0];
+  assert.equal(trip.organizer, 'agency');
+
+  await assert.rejects(asUser(sara, () => db.query(`update public.published_trips set approval_status = 'approved' where id = $1`, [trip.id])), /apposita azione/);
+  await assert.rejects(asUser(luca, () => db.query('select public.request_agency_approval($1)', [trip.id])), /non trovato/);
+  await asUser(sara, () => db.query('select public.request_agency_approval($1)', [trip.id]));
+  await assert.rejects(asUser(sara, () => db.query('select public.request_agency_approval($1)', [trip.id])), /già all’agenzia/);
+
+  // Rifiuto: serve una nota; l'operatore non decide.
+  await assert.rejects(asUser(luca, () => db.query('select public.decide_agency_proposal($1, false, $2)', [trip.id, 'Prezzo troppo alto'])), /non trovata/);
+  await assert.rejects(asUser(owner, () => db.query('select public.decide_agency_proposal($1, false, $2)', [trip.id, ''])), /perché la proposta non va/);
+  await asUser(owner, () => db.query('select public.decide_agency_proposal($1, false, $2)', [trip.id, 'Alza la quota: con questi costi il pareggio è a 9 posti.']));
+  const rejected = await asUser(sara, () => db.query<{ approval_status: string; approval_note: string; status: string }>('select approval_status, approval_note, status from public.published_trips where id = $1', [trip.id]));
+  assert.deepEqual([rejected.rows[0].approval_status, rejected.rows[0].status], ['rejected', 'draft']);
+  assert.match(rejected.rows[0].approval_note, /pareggio/);
+
+  // Riproposta, modifica che la ritira, nuova proposta e approvazione che pubblica.
+  await asUser(sara, () => db.query('select public.request_agency_approval($1)', [trip.id]));
+  await asUser(sara, () => db.query('update public.published_trips set price_cents = 69000 where id = $1', [trip.id]));
+  assert.equal((await asUser(sara, () => db.query<{ approval_status: string | null }>('select approval_status from public.published_trips where id = $1', [trip.id]))).rows[0].approval_status, null);
+  await asUser(sara, () => db.query('select public.request_agency_approval($1)', [trip.id]));
+  const status = (await asUser(owner, () => db.query<{ s: string }>('select public.decide_agency_proposal($1, true) as s', [trip.id]))).rows[0].s;
+  assert.equal(status, 'published');
+  assert.equal((await asAnon(() => db.query('select id from public.published_trips where id = $1', [trip.id]))).rows.length, 1, 'ora è nel catalogo pubblico');
+  void agency;
+});

@@ -381,10 +381,22 @@ class MemoryCoordinatorRepository implements CoordinatorRepository {
     this.db.published.set(trip.id, trip);
     return publicView(this.db, trip);
   }
+  async requestApproval(id: string) {
+    const trip = this.db.published.get(id);
+    if (!trip || trip.coordinatorId !== this.userId) throw new HttpError(404, 'Viaggio non trovato.');
+    if (trip.organizer !== 'agency' || trip.agencyOwned) throw new HttpError(422, 'Solo i viaggi coperti dall’agenzia si propongono per l’approvazione.');
+    if (trip.status !== 'draft') throw new HttpError(422, 'Si propone un viaggio in bozza.');
+    if (trip.approvalStatus === 'pending') throw new HttpError(409, 'La proposta è già all’agenzia.');
+    Object.assign(trip, { approvalStatus: 'pending', approvalNote: undefined, approvalRequestedAt: new Date().toISOString() });
+    return publicView(this.db, trip);
+  }
   async update(id: string, patch: Partial<PublishedTripInput>) {
     const trip = this.owned(id);
     if (!trip) return null;
     const next = { ...trip, ...normalizeInput(patch) };
+    // Come `published_trips_approval_guard`: cambiare i dati essenziali ritira la proposta in attesa.
+    const essential = ['title', 'summary', 'priceCents', 'capacity', 'startDate', 'endDate'] as const;
+    if (trip.approvalStatus === 'pending' && essential.some((key) => next[key] !== trip[key])) Object.assign(next, { approvalStatus: undefined, approvalRequestedAt: undefined });
     if ((next.capacity ?? 0) > 12) throw new HttpError(422, 'Ogni viaggio ha al massimo 12 partecipanti.');
     if (next.depositCents !== undefined && next.priceCents !== undefined && next.depositCents > next.priceCents) throw new HttpError(422, 'L’acconto non può superare la quota di partecipazione.');
     if (next.balanceDueDate && next.startDate && next.balanceDueDate > next.startDate) throw new HttpError(422, 'Il saldo va pagato entro la data di partenza.');
@@ -887,7 +899,7 @@ export function memoryDataStore(db: MemoryDatabase): DataStore {
     social: (user) => new MemorySocialRepository(db, user.id),
     split: (user) => new MemorySplitRepository(db, user.id),
     ...memoryCreator(db, db.creator),
-    ...memoryAgency(db, card, (database, id) => { const trip = database.published.get(id); return trip ? publicView(database, trip) : null; }),
+    ...memoryAgency(db, card, (database, id) => { const trip = database.published.get(id); return trip ? publicView(database, trip) : null; }, (userId, id) => new MemoryCoordinatorRepository(db, userId).setStatus(id, 'published').then(() => undefined)),
   };
 }
 

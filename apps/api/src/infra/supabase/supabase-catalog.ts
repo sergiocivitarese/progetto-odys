@@ -30,6 +30,9 @@ interface PublishedRow {
   coordinator_id: string | null;
   agency_id?: string | null;
   agency_owned?: boolean;
+  approval_status?: 'pending' | 'approved' | 'rejected' | null;
+  approval_note?: string | null;
+  approval_requested_at?: string | null;
   series_id?: string | null;
   organizer?: 'coordinator' | 'agency';
   source_trip_id: string | null;
@@ -81,6 +84,8 @@ interface CoordinatorRow {
 const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summary, destination, start_date, end_date, duration_days, price_cents, currency, capacity, included, excluded, cover_image_url, scheduled_for, published_at, updated_at, country, region, interests, deposit_cents, balance_due_date, visibility, age_min, age_max, agency_id, agency_owned, series_id, organizer';
 // `place_stories` non è tra le colonne leggibili: il testo esce solo dalla funzione che verifica il diritto (TP-08).
 const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary`;
+// Area coordinatore e agenzia (solo utenti collegati): anche lo stato della proposta all'agenzia (AG-05).
+const OWNER_COLUMNS = `${DETAIL_COLUMNS}, approval_status, approval_note, approval_requested_at`;
 
 function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
   if (!row) return { id, displayName: 'Coordinatore Odys', interests: [] };
@@ -133,6 +138,9 @@ function toSummary(row: PublishedRow, coordinator: CoordinatorCard, agency?: Org
     agencyId: row.agency_id ?? undefined,
     agencyOwned: row.agency_owned ?? false,
     seriesId: row.series_id ?? undefined,
+    approvalStatus: row.approval_status ?? undefined,
+    approvalNote: row.approval_note ?? undefined,
+    approvalRequestedAt: row.approval_requested_at ?? undefined,
     id: row.id,
     status: row.status,
     effectiveStatus: effectiveStatus(row.status, row.start_date ?? undefined, row.end_date ?? undefined, row.scheduled_for ?? undefined),
@@ -183,7 +191,7 @@ async function withStories(db: SupabaseClient, trip: PublishedTrip): Promise<Pub
 }
 
 /** Colonne e card dei viaggi per il catalogo dell'agenzia (AG-03). */
-export const SUMMARY_COLUMNS_FOR_AGENCY = SUMMARY_COLUMNS;
+export const SUMMARY_COLUMNS_FOR_AGENCY = `${SUMMARY_COLUMNS}, approval_status, approval_note, approval_requested_at`;
 export async function summariesOf(db: SupabaseClient, rows: unknown[]): Promise<PublishedTripSummary[]> {
   const typed = rows as PublishedRow[];
   const context = await contextFor(db, typed);
@@ -338,14 +346,14 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
   }
 
   async list(): Promise<PublishedTrip[]> {
-    const { data, error } = await this.db.from('published_trips').select(DETAIL_COLUMNS).eq('coordinator_id', this.user.id).order('updated_at', { ascending: false });
+    const { data, error } = await this.db.from('published_trips').select(OWNER_COLUMNS).eq('coordinator_id', this.user.id).order('updated_at', { ascending: false });
     if (error) throw dbError(error);
     return this.withCard(data as PublishedRow[]);
   }
 
   async get(id: string): Promise<PublishedTrip | null> {
     if (!isUuid(id)) return null;
-    const { data, error } = await this.db.from('published_trips').select(DETAIL_COLUMNS).eq('id', id).maybeSingle();
+    const { data, error } = await this.db.from('published_trips').select(OWNER_COLUMNS).eq('id', id).maybeSingle();
     if (error) throw dbError(error);
     if (!data || !(await this.manages(data as PublishedRow))) return null;
     return withStories(this.db, (await this.withCard([data as PublishedRow]))[0]);
@@ -364,7 +372,7 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     const ownership = input.agencyId
       ? { coordinator_id: null, agency_id: input.agencyId, agency_owned: true, organizer: 'agency' }
       : { coordinator_id: this.user.id };
-    const { data, error } = await this.db.from('published_trips').insert({ ...inputToRow(input), ...ownership, status: 'draft' }).select(DETAIL_COLUMNS).single();
+    const { data, error } = await this.db.from('published_trips').insert({ ...inputToRow(input), ...ownership, status: 'draft' }).select(OWNER_COLUMNS).single();
     if (error) throw dbError(error);
     return withStories(this.db, (await this.withCard([data as PublishedRow]))[0]);
   }
@@ -372,7 +380,7 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
   async update(id: string, patch: Partial<PublishedTripInput>): Promise<PublishedTrip | null> {
     if (!isUuid(id)) return null;
     if (!(await this.get(id))) return null;
-    const { data, error } = await this.db.from('published_trips').update(inputToRow(patch)).eq('id', id).select(DETAIL_COLUMNS).maybeSingle();
+    const { data, error } = await this.db.from('published_trips').update(inputToRow(patch)).eq('id', id).select(OWNER_COLUMNS).maybeSingle();
     if (error) throw dbError(error);
     return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
@@ -381,7 +389,7 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     if (!isUuid(id)) return null;
     const changes: Record<string, unknown> = { status, scheduled_for: status === 'scheduled' ? scheduledFor ?? null : null };
     if (!(await this.get(id))) return null;
-    const { data, error } = await this.db.from('published_trips').update(changes).eq('id', id).select(DETAIL_COLUMNS).maybeSingle();
+    const { data, error } = await this.db.from('published_trips').update(changes).eq('id', id).select(OWNER_COLUMNS).maybeSingle();
     if (error) throw dbError(error);
     return data ? withStories(this.db, (await this.withCard([data as PublishedRow]))[0]) : null;
   }
@@ -391,6 +399,13 @@ class SupabaseCoordinatorRepository implements CoordinatorRepository {
     const { data, error } = await this.db.from('published_trip_pricing').select('cost_items, target_earnings_cents, updated_at').eq('published_trip_id', id).maybeSingle();
     if (error) throw dbError(error);
     return data ? toPricing(data as PricingRow) : { costs: [], targetEarningsCents: null };
+  }
+
+  async requestApproval(id: string): Promise<PublishedTrip | null> {
+    if (!isUuid(id)) return null;
+    const { error } = await this.db.rpc('request_agency_approval', { p_trip_id: id });
+    if (error) throw dbError(error);
+    return this.get(id);
   }
 
   async analytics(since: string): Promise<CoordinatorAnalytics> {

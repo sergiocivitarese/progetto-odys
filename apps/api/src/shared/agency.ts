@@ -111,6 +111,9 @@ export interface AgencyRepository {
   assignCoordinator(tripId: string, userId: string | null): Promise<void>;
   setUmbrella(agencyId: string, tripId: string, on: boolean): Promise<void>;
   setUmbrellaDefault(memberId: string, on: boolean): Promise<void>;
+  /** Proposte in attesa dei coordinatori (AG-05) e decisione: approvare pubblica il viaggio. */
+  proposals(agencyId: string): Promise<PublishedTripSummary[]>;
+  decideProposal(tripId: string, approve: boolean, note?: string): Promise<void>;
   /** Dashboard (AG-07): solo proprietario e amministratori. */
   dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData>;
 }

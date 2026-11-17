@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { dashboardRange, DASHBOARD_PERIODS, INVITABLE_ROLES, isDashboardPeriod, isValidAgencySlug, licenseQuote, MAX_LICENSE_SEATS, summarizeAgencyDashboard, type AgencyRole, type BillingCycle } from '@odys/domain';
+import { dashboardRange, DASHBOARD_PERIODS, INVITABLE_ROLES, isDashboardPeriod, isValidAgencySlug, licenseQuote, MAX_LICENSE_SEATS, SERVICE_RATE, summarizeAgencyDashboard, summarizePricing, type AgencyRole, type BillingCycle } from '@odys/domain';
 import type { AgencyProfileInput } from '../../shared/agency';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
 import type { DataStore } from '../../shared/data';
@@ -135,6 +135,39 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
     const { on } = requireObject<{ on?: unknown }>(req.body, 'Richiesta non valida.');
     if (typeof on !== 'boolean') throw new HttpError(400, 'Richiesta non valida.');
     await repo(res).setUmbrellaDefault(String(req.params.memberId), on);
+    res.status(204).end();
+  }));
+
+  // Proposte dei coordinatori (AG-05) con margine, punto di pareggio e valutazione.
+  router.get('/:id/proposals', handle(async (req, res) => {
+    const user = currentUser(res);
+    const proposals = await repo(res).proposals(String(req.params.id));
+    const coordinator = store.coordinator(user);
+    res.json(await Promise.all(proposals.map(async (trip) => {
+      const pricing = await coordinator.pricing(trip.id).catch(() => null);
+      const costs = pricing?.costs ?? [];
+      const summary = summarizePricing({ priceCents: trip.priceCents, capacity: trip.capacity, costs, serviceRate: SERVICE_RATE });
+      return {
+        trip,
+        economics: {
+          hasCosts: costs.length > 0,
+          marginPerParticipantCents: summary.marginPerParticipantCents,
+          breakEven: summary.breakEven,
+          breakEvenReachable: summary.breakEvenReachable,
+          earningsAtFullCents: summary.earningsAtFullCents,
+          /** Margine sul prezzo, in %: quanto resta per partecipante rispetto alla quota. */
+          marginPercent: trip.priceCents && summary.marginPerParticipantCents !== null ? Math.round((summary.marginPerParticipantCents / trip.priceCents) * 100) : null,
+        },
+      };
+    })));
+  }));
+
+  router.post('/proposals/:tripId/:decision', handle(async (req, res) => {
+    const decision = String(req.params.decision);
+    if (decision !== 'approve' && decision !== 'reject') throw new HttpError(404, 'Azione non disponibile.');
+    const { note } = requireObject<{ note?: unknown }>(req.body ?? {}, 'Richiesta non valida.');
+    if (note !== undefined && (typeof note !== 'string' || note.length > 600)) throw new HttpError(400, 'Nota non valida (al massimo 600 caratteri).');
+    await repo(res).decideProposal(String(req.params.tripId), decision === 'approve', note as string | undefined);
     res.status(204).end();
   }));
 

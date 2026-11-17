@@ -39,6 +39,12 @@ export interface AgencyPublicProfile {
 
 export type AgencyProfileForm = Partial<Pick<Agency, 'legalName' | 'displayName' | 'slug' | 'description' | 'logoUrl' | 'email' | 'phone' | 'website' | 'city' | 'country' | 'saleTerms'>>;
 
+/** Proposta di un coordinatore con i conti del viaggio (AG-05). */
+export interface AgencyProposal {
+  trip: PublishedTripSummary;
+  economics: { hasCosts: boolean; marginPerParticipantCents: number | null; breakEven: number | null; breakEvenReachable: boolean; earningsAtFullCents: number | null; marginPercent: number | null };
+}
+
 /** Viaggio nel catalogo dell'agenzia, con i posti occupati (AG-03). */
 export type CatalogTrip = PublishedTripSummary & { seatsTaken: number };
 
@@ -62,6 +68,8 @@ export class AgencyApi {
   assignCoordinator(tripId: string, userId: string | null) { return this.api.put<void>(`/agency/trips/${encodeURIComponent(tripId)}/coordinator`, { userId }); }
   setUmbrella(id: string, tripId: string, on: boolean) { return this.api.put<void>(`/agency/${encodeURIComponent(id)}/umbrella/${encodeURIComponent(tripId)}`, { on }); }
   setUmbrellaDefault(memberId: string, on: boolean) { return this.api.put<void>(`/agency/members/${encodeURIComponent(memberId)}/umbrella`, { on }); }
+  proposals(id: string) { return this.api.get<AgencyProposal[]>(`/agency/${encodeURIComponent(id)}/proposals`); }
+  decideProposal(tripId: string, approve: boolean, note?: string) { return this.api.post<void>(`/agency/proposals/${encodeURIComponent(tripId)}/${approve ? 'approve' : 'reject'}`, note ? { note } : {}); }
   dashboard(id: string, periodo: DashboardPeriodKey) { return this.api.get<{ summary: AgencyDashboardSummary; periods: Record<DashboardPeriodKey, string> }>(`/agency/${encodeURIComponent(id)}/dashboard`, { periodo }); }
   publicProfile(slug: string) { return this.api.get<AgencyPublicProfile>(`/agencies/${encodeURIComponent(slug)}`); }
 }

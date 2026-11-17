@@ -4,8 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { agencyCan } from '@odys/domain';
 import { apiErrorMessage } from '../../core/api/api-client';
-import { AgencyApi, type AgencyMember, type CatalogTrip, type MyAgency } from '../../core/api/agency.api';
-import { PUBLISHED_STATUS_LABELS } from '../../core/api/catalog.api';
+import { AgencyApi, type AgencyMember, type AgencyProposal, type CatalogTrip, type MyAgency } from '../../core/api/agency.api';
+import { formatPrice, PUBLISHED_STATUS_LABELS } from '../../core/api/catalog.api';
 import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } from '../../shared/ui';
 
 interface Series { id: string; title: string; destination: string; departures: CatalogTrip[]; missing: number }
@@ -39,6 +39,44 @@ interface Series { id: string; title: string; destination: string; departures: C
       } @else if (!mine() || !can('team.view')) {
         <odys-empty-state icon="box" title="Catalogo non disponibile" description="Il catalogo lo gestiscono proprietario, amministratori e operatori dell’agenzia." />
       } @else {
+        @if (proposals().length) {
+          <section class="card proposals" aria-labelledby="prop-title">
+            <h2 id="prop-title">Proposte da approvare · {{ proposals().length }}</h2>
+            <p class="muted">Viaggi dei coordinatori coperti dall’agenzia. Approvare li pubblica a nome dell’agenzia.</p>
+            @for (item of proposals(); track item.trip.id) {
+              <article class="prop">
+                <div class="prop__head">
+                  <strong>{{ item.trip.title }}</strong>
+                  <span class="muted">{{ item.trip.coordinator.displayName }}@if (item.trip.coordinator.rating) { · ★ {{ rating(item.trip.coordinator.rating) }} ({{ item.trip.coordinator.reviewsCount ?? 0 }})} · {{ item.trip.startDate ? (item.trip.startDate | date: 'd MMM y') : 'date da definire' }}</span>
+                </div>
+                <dl class="econ">
+                  <div><dt>Quota</dt><dd>{{ item.trip.priceCents !== undefined ? money(item.trip.priceCents) : '—' }}</dd></div>
+                  <div><dt>Margine a testa</dt><dd [class.neg]="(item.economics.marginPerParticipantCents ?? 0) < 0">{{ item.economics.marginPerParticipantCents === null ? '—' : money(item.economics.marginPerParticipantCents) }}@if (item.economics.marginPercent !== null) {<small> · {{ item.economics.marginPercent }}%</small>}</dd></div>
+                  <div><dt>Pareggio</dt><dd [class.neg]="!item.economics.breakEvenReachable">{{ item.economics.breakEven === null ? 'mai' : item.economics.breakEven + ' su ' + (item.trip.capacity ?? '—') }}</dd></div>
+                  <div><dt>A viaggio pieno</dt><dd>{{ item.economics.earningsAtFullCents === null ? '—' : money(item.economics.earningsAtFullCents) }}</dd></div>
+                </dl>
+                @if (!item.economics.hasCosts) {<p class="muted small">Il coordinatore non ha indicato i costi: margine e pareggio contano solo il servizio Odys.</p>}
+                @if (rejecting() === item.trip.id) {
+                  <label class="field-label">Cosa va cambiato
+                    <textarea class="field area" rows="3" maxlength="600" [name]="'note-' + item.trip.id" [ngModel]="note()" (ngModelChange)="note.set($event)" placeholder="Es. alza la quota: con questi costi il pareggio è troppo alto."></textarea>
+                  </label>
+                }
+                <div class="prop__actions">
+                  <a class="open" [routerLink]="['/coordinatore', item.trip.id]">Apri<odys-icon name="chevron-right" [size]="16" /></a>
+                  <span class="grow"></span>
+                  @if (rejecting() === item.trip.id) {
+                    <button odysButton type="button" variant="ghost" size="sm" (click)="rejecting.set('')">Annulla</button>
+                    <button odysButton type="button" variant="secondary" size="sm" [loading]="busy() === item.trip.id" (click)="decide(item, false)">Invia la richiesta</button>
+                  } @else {
+                    <button odysButton type="button" variant="ghost" size="sm" (click)="rejecting.set(item.trip.id); note.set('')">Chiedi modifiche</button>
+                    <button odysButton type="button" variant="accent" size="sm" icon="check" [loading]="busy() === item.trip.id" (click)="decide(item, true)">Approva e pubblica</button>
+                  }
+                </div>
+              </article>
+            }
+          </section>
+        }
+
         @if (missingTotal()) {
           <p class="warn" role="status"><odys-icon name="alert-triangle" [size]="18" /> {{ missingTotal() }} {{ missingTotal() === 1 ? 'partenza senza coordinatore' : 'partenze senza coordinatore' }}: non si possono pubblicare finché non ne assegni uno.</p>
         }
@@ -138,6 +176,19 @@ interface Series { id: string; title: string; destination: string; departures: C
         &:checked { background: var(--odys-blue); &::after { translate: 18px 0; } }
         &:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
         &:disabled { opacity: 0.5; } } }
+    .proposals { border-color: var(--odys-blue); box-shadow: inset 0 4px 0 var(--odys-blue); }
+    .prop { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-surface-muted); }
+    .prop__head { display: flex; flex-direction: column; gap: 2px; }
+    .econ { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin: 0;
+      div { padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--color-surface); }
+      dt { font-size: var(--text-xs); color: var(--color-text-muted); } dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; small { font-weight: 600; color: var(--color-text-muted); } } }
+    @media (min-width: 640px) { .econ { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .neg { color: var(--color-danger-text); }
+    .prop__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+    .grow { flex: 1; }
+    .field-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); font-weight: 600; }
+    .area { min-height: 72px; padding-block: var(--space-2); resize: vertical; }
+    .small { font-size: var(--text-xs); }
     .muted { color: var(--color-text-muted); font-size: var(--text-sm); }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `,
@@ -148,6 +199,9 @@ export default class AgencyCatalogPage implements OnInit {
   protected readonly trips = signal<CatalogTrip[]>([]);
   protected readonly coordinatorTrips = signal<CatalogTrip[]>([]);
   protected readonly team = signal<AgencyMember[]>([]);
+  protected readonly proposals = signal<AgencyProposal[]>([]);
+  protected readonly rejecting = signal('');
+  protected readonly note = signal('');
   protected readonly loading = signal(true);
   protected readonly busy = signal('');
   protected readonly error = signal('');
@@ -185,7 +239,8 @@ export default class AgencyCatalogPage implements OnInit {
   private async reload(): Promise<void> {
     const mine = this.mine();
     if (!mine) return;
-    const [catalog, team] = await Promise.all([this.api.catalog(mine.agency.id), this.api.team(mine.agency.id)]);
+    const [catalog, team, proposals] = await Promise.all([this.api.catalog(mine.agency.id), this.api.team(mine.agency.id), this.api.proposals(mine.agency.id).catch(() => [])]);
+    this.proposals.set(proposals);
     this.trips.set(catalog.trips);
     this.coordinatorTrips.set(catalog.coordinatorTrips);
     this.team.set(team);
@@ -193,6 +248,25 @@ export default class AgencyCatalogPage implements OnInit {
 
   protected can(action: Parameters<typeof agencyCan>[1]): boolean {
     return agencyCan(this.mine()?.role, action);
+  }
+
+  /** Proposta (AG-05): approvare pubblica; chiedere modifiche richiede una nota. */
+  protected async decide(item: AgencyProposal, approve: boolean): Promise<void> {
+    if (!approve && this.note().trim().length < 5) { this.error.set('Scrivi al coordinatore cosa va cambiato (almeno 5 caratteri).'); return; }
+    await this.run(item.trip.id, async () => {
+      await this.api.decideProposal(item.trip.id, approve, approve ? undefined : this.note().trim());
+      this.rejecting.set('');
+      await this.reload();
+      return approve ? `«${item.trip.title}» è approvato e pubblicato.` : `Richiesta di modifiche inviata: ${item.trip.coordinator.displayName} la legge nell’editor del viaggio.`;
+    });
+  }
+
+  protected money(cents: number): string {
+    return formatPrice(cents, 'EUR');
+  }
+
+  protected rating(value: number): string {
+    return value.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   }
 
   protected statusLabel(status: CatalogTrip['effectiveStatus']): string {

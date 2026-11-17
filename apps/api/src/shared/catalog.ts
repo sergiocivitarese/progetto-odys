@@ -66,6 +66,10 @@ export interface PublishedTripSummary {
   agencyId?: string;
   agencyOwned?: boolean;
   seriesId?: string;
+  /** Proposta all'agenzia di un viaggio coperto (AG-05): solo nell'area coordinatore e agenzia. */
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvalNote?: string;
+  approvalRequestedAt?: string;
   status: PublishedTripStatus;
   /** Stato reale considerando le date: un viaggio pubblicato in corso è "active". */
   effectiveStatus: PublishedTripStatus;
@@ -235,6 +239,8 @@ export interface CoordinatorRepository {
   analytics(since: string): Promise<CoordinatorAnalytics>;
   /** Sollecito del saldo a un partecipante confermato (CP-03): restituisce l'istante del sollecito. */
   remindBalance(requestId: string): Promise<string>;
+  /** Propone all'agenzia un viaggio coperto in bozza (AG-05). */
+  requestApproval(id: string): Promise<PublishedTrip | null>;
 }
 
 /** Salvataggi e copie dei viaggi pubblicati per l'utente (U-08, U-21). */

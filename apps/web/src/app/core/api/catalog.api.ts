@@ -32,6 +32,10 @@ export interface PublishedTripSummary {
   /** Viaggio del catalogo dell'agenzia e serie delle sue partenze (AG-03). */
   agencyOwned?: boolean;
   seriesId?: string;
+  /** Proposta all'agenzia di un viaggio coperto (AG-05). */
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvalNote?: string;
+  approvalRequestedAt?: string;
   id: string;
   status: PublishedTripStatus;
   effectiveStatus: PublishedTripStatus;
@@ -328,6 +332,7 @@ export class CatalogApi {
   acceptGuidelines() { return this.api.post<void>('/coordinator/guidelines', {}); }
   myPublished() { return this.api.get<PublishedTrip[]>('/coordinator/trips'); }
   myPublishedTrip(id: string) { return this.api.get<PublishedTrip>(`/coordinator/trips/${encodeURIComponent(id)}`); }
+  submitToAgency(id: string) { return this.api.post<PublishedTrip>(`/coordinator/trips/${encodeURIComponent(id)}/submit`, {}); }
   dashboard(periodo: DashboardPeriodKey) { return this.api.get<CoordinatorDashboard>('/coordinator/dashboard', { periodo }); }
   remindBalance(tripId: string, requestId: string) { return this.api.post<{ remindedAt: string }>(`/coordinator/trips/${encodeURIComponent(tripId)}/participants/${encodeURIComponent(requestId)}/remind`, {}); }
   /** Composizione del prezzo (CB-04): voci di costo riservate al coordinatore. */

@@ -387,6 +387,14 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
     res.json(updated);
   }));
 
+  // Proposta all'agenzia (AG-05): un viaggio coperto si pubblica dopo l'approvazione.
+  router.post('/trips/:id/submit', handle(async (req, res) => {
+    const trip = await repo(res).requestApproval(String(req.params.id));
+    if (!trip) throw new HttpError(404, 'Viaggio non trovato.');
+    await store.account(currentUser(res)).record({ action: 'published_trip.submit', entity: 'published_trip', entityId: trip.id });
+    res.json(trip);
+  }));
+
   router.post('/trips/:id/:action', handle(async (req, res) => {
     const status = STATUS_ACTIONS[String(req.params.action)];
     if (!status) throw new HttpError(404, 'Azione non disponibile.');

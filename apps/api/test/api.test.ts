@@ -1021,3 +1021,45 @@ test('dashboard dell’agenzia: fatturato, riempimento, canali e classifica dei 
   assert.deepEqual(dash.data.summary.channels, { odys: 1, direct: 1, directShare: 50 });
   assert.deepEqual(dash.data.summary.leaderboard.map((row) => [row.name, row.revenueCents, row.fill]), [['Teo V.', 40000, 0.25]]);
 });
+
+test('proposte all’agenzia con margine, pareggio e valutazione; approvare pubblica (AG-05)', async () => {
+  const owner = 'token-prop-agenzia';
+  const ownerId = db.addUser(owner, undefined, 'titolare@proposte.example');
+  db.user(ownerId).plans = ['agency'];
+  const coach = 'token-prop-coord';
+  const coachId = db.addUser(coach, undefined, 'coach@proposte.example');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Rita', lastName: 'Monti' });
+  await call('POST', '/coordinator/guidelines', {}, coach);
+  const agency = (await call<{ id: string }>('POST', '/agency', { legalName: 'Monti Srl', displayName: 'Monti', slug: 'monti-proposte' }, owner)).data.id;
+  const member = (await call<{ id: string }>('POST', `/agency/${agency}/team`, { email: 'coach@proposte.example', role: 'coordinator' }, owner)).data.id;
+  await call('POST', `/agency/invites/${member}/accept`, {}, coach);
+  await call('PUT', `/agency/members/${member}/umbrella`, { on: true }, owner);
+
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Dolomiti' } });
+  const own = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coach);
+  const year = new Date().getFullYear() + 1;
+  const trip = (await call<{ id: string; organizer: string }>('POST', '/coordinator/trips', {
+    sourceTripId: own.data.id, title: 'Dolomiti in rifugio', price: 900, capacity: 10,
+    summary: 'Cinque giorni di cammino tra rifugi, malghe e cime delle Dolomiti.', startDate: `${year}-07-10`, endDate: `${year}-07-14`,
+  }, coach)).data;
+  assert.equal(trip.organizer, 'agency');
+  await call('PUT', `/coordinator/trips/${trip.id}/pricing`, { costs: [
+    { label: 'Rifugi', category: 'alloggi', basis: 'per_person', amountCents: 40000 },
+    { label: 'Guida alpina', category: 'attivita', basis: 'group', amountCents: 150000 },
+  ] }, coach);
+
+  const submitted = await call<{ approvalStatus: string }>('POST', `/coordinator/trips/${trip.id}/submit`, {}, coach);
+  assert.equal(submitted.data.approvalStatus, 'pending');
+  const proposals = await call<Array<{ trip: { id: string; coordinator: { displayName: string } }; economics: { marginPerParticipantCents: number; breakEven: number; earningsAtFullCents: number; marginPercent: number } }>>('GET', `/agency/${agency}/proposals`, undefined, owner);
+  assert.equal(proposals.data.length, 1);
+  // 900 € − 90 € di servizio − 400 € di rifugi = 410 € a testa; 1500 € di guida → pareggio a 4.
+  assert.deepEqual([proposals.data[0].economics.marginPerParticipantCents, proposals.data[0].economics.breakEven, proposals.data[0].economics.earningsAtFullCents, proposals.data[0].economics.marginPercent], [41000, 4, 260000, 46]);
+  assert.equal(proposals.data[0].trip.coordinator.displayName, 'Rita M.');
+
+  assert.equal((await call('POST', `/agency/proposals/${trip.id}/reject`, { note: 'no' }, owner)).status, 422);
+  assert.equal((await call('POST', `/agency/proposals/${trip.id}/approve`, {}, coach)).status, 404);
+  assert.equal((await call('POST', `/agency/proposals/${trip.id}/approve`, {}, owner)).status, 204);
+  const published = await call<{ status: string; approvalStatus: string }>('GET', `/coordinator/trips/${trip.id}`, undefined, coach);
+  assert.deepEqual([published.data.status, published.data.approvalStatus], ['published', 'approved']);
+  assert.equal((await call<unknown[]>('GET', `/agency/${agency}/proposals`, undefined, owner)).data.length, 0);
+});

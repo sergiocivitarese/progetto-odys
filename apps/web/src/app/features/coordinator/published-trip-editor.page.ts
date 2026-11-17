@@ -1,3 +1,4 @@
+import { AgencyApi } from '../../core/api/agency.api';
 import { DatePipe } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -40,6 +41,9 @@ function durationFor(days: number): GeneratorDuration {
 })
 export default class PublishedTripEditorPage implements AfterViewInit {
   private readonly api = inject(CatalogApi);
+  private readonly agencies = inject(AgencyApi);
+  /** Ruolo nell'agenzia: proprietario e amministratori pubblicano i viaggi coperti (AG-11). */
+  private readonly agencyRole = signal<string | null>(null);
   private readonly router = inject(Router);
   protected readonly trips = inject(TripsStore);
   private readonly access = viewChild.required(CoordinatorAccessComponent);
@@ -112,6 +116,11 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   protected readonly status = computed(() => this.existing()?.effectiveStatus ?? 'draft');
   protected readonly statusLabel = computed(() => PUBLISHED_STATUS_LABELS[this.status()]);
   protected readonly isPublic = computed(() => ['published', 'active', 'completed'].includes(this.status()));
+  /** Viaggio del coordinatore coperto da un'agenzia: chi non ne è proprietario o amministratore lo propone (AG-05). */
+  protected readonly needsApproval = computed(() => {
+    const trip = this.existing();
+    return Boolean(trip && trip.organizer === 'agency' && !trip.agencyOwned && trip.status === 'draft' && !['owner', 'admin'].includes(this.agencyRole() ?? ''));
+  });
   /** Il kit social (CB-06) compare da quando il viaggio è pubblicato o programmato, finché è in vendita. */
   protected readonly showKit = computed(() => ['published', 'scheduled'].includes(this.status()));
   /** Campi che la pubblicazione richiede (stesse regole del server, C-13). */
@@ -217,6 +226,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
 
   async start(): Promise<void> {
     this.ready.set(true);
+    void this.agencies.mine().then((mine) => this.agencyRole.set(mine?.role ?? null)).catch(() => undefined);
     await this.trips.load();
     const id = this.id();
     if (!id) {
@@ -284,6 +294,17 @@ export default class PublishedTripEditorPage implements AfterViewInit {
       const milestones = milestone ? story.milestones.map((step, index) => (index === milestone.index ? { when: milestone.when ?? step.when, text: milestone.text ?? step.text } : step)) : story.milestones;
       return { ...story, ...change, milestones };
     }));
+  }
+
+  /** Proposta all'agenzia (AG-05): prima si salva, poi si invia. */
+  protected async submitToAgency(): Promise<void> {
+    const saved = await this.save(false);
+    if (!saved) return;
+    await this.run(async () => {
+      this.fill(await this.api.submitToAgency(saved.id));
+      this.message.set('Proposta inviata all’agenzia: la pubblica dopo averla approvata.');
+      return null;
+    });
   }
 
   /** Quota consigliata dal pannello dei costi, scritta come nel campo (virgola decimale). */

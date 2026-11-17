@@ -178,7 +178,25 @@
               @if (missing().length && (trip.status === 'draft' || trip.status === 'scheduled')) {
                 <odys-notice tone="warning">Prima di pubblicare completa: {{ missing().join(', ') }}.</odys-notice>
               }
-              @if (trip.status === 'draft' || trip.status === 'scheduled') {
+              @if (needsApproval()) {
+                <!-- AG-05, AG-11: viaggio coperto dall'agenzia, lo pubblica l'agenzia dopo averlo approvato. -->
+                <div class="proposal">
+                  <p><strong>Coperto da {{ trip.organizerAgency?.name ?? 'un’agenzia' }}</strong>: l’agenzia è l’organizzatore responsabile e lo pubblica dopo averlo approvato.</p>
+                  @switch (trip.approvalStatus) {
+                    @case ('pending') {
+                      <p class="proposal__state proposal__state--wait"><odys-icon name="timer" [size]="16" /> In attesa dell’agenzia@if (trip.approvalRequestedAt) { · inviata il {{ trip.approvalRequestedAt | date: 'd MMM, HH:mm' }}}</p>
+                      <p class="hint">Se cambi titolo, descrizione, date, posti o quota, la proposta si ritira e va inviata di nuovo.</p>
+                    }
+                    @case ('rejected') {
+                      <odys-notice tone="warning">L’agenzia ha chiesto modifiche: «{{ trip.approvalNote }}»</odys-notice>
+                      <button odysButton type="button" variant="accent" icon="arrow-up-right" [block]="true" [loading]="busy()" (click)="submitToAgency()">Invia di nuovo all’agenzia</button>
+                    }
+                    @default {
+                      <button odysButton type="button" variant="accent" icon="arrow-up-right" [block]="true" [loading]="busy()" (click)="submitToAgency()">Invia all’agenzia per l’approvazione</button>
+                    }
+                  }
+                </div>
+              } @else if (trip.status === 'draft' || trip.status === 'scheduled') {
                 <button odysButton type="button" variant="accent" icon="zap" [block]="true" [loading]="busy()" (click)="act('publish')">Pubblica ora</button>
                 <div class="schedule">
                   <label class="label" for="when">Oppure programma la pubblicazione</label>

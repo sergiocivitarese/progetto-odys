@@ -156,6 +156,19 @@ class SupabaseAgencyRepository implements AgencyRepository {
     await this.call('set_member_umbrella_default', { p_member_id: memberId, p_on: on });
   }
 
+  async proposals(agencyId: string): Promise<PublishedTripSummary[]> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    const { data, error } = await this.db.from('published_trips').select(SUMMARY_COLUMNS_FOR_AGENCY)
+      .eq('agency_id', agencyId).eq('agency_owned', false).eq('approval_status', 'pending').order('approval_requested_at', { ascending: true });
+    if (error) throw dbError(error);
+    return summariesOf(this.db, data ?? []);
+  }
+
+  async decideProposal(tripId: string, approve: boolean, note?: string): Promise<void> {
+    if (!isUuid(tripId)) throw new HttpError(404, 'Proposta non trovata.');
+    await this.call('decide_agency_proposal', { p_trip_id: tripId, p_approve: approve, p_note: note ?? null });
+  }
+
   async dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData> {
     if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
     const raw = await this.call<Partial<AgencyDashboardData>>('agency_dashboard_data', { p_agency_id: agencyId, p_since: since });
