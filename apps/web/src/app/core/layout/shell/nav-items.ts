@@ -26,7 +26,7 @@ export function navigationFor(has: (entitlement: Entitlement) => boolean): Navig
     return {
       tone: 'agency',
       items: [
-        { label: 'Dati', path: '/in-arrivo/dati-agenzia', icon: 'chart-column' },
+        { label: 'Dati', path: '/agenzia/dati', icon: 'chart-column' },
         { label: 'Catalogo', path: '/agenzia/catalogo', icon: 'box' },
         { label: 'AI', path: '/in-arrivo/ai-agenzia', icon: 'sparkles' },
         { label: 'Team', path: '/agenzia/team', icon: 'users' },

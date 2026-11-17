@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
-import type { Agency, AgencyInvite, AgencyMember, AgencyProfileInput, AgencyPublicProfile, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
+import type { Agency, AgencyDashboardData, AgencyInvite, AgencyMember, AgencyProfileInput, AgencyPublicProfile, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
 import type { AuthUser } from '../../shared/auth';
 import { HttpError } from '../../shared/http';
 import { dbError, userClient } from './client';
@@ -154,6 +154,12 @@ class SupabaseAgencyRepository implements AgencyRepository {
   async setUmbrellaDefault(memberId: string, on: boolean): Promise<void> {
     if (!isUuid(memberId)) throw new HttpError(404, 'Membro non trovato.');
     await this.call('set_member_umbrella_default', { p_member_id: memberId, p_on: on });
+  }
+
+  async dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    const raw = await this.call<Partial<AgencyDashboardData>>('agency_dashboard_data', { p_agency_id: agencyId, p_since: since });
+    return { trips: (raw.trips ?? []).map((trip) => ({ ...trip, sold: Number(trip.sold) })), payments: raw.payments ?? [], bookings: raw.bookings ?? [], coordinators: raw.coordinators ?? [] };
   }
 
   async setSeats(agencyId: string, seats: number, cycle: BillingCycle): Promise<Agency> {

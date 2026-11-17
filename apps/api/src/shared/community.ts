@@ -83,7 +83,8 @@ export interface ParticipationRepository {
   /** Una prenotazione dell'utente. */
   get(id: string): Promise<ParticipationRequest | null>;
   /** Riserva un posto per il tempo del checkout (TB-08); una riserva ancora valida viene restituita com'è. */
-  reserve(tripId: string): Promise<ParticipationRequest>;
+  /** `channel`: da dove arriva chi prenota (AG-07): community Odys o link diretto. */
+  reserve(tripId: string, channel?: 'odys' | 'direct'): Promise<ParticipationRequest>;
   withdraw(tripId: string): Promise<ParticipationRequest | null>;
   /** Avvia l'acconto o il saldo: l'importo lo calcola l'archivio dalla prenotazione (TB-09). */
   startPayment(requestId: string, kind: PaymentKind, method: PaymentMethod, acceptTerms: boolean): Promise<Payment>;

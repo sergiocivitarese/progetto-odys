@@ -26,5 +26,6 @@ export * from './lib/tripPricing';
 export * from './lib/socialKit';
 export * from './lib/coordinatorDashboard';
 export * from './lib/agency';
+export * from './lib/agencyDashboard';
 export * from './data/places';
 export * from './data/demo';

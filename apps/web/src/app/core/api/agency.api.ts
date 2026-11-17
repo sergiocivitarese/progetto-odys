@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle, LicenseQuote } from '@odys/domain';
+import type { AgencyDashboardSummary, AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle, DashboardPeriodKey, LicenseQuote } from '@odys/domain';
 import { ApiClient } from './api-client';
 import type { CoordinatorCard, PublishedTripSummary } from './catalog.api';
 
@@ -62,5 +62,6 @@ export class AgencyApi {
   assignCoordinator(tripId: string, userId: string | null) { return this.api.put<void>(`/agency/trips/${encodeURIComponent(tripId)}/coordinator`, { userId }); }
   setUmbrella(id: string, tripId: string, on: boolean) { return this.api.put<void>(`/agency/${encodeURIComponent(id)}/umbrella/${encodeURIComponent(tripId)}`, { on }); }
   setUmbrellaDefault(memberId: string, on: boolean) { return this.api.put<void>(`/agency/members/${encodeURIComponent(memberId)}/umbrella`, { on }); }
+  dashboard(id: string, periodo: DashboardPeriodKey) { return this.api.get<{ summary: AgencyDashboardSummary; periods: Record<DashboardPeriodKey, string> }>(`/agency/${encodeURIComponent(id)}/dashboard`, { periodo }); }
   publicProfile(slug: string) { return this.api.get<AgencyPublicProfile>(`/agencies/${encodeURIComponent(slug)}`); }
 }

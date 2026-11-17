@@ -306,7 +306,7 @@ export class CatalogApi {
 
   myParticipations() { return this.api.get<MyParticipation[]>('/me/participations'); }
   /** Blocca il posto (TB-08): riserva per il tempo del checkout. */
-  reserve(tripId: string) { return this.api.post<Booking>(`/bookings/trips/${encodeURIComponent(tripId)}`, {}); }
+  reserve(tripId: string, channel: 'odys' | 'direct' = 'odys') { return this.api.post<Booking>(`/bookings/trips/${encodeURIComponent(tripId)}`, { channel }); }
   booking(id: string) { return this.api.get<Booking>(`/bookings/${encodeURIComponent(id)}`); }
   pay(id: string, kind: Payment['kind'], method: Payment['method'] = 'card', acceptTerms = false) {
     return this.api.post<Payment>(`/bookings/${encodeURIComponent(id)}/payments`, { kind, method, acceptTerms });

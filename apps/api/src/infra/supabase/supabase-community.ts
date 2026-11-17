@@ -160,14 +160,14 @@ class SupabaseParticipationRepository implements ParticipationRepository {
     return data ? toRequest(data as RequestRow) : null;
   }
 
-  async reserve(tripId: string): Promise<ParticipationRequest> {
+  async reserve(tripId: string, channel: 'odys' | 'direct' = 'odys'): Promise<ParticipationRequest> {
     if (!isUuid(tripId)) throw dbError({ code: 'P0002' });
     const existing = await this.own(tripId);
     if (existing && holdsSeat(toRequest(existing))) return toRequest(existing);
     // Le regole (posti, stato del viaggio, importi, scadenza) le applica il trigger del database.
     const query = existing
       ? this.db.from('participation_requests').update({ status: 'reserved' }).eq('id', existing.id)
-      : this.db.from('participation_requests').insert({ published_trip_id: tripId, user_id: this.user.id });
+      : this.db.from('participation_requests').insert({ published_trip_id: tripId, user_id: this.user.id, channel });
     const { data, error } = await query.select(REQUEST_COLUMNS).single();
     if (error) throw dbError(error);
     return toRequest(data as RequestRow);

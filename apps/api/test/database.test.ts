@@ -696,3 +696,28 @@ test('catalogo dell’agenzia: partenze con coordinatore del team, ombrello deci
   const log = await asUser(owner, () => db.query<{ action: string }>(`select action from public.audit_log where action in ('agency.umbrella_on', 'agency.departure_add', 'agency.departure_coordinator', 'agency.umbrella_default')`));
   assert.equal(new Set(log.rows.map((row) => row.action)).size, 4, 'ogni cambio di copertura e assegnazione è registrato');
 });
+
+test('dashboard dell’agenzia: canale della prenotazione, dati solo a proprietario e amministratori (AG-07)', async () => {
+  const owner = (await db.query<{ id: string }>(`select id from auth.users where email = 'agenzia@example.com'`)).rows[0].id;
+  const agency = (await db.query<{ id: string }>('select id from public.agencies where owner_id = $1', [owner])).rows[0].id;
+  const trip = (await db.query<{ id: string }>(`select id from public.published_trips where agency_id = $1 and agency_owned and status = 'published' limit 1`, [agency])).rows[0].id;
+  const marta = (await db.query<{ id: string }>(`select id from auth.users where email = 'marta@example.com'`)).rows[0].id;
+
+  // Chi arriva dal link condiviso prenota dal canale diretto.
+  const request = (await asUser(marta, () => db.query<{ id: string; channel: string }>(`insert into public.participation_requests (published_trip_id, channel) values ($1, 'direct') returning id, channel`, [trip]))).rows[0];
+  assert.equal(request.channel, 'direct');
+  const payment = (await asUser(marta, () => db.query<{ id: string }>(`select id from public.start_payment($1, 'deposit', 'card', true)`, [request.id]))).rows[0].id;
+  await asUser(marta, () => db.query('select public.confirm_simulated_payment($1)', [payment]));
+
+  await assert.rejects(asUser(luca, () => db.query(`select public.agency_dashboard_data($1, now() - interval '30 days')`, [agency])), /proprietario e amministratori/);
+  await assert.rejects(asUser(marta, () => db.query(`select public.agency_dashboard_data($1, now() - interval '30 days')`, [agency])), /proprietario e amministratori/);
+  const data = (await asUser(owner, () => db.query<{ d: { trips: Array<{ id: string }>; payments: Array<{ tripId: string }>; bookings: Array<{ tripId: string; channel: string }>; coordinators: Array<{ name: string }> } }>(
+    `select public.agency_dashboard_data($1, now() - interval '30 days') as d`, [agency]))).rows[0].d;
+  assert.ok(data.trips.some((item) => item.id === trip));
+  assert.deepEqual(data.bookings.filter((item) => item.tripId === trip).map((item) => item.channel), ['direct']);
+  assert.ok(data.payments.some((item) => item.tripId === trip));
+  assert.deepEqual(data.coordinators.map((item) => item.name), ['Sara N.']);
+  assert.ok(!JSON.stringify(data).includes(marta), 'nessun dato personale dei viaggiatori');
+
+  // Il trigger rende «diretta» ogni prenotazione di un viaggio «Su invito»: si proverà quando esisteranno gli inviti ai viaggi.
+});

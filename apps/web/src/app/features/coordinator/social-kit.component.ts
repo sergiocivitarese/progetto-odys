@@ -83,7 +83,8 @@ export class SocialKitComponent {
   protected readonly generating = signal(false);
   protected readonly copied = signal<'' | 'link' | 'text'>('');
   protected readonly canShare = signal(false);
-  protected readonly publicUrl = computed(() => `${location.origin}/gruppi/${this.trip().id}`);
+  /** Il link condiviso fuori da Odys segna le prenotazioni come «canale diretto» (AG-07). */
+  protected readonly publicUrl = computed(() => `${location.origin}/gruppi/${this.trip().id}?canale=diretto`);
   protected readonly content = computed(() => {
     const trip = this.trip();
     return socialKitContent({

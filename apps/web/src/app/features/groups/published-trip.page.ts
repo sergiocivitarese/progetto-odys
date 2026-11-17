@@ -39,6 +39,8 @@ export default class PublishedTripPage {
   readonly id = input.required<string>();
   /** `?prenota=1`: al ritorno dal login riprende «Blocca il tuo posto» (TB-08). */
   readonly prenota = input<string>();
+  /** `?canale=diretto`: si arriva dal link condiviso fuori da Odys (AG-07). Resta memorizzato anche dopo l'accesso. */
+  readonly canale = input<string>();
 
   protected readonly trip = signal<PublishedTrip | null>(null);
   protected readonly loading = signal(true);
@@ -96,6 +98,8 @@ export default class PublishedTripPage {
   });
 
   constructor() {
+    // Il canale si memorizza all'arrivo: il ritorno dopo l'accesso non porta più `?canale=diretto`.
+    effect(() => { if (this.canale() === 'diretto') untracked(() => this.channel()); });
     effect(() => {
       const id = this.id();
       untracked(() => void this.load(id));
@@ -129,6 +133,16 @@ export default class PublishedTripPage {
   }
 
   /** «Blocca il tuo posto» (TB-08): login se serve, con ritorno qui; poi riserva e checkout. */
+  private channel(): 'odys' | 'direct' {
+    const key = `odys-canale-${this.id()}`;
+    try {
+      if (this.canale() === 'diretto') sessionStorage.setItem(key, 'direct');
+      return sessionStorage.getItem(key) === 'direct' ? 'direct' : 'odys';
+    } catch {
+      return this.canale() === 'diretto' ? 'direct' : 'odys';
+    }
+  }
+
   protected async reserve(): Promise<void> {
     await this.auth.start();
     if (!this.auth.isAuthenticated()) {
@@ -143,7 +157,7 @@ export default class PublishedTripPage {
     this.busy.set(true);
     this.message.set('');
     try {
-      const booking = await this.catalog.reserve(this.id());
+      const booking = await this.catalog.reserve(this.id(), this.channel());
       await this.router.navigate(['/prenota', booking.id]);
     } catch (error) {
       this.message.set(apiErrorMessage(error, 'Non è stato possibile bloccare il posto.'));

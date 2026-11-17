@@ -89,6 +89,7 @@ interface MemoryPublished extends Omit<PublishedTrip, 'organizer'> {
 
 interface MemoryParticipation extends ParticipationRequest {
   userId: string;
+  channel?: 'odys' | 'direct';
   termsAcceptedAt?: string;
 }
 
@@ -490,7 +491,7 @@ class MemorySavedTripsRepository implements SavedTripsRepository {
 }
 
 function publicRequest(item: MemoryParticipation): ParticipationRequest {
-  const { userId: _user, termsAcceptedAt: _terms, ...rest } = item;
+  const { userId: _user, termsAcceptedAt: _terms, channel: _channel, ...rest } = item;
   return { ...rest };
 }
 
@@ -515,7 +516,7 @@ class MemoryParticipationRepository implements ParticipationRepository {
     return item ? publicRequest(item) : null;
   }
 
-  async reserve(tripId: string) {
+  async reserve(tripId: string, channel: 'odys' | 'direct' = 'odys') {
     const existing = this.own(tripId);
     if (existing && holdsSeat(existing)) return publicRequest(existing);
     if (existing?.status === 'declined') throw new HttpError(403, 'Operazione non consentita.');
@@ -543,7 +544,8 @@ class MemoryParticipationRepository implements ParticipationRepository {
       Object.assign(existing, reservation);
       return publicRequest(existing);
     }
-    const created: MemoryParticipation = { id: randomUUID(), tripId, userId: this.userId, createdAt: new Date().toISOString(), ...reservation };
+    // Come il trigger `participation_channel_guard`: i viaggi «Su invito» sono sempre canale diretto.
+    const created: MemoryParticipation = { id: randomUUID(), tripId, userId: this.userId, createdAt: new Date().toISOString(), channel: trip.visibility === 'invite' ? 'direct' : channel, ...reservation };
     this.db.participations.set(created.id, created);
     return publicRequest(created);
   }

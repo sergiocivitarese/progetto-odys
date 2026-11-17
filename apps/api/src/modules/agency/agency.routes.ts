@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { INVITABLE_ROLES, isValidAgencySlug, licenseQuote, MAX_LICENSE_SEATS, type AgencyRole, type BillingCycle } from '@odys/domain';
+import { dashboardRange, DASHBOARD_PERIODS, INVITABLE_ROLES, isDashboardPeriod, isValidAgencySlug, licenseQuote, MAX_LICENSE_SEATS, summarizeAgencyDashboard, type AgencyRole, type BillingCycle } from '@odys/domain';
 import type { AgencyProfileInput } from '../../shared/agency';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
 import type { DataStore } from '../../shared/data';
@@ -136,6 +136,16 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
     if (typeof on !== 'boolean') throw new HttpError(400, 'Richiesta non valida.');
     await repo(res).setUmbrellaDefault(String(req.params.memberId), on);
     res.status(204).end();
+  }));
+
+  // Dashboard (AG-07): numeri calcolati dai pagamenti e dalle prenotazioni registrati dal server.
+  router.get('/:id/dashboard', handle(async (req, res) => {
+    const periodo = req.query['periodo'] ?? 'month';
+    if (!isDashboardPeriod(periodo)) throw new HttpError(400, 'Periodo non valido.');
+    const now = new Date();
+    const range = dashboardRange(periodo, now);
+    const data = await repo(res).dashboardData(String(req.params.id), range.previousFrom);
+    res.json({ summary: summarizeAgencyDashboard({ range, now, ...data }), periods: DASHBOARD_PERIODS });
   }));
 
   // Inviti ricevuti da qualunque utente.

@@ -1,4 +1,4 @@
-import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
+import type { AgencyDashboardBooking, AgencyDashboardCoordinator, AgencyDashboardPayment, AgencyDashboardTrip, AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { CoordinatorCard, PublishedTripSummary } from './catalog';
 
@@ -84,6 +84,14 @@ export interface AgencyPublicProfile {
   coordinators: CoordinatorCard[];
 }
 
+/** Dati grezzi della dashboard (AG-07), senza dati personali dei viaggiatori. */
+export interface AgencyDashboardData {
+  trips: AgencyDashboardTrip[];
+  payments: AgencyDashboardPayment[];
+  bookings: AgencyDashboardBooking[];
+  coordinators: AgencyDashboardCoordinator[];
+}
+
 export interface AgencyRepository {
   /** Agenzie attive dell'utente (di solito una). */
   mine(): Promise<MyAgency[]>;
@@ -103,6 +111,8 @@ export interface AgencyRepository {
   assignCoordinator(tripId: string, userId: string | null): Promise<void>;
   setUmbrella(agencyId: string, tripId: string, on: boolean): Promise<void>;
   setUmbrellaDefault(memberId: string, on: boolean): Promise<void>;
+  /** Dashboard (AG-07): solo proprietario e amministratori. */
+  dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData>;
 }
 
 export interface AgencyStore {

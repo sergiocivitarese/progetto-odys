@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { agencyCan, describeEntitlements, isValidAgencySlug, type AgencyAction, type AgencyLinkType, type AgencyMemberStatus, type AgencyRole, type BillingCycle } from '@odys/domain';
-import type { Agency, AgencyMember, AgencyProfileInput, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
+import type { Agency, AgencyDashboardData, AgencyMember, AgencyProfileInput, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
 import type { CoordinatorCard, PublishedTrip, PublishedTripSummary } from '../../shared/catalog';
 import { HttpError } from '../../shared/http';
 import type { MemoryDatabase } from './memory-store';
@@ -240,6 +240,31 @@ class MemoryAgencyRepository implements AgencyRepository {
     if (paid) throw new HttpError(422, 'Il viaggio ha già pagamenti confermati: la copertura non si cambia.');
     Object.assign(trip, { agencyId: on ? agencyId : undefined, organizer: on ? 'agency' : 'coordinator' });
     this.audit(on ? 'agency.umbrella_on' : 'agency.umbrella_off', tripId, { agency: agencyId, coordinator: trip.coordinatorId });
+  }
+
+  /** Stessi dati di `agency_dashboard_data()` (migrazione 0022). */
+  async dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData> {
+    if (!this.staff(agencyId, ['owner', 'admin'])) throw new HttpError(403, 'I dati dell’agenzia li vedono proprietario e amministratori.');
+    const sinceMs = Date.parse(since);
+    const trips = [...this.db.published.values()].filter((trip) => trip.agencyId === agencyId);
+    const ids = new Set(trips.map((trip) => trip.id));
+    const requests = [...this.db.participations.values()];
+    const confirmed = this.db.payments.flatMap((payment) => {
+      const request = this.db.participations.get(payment.requestId) as (typeof requests)[number] & { channel?: 'odys' | 'direct' } | undefined;
+      if (!request || !ids.has(request.tripId) || payment.status !== 'confirmed' || !payment.confirmedAt || Date.parse(payment.confirmedAt) < sinceMs) return [];
+      return [{ payment, request }];
+    });
+    return {
+      trips: trips.map((trip) => ({
+        id: trip.id, title: trip.title, coordinatorId: trip.coordinatorId || null, status: trip.status, startDate: trip.startDate, endDate: trip.endDate, capacity: trip.capacity,
+        sold: requests.filter((request) => request.tripId === trip.id && ['confirmed', 'balance_paid'].includes(request.status)).length,
+      })),
+      payments: confirmed.map(({ payment, request }) => ({ tripId: request.tripId, amountCents: payment.amountCents, at: payment.confirmedAt! })),
+      bookings: confirmed.filter(({ payment }) => payment.kind === 'deposit').map(({ payment, request }) => ({ tripId: request.tripId, channel: request.channel ?? 'odys', at: payment.confirmedAt! })),
+      coordinators: [...this.db.agencyMembers.values()]
+        .filter((member) => member.agencyId === agencyId && member.status === 'active' && member.role === 'coordinator')
+        .map((member) => { const profile = this.db.user(member.userId).profile; return { userId: member.userId, name: `${profile.firstName} ${profile.lastName.slice(0, 1)}.`, licensed: member.licensed }; }),
+    };
   }
 
   async setUmbrellaDefault(memberId: string, on: boolean): Promise<void> {

@@ -98,6 +98,14 @@ const server = app.listen(config.port, async () => {
   await as(AGENCY, 'PUT', `/agency/trips/${catalogTrip.id}/coordinator`, { userId });
   await as(AGENCY, 'POST', `/coordinator/trips/${catalogTrip.id}/publish`, {});
   await as(AGENCY, 'POST', `/agency/trips/${catalogTrip.id}/departures`, { startDate: `${year}-09-16`, endDate: `${year}-09-20` });
+  // Prenotazione dal link diretto del kit social (canale «diretto», AG-07).
+  const direct = await as<{ id: string }>(TRAVELER, 'POST', `/bookings/trips/${catalogTrip.id}`, { channel: 'direct' });
+  await as(TRAVELER, 'POST', `/bookings/${direct.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true });
+  for (let i = 0; i < 30; i += 1) {
+    if ((await as<{ status: string }>(TRAVELER, 'GET', `/bookings/${direct.id}`)).status === 'pending') break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  await as(AGENCY, 'POST', `/coordinator/trips/${catalogTrip.id}/participants/${direct.id}/confirm`, {});
   const draftTrip = (await call<Array<{ id: string; status: string }>>('GET', '/coordinator/trips')).find((trip) => trip.status === 'draft');
   if (draftTrip) await as(AGENCY, 'PUT', `/agency/${agency.id}/umbrella/${draftTrip.id}`, { on: true });
   console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);

@@ -30,7 +30,9 @@ export function bookingsRouter(auth: AuthProvider, store: DataStore, payments: P
   // Blocca il posto (TB-08): riserva per il tempo del checkout. Serve il diritto di prenotare.
   router.post('/trips/:tripId', requireEntitlement(store, 'trips.book'), handle(async (req, res) => {
     const user = currentUser(res);
-    const request = await store.participation(user).reserve(String(req.params.tripId));
+    // Canale (AG-07): «direct» se si arriva dal link condiviso fuori da Odys; ogni altro valore vale «odys».
+    const channel = (req.body as { channel?: unknown } | undefined)?.channel === 'direct' ? 'direct' : 'odys';
+    const request = await store.participation(user).reserve(String(req.params.tripId), channel);
     await store.account(user).record({ action: 'booking.reserve', entity: 'published_trip', entityId: request.tripId });
     res.status(201).json(await details(res, request.id));
   }));

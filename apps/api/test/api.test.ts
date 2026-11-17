@@ -978,3 +978,46 @@ test('catalogo dell’agenzia: partenze, coordinatore assegnato, ombrello e tras
   const own2 = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coach);
   assert.equal((await call<{ organizer: string }>('POST', '/coordinator/trips', { sourceTripId: own2.data.id, title: 'Palmarola' }, coach)).data.organizer, 'agency');
 });
+
+test('dashboard dell’agenzia: fatturato, riempimento, canali e classifica dei coordinatori (AG-07)', async () => {
+  const owner = 'token-dash-agenzia';
+  const ownerId = db.addUser(owner, undefined, 'titolare@dash.example');
+  db.user(ownerId).plans = ['agency'];
+  const coach = 'token-dash-agenzia-coord';
+  const coachId = db.addUser(coach, undefined, 'coach@dash.example');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Teo', lastName: 'Vela' });
+  await call('POST', '/coordinator/guidelines', {}, coach);
+  const first = 'token-dash-v1';
+  const second = 'token-dash-v2';
+  db.addUser(first, undefined, 'v1@dash.example');
+  db.addUser(second, undefined, 'v2@dash.example');
+
+  const agency = (await call<{ id: string }>('POST', '/agency', { legalName: 'Isole Srl', displayName: 'Isole', slug: 'isole-dash' }, owner)).data.id;
+  const invite = (await call<{ id: string }>('POST', `/agency/${agency}/team`, { email: 'coach@dash.example', role: 'coordinator' }, owner)).data.id;
+  await call('POST', `/agency/invites/${invite}/accept`, {}, coach);
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Eolie' } });
+  const source = await call<Trip>('POST', '/trips', { itinerary: generated.data }, owner);
+  const year = new Date().getFullYear() + 1;
+  const trip = (await call<{ id: string }>('POST', '/coordinator/trips', {
+    sourceTripId: source.data.id, agencyId: agency, title: 'Eolie in barca', price: 800, capacity: 8,
+    summary: 'Sei giorni tra Lipari, Salina e Stromboli, in barca a vela.', startDate: `${year}-06-10`, endDate: `${year}-06-15`,
+  }, owner)).data.id;
+  await call('PUT', `/agency/trips/${trip}/coordinator`, { userId: coachId }, owner);
+  await call('POST', `/coordinator/trips/${trip}/publish`, {}, owner);
+
+  // Una prenotazione dalla community e una dal link diretto.
+  for (const [token, channel] of [[first, undefined], [second, 'direct']] as const) {
+    const booking = await call<{ id: string }>('POST', `/bookings/trips/${trip}`, channel ? { channel } : {}, token);
+    await call('POST', `/bookings/${booking.data.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true }, token);
+    await waitFor(() => call<{ status: string }>('GET', `/bookings/${booking.data.id}`, undefined, token), (item) => item.data.status === 'pending');
+    await call('POST', `/coordinator/trips/${trip}/participants/${booking.data.id}/confirm`, {}, owner);
+  }
+
+  assert.equal((await call('GET', `/agency/${agency}/dashboard`, undefined, coach)).status, 403);
+  const dash = await call<{ summary: { revenue: { grossCents: number }; averageFill: number; publishedTrips: number; activeCoordinators: number; channels: { odys: number; direct: number; directShare: number }; leaderboard: Array<{ name: string; revenueCents: number; fill: number }> } }>('GET', `/agency/${agency}/dashboard?periodo=month`, undefined, owner);
+  assert.equal(dash.status, 200);
+  assert.equal(dash.data.summary.revenue.grossCents, 2 * 20000, 'due acconti da un quarto della quota');
+  assert.deepEqual([dash.data.summary.publishedTrips, dash.data.summary.activeCoordinators, dash.data.summary.averageFill], [1, 1, 2 / 8]);
+  assert.deepEqual(dash.data.summary.channels, { odys: 1, direct: 1, directShare: 50 });
+  assert.deepEqual(dash.data.summary.leaderboard.map((row) => [row.name, row.revenueCents, row.fill]), [['Teo V.', 40000, 0.25]]);
+});
