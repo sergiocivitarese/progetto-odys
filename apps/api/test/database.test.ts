@@ -780,3 +780,34 @@ test('AI dell’agenzia per i coordinatori: interruttore, storico scritto dal se
   assert.equal((await asUser(sara, () => db.query<{ status: string }>('select status from public.agency_ai_generations where id = $1', [generation]))).rows[0].status, 'approved');
 
 });
+
+test('moduli a piano dell’agenzia: limite dei membri, automazioni solo con Business (AG-08)', async () => {
+  const owner = await signUp('agenzia-piani@example.com', { ...adult, first_name: 'Pia', last_name: 'Piani' });
+  const admin = (await db.query<{ id: string }>(`select id from public.profiles where role = 'admin' limit 1`)).rows[0].id;
+  await asUser(admin, () => db.query(`select public.admin_set_plan($1, 'agency')`, [owner]));
+  const agency = (await asUser(owner, () => db.query<{ id: string; tier: string }>(`select id, tier from public.create_agency('Piani Srl', 'Piani', 'piani-test')`))).rows[0];
+  assert.equal(agency.tier, 'start');
+
+  // Start: al massimo 5 membri oltre al proprietario.
+  const people = await Promise.all(Array.from({ length: 6 }, (_, i) => signUp(`membro${i}@piani.example`, { ...adult, first_name: `M${i}` })));
+  for (let i = 0; i < 5; i += 1) await asUser(owner, () => db.query(`select public.invite_agency_member($1, $2, 'operator')`, [agency.id, `membro${i}@piani.example`]));
+  await assert.rejects(asUser(owner, () => db.query(`select public.invite_agency_member($1, 'membro5@piani.example', 'operator')`, [agency.id])), /al massimo 5 membri/);
+  await assert.rejects(asUser(owner, () => db.query('select public.set_agency_automations($1, true, false)', [agency.id])), /piano Business/);
+  void people;
+
+  // Business: membri senza limite e automazioni.
+  await asUser(owner, () => db.query(`select public.set_agency_tier($1, 'business')`, [agency.id]));
+  await asUser(owner, () => db.query(`select public.set_agency_license_seats($1, 1, 'monthly')`, [agency.id]));
+  await asUser(owner, () => db.query('select public.set_agency_automations($1, true, true)', [agency.id]));
+  // Un coordinatore approvato (Sara, dei test precedenti) accetta: ombrello predefinito e licenza in automatico.
+  const invite = (await asUser(owner, () => db.query<{ id: string }>(`select public.invite_agency_member($1, 'sara@example.com', 'coordinator') as id`, [agency.id]))).rows[0].id;
+  await asUser(sara, () => db.query('select public.respond_agency_invite($1, true)', [invite]));
+  const member = await db.query<{ umbrella_default: boolean; link_type: string }>('select umbrella_default, link_type from public.agency_members where id = $1', [invite]);
+  assert.deepEqual([member.rows[0].umbrella_default, member.rows[0].link_type], [true, 'licensed']);
+
+  // Scendere sotto il numero di membri non si può; scendere a Pro spegne le automazioni.
+  await assert.rejects(asUser(owner, () => db.query(`select public.set_agency_tier($1, 'start')`, [agency.id])), /ne prevede al massimo 5/);
+  await assert.rejects(asUser(sara, () => db.query(`select public.set_agency_tier($1, 'business')`, [agency.id])), /lo sceglie il proprietario/);
+  const pro = (await asUser(owner, () => db.query<{ tier: string; auto_umbrella_new: boolean; auto_license_new: boolean }>(`select tier, auto_umbrella_new, auto_license_new from public.set_agency_tier($1, 'pro')`, [agency.id]))).rows[0];
+  assert.deepEqual([pro.tier, pro.auto_umbrella_new, pro.auto_license_new], ['pro', false, false]);
+});

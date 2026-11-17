@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { dashboardRange, DASHBOARD_PERIODS, INVITABLE_ROLES, isDashboardPeriod, isValidAgencySlug, licenseQuote, MAX_LICENSE_SEATS, SERVICE_RATE, summarizeAgencyDashboard, summarizePricing, type AgencyRole, type BillingCycle } from '@odys/domain';
+import { AGENCY_TIER_MODULES, dashboardRange, DASHBOARD_PERIODS, isAgencyTier, tierForModule, INVITABLE_ROLES, isDashboardPeriod, isValidAgencySlug, licenseQuote, MAX_LICENSE_SEATS, SERVICE_RATE, summarizeAgencyDashboard, summarizePricing, type AgencyRole, type BillingCycle } from '@odys/domain';
 import type { AgencyProfileInput } from '../../shared/agency';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
 import type { DataStore } from '../../shared/data';
@@ -49,7 +49,7 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
   router.get('/', handle(async (_req, res) => {
     const mine = (await repo(res).mine())[0];
     if (!mine) { res.json(null); return; }
-    res.json({ ...mine, quote: licenseQuote(mine.agency.licenseSeats, mine.agency.billingCycle) });
+    res.json({ ...mine, quote: licenseQuote(mine.agency.licenseSeats, mine.agency.billingCycle), modules: AGENCY_TIER_MODULES[mine.agency.tier] });
   }));
 
   router.post('/', handle(async (req, res) => {
@@ -171,6 +171,20 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
     res.status(204).end();
   }));
 
+  // Moduli a piano (AG-08): livello del piano (acquisto simulato) e automazioni.
+  router.put('/:id/tier', handle(async (req, res) => {
+    const { tier } = requireObject<{ tier?: unknown }>(req.body, 'Richiesta non valida.');
+    if (!isAgencyTier(tier)) throw new HttpError(400, 'Piano non valido.');
+    const agency = await repo(res).setTier(String(req.params.id), tier);
+    res.json({ agency, modules: AGENCY_TIER_MODULES[agency.tier] });
+  }));
+
+  router.put('/:id/automations', handle(async (req, res) => {
+    const { umbrella, license } = requireObject<{ umbrella?: unknown; license?: unknown }>(req.body, 'Richiesta non valida.');
+    if (typeof umbrella !== 'boolean' || typeof license !== 'boolean') throw new HttpError(400, 'Richiesta non valida.');
+    res.json(await repo(res).setAutomations(String(req.params.id), umbrella, license));
+  }));
+
   // AI per i coordinatori (AG-06): impostazioni e storico delle generazioni.
   router.get('/:id/ai', handle(async (req, res) => {
     const mine = (await repo(res).mine()).find((item) => item.agency.id === String(req.params.id));
@@ -202,7 +216,16 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
     const now = new Date();
     const range = dashboardRange(periodo, now);
     const data = await repo(res).dashboardData(String(req.params.id), range.previousFrom);
-    res.json({ summary: summarizeAgencyDashboard({ range, now, ...data }), periods: DASHBOARD_PERIODS });
+    const summary = summarizeAgencyDashboard({ range, now, ...data });
+    // AG-08: canali e classifica dei coordinatori sono «dati avanzati», dal piano Pro in su.
+    const tier = (await repo(res).mine()).find((item) => item.agency.id === String(req.params.id))?.agency.tier ?? 'start';
+    const advanced = AGENCY_TIER_MODULES[tier].advancedAnalytics;
+    res.json({
+      summary: advanced ? summary : { ...summary, channels: null, leaderboard: null },
+      advanced,
+      unlockTier: advanced ? null : tierForModule('advancedAnalytics'),
+      periods: DASHBOARD_PERIODS,
+    });
   }));
 
   // Inviti ricevuti da qualunque utente.

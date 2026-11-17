@@ -93,6 +93,10 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
           <form class="card invite" (submit)="$event.preventDefault(); invite()" novalidate>
             <h2>Invita nel team</h2>
             <p class="hint">Inserisci l’email di un account Odys. L’invito compare nel suo profilo: entra quando lo accetta.</p>
+            <p class="seats-line">Membri {{ memberCount() }}@if (maxMembers() !== null) {/{{ maxMembers() }}} · piano {{ m.modules.label }}</p>
+            @if (teamFull()) {
+              <odys-notice tone="warning">Il team ha raggiunto il limite del piano {{ m.modules.label }}. <a routerLink="/agenzia">Passa a un piano superiore</a> per invitare altre persone.</odys-notice>
+            }
             <div class="invite__row">
               <label class="field-label grow">Email<input class="field" type="email" name="email" autocomplete="off" placeholder="nome@esempio.it" [ngModel]="email()" (ngModelChange)="email.set($event)" /></label>
               <label class="field-label">Ruolo
@@ -102,7 +106,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
               </label>
             </div>
             <p class="hint">{{ roleHint() }}</p>
-            <button odysButton type="submit" variant="secondary" icon="plus" [loading]="busy() === 'invite'">Invia l’invito</button>
+            <button odysButton type="submit" variant="secondary" icon="plus" [loading]="busy() === 'invite'" [disabled]="teamFull()">Invia l’invito</button>
           </form>
         }
 
@@ -185,6 +189,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
     .tiers .muted { color: inherit; opacity: 0.8; }
     .card { display: flex; flex-direction: column; gap: var(--space-3); max-width: 760px; margin-bottom: var(--space-4); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border);
       h2 { font-size: var(--text-lg); } > button { align-self: flex-start; } }
+    .seats-line { font-size: var(--text-sm); font-weight: 700; }
     .invite__row { display: flex; flex-wrap: wrap; gap: var(--space-3); }
     .grow { flex: 1 1 220px; }
     .field-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); font-weight: 600; }
@@ -234,6 +239,10 @@ export default class AgencyTeamPage implements OnInit {
 
   protected readonly used = computed(() => this.team().filter((member) => member.licensed).length);
   protected readonly free = computed(() => Math.max(0, (this.mine()?.agency.licenseSeats ?? 0) - this.used()));
+  /** Membri oltre al proprietario (inviti compresi) e limite del piano (AG-08). */
+  protected readonly memberCount = computed(() => this.team().filter((member) => member.role !== 'owner').length);
+  protected readonly maxMembers = computed(() => this.mine()?.modules.maxMembers ?? null);
+  protected readonly teamFull = computed(() => this.maxMembers() !== null && this.memberCount() >= this.maxMembers()!);
   protected readonly activeCount = computed(() => this.team().filter((member) => member.status === 'active').length);
   protected readonly quote = computed(() => licenseQuote(this.mine()?.agency.licenseSeats ?? 0, this.mine()?.agency.billingCycle ?? 'monthly'));
   protected readonly preview = computed(() => licenseQuote(this.seats(), this.cycle()));

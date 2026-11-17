@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { AGENCY_ROLE_LABELS, agencyCan, agencySlug } from '@odys/domain';
+import { AGENCY_ROLE_LABELS, AGENCY_TIER_MODULES, AGENCY_TIERS, agencyCan, agencySlug, type AgencyTier } from '@odys/domain';
 import { apiErrorMessage } from '../../core/api/api-client';
 import { AgencyApi, type AgencyProfileForm, type MyAgency } from '../../core/api/agency.api';
 import { EntitlementsStore } from '../../core/state/entitlements.store';
@@ -71,6 +71,42 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, T
           <odys-text-field label="Condizioni dell’agenzia (facoltative)" [multiline]="true" hint="Le leggono i viaggiatori nel checkout dei viaggi coperti dall’agenzia: acconto, rimborsi, annullamenti, garanzie." [(value)]="saleTerms" [disabled]="!canEdit()" />
           @if (canEdit()) {<button odysButton type="submit" variant="accent" icon="check" [loading]="busy()">Salva il profilo</button>}
         </form>
+
+        <!-- Moduli a piano (AG-08) -->
+        <section class="card" aria-labelledby="tier-title">
+          <h2 id="tier-title">Piano dell’agenzia</h2>
+          <p class="hint">Numero di membri del team, dati avanzati e automazioni dipendono dal piano. Prezzi da definire: il cambio è simulato, senza addebito.</p>
+          <div class="tiers">
+            @for (tier of tiers; track tier.key) {
+              <div class="tier" [class.is-current]="m.agency.tier === tier.key">
+                <strong>{{ tier.label }}</strong>
+                <ul>
+                  <li>{{ tier.maxMembers === null ? 'Team senza limiti' : 'Fino a ' + tier.maxMembers + ' membri' }}</li>
+                  <li [class.off]="!tier.advancedAnalytics">Canali e classifica dei coordinatori</li>
+                  <li [class.off]="!tier.automations">Automazioni sui nuovi coordinatori</li>
+                </ul>
+                @if (m.agency.tier === tier.key) {
+                  <span class="tier__current">Piano attuale</span>
+                } @else if (m.role === 'owner') {
+                  <button odysButton type="button" variant="secondary" size="sm" [loading]="busy()" (click)="changeTier(tier.key)">Passa a {{ tier.label }}</button>
+                }
+              </div>
+            }
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="auto-title">
+          <h2 id="auto-title">Automazioni</h2>
+          @if (!m.modules.automations) {<odys-notice tone="info">Le automazioni sono incluse nel piano Business.</odys-notice>}
+          <label class="auto">
+            <input type="checkbox" [checked]="m.agency.autoUmbrellaNew" [disabled]="!m.modules.automations || !canEdit() || busy()" (change)="setAutomation('umbrella', $any($event.target).checked)" />
+            <span><strong>Ombrello automatico</strong><span class="hint">Ogni coordinatore che entra nel team ha l’ombrello predefinito: i suoi viaggi nuovi nascono coperti dall’agenzia.</span></span>
+          </label>
+          <label class="auto">
+            <input type="checkbox" [checked]="m.agency.autoLicenseNew" [disabled]="!m.modules.automations || !canEdit() || busy()" (change)="setAutomation('license', $any($event.target).checked)" />
+            <span><strong>Licenza automatica</strong><span class="hint">Se ci sono licenze libere, chi entra come coordinatore riceve subito il Coordinatore Premium.</span></span>
+          </label>
+        </section>
         <p class="hint">Le parti dell’area agenzia ancora da costruire (AI per i coordinatori, dati e proposte da approvare) arrivano nei prossimi aggiornamenti.</p>
       }
     </div>
@@ -84,6 +120,19 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, T
     .card { display: flex; flex-direction: column; gap: var(--space-4); max-width: 760px; margin-bottom: var(--space-4); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border);
       h2 { font-size: var(--text-lg); } h3 { font-size: var(--text-md); margin-top: var(--space-2); } > button { align-self: flex-start; } }
     .two { display: grid; gap: var(--space-4); }
+    .tiers { display: grid; gap: var(--space-3); }
+    @media (min-width: 640px) { .tiers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .tier { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface-muted); border: 2px solid transparent;
+      strong { font-family: var(--font-brand); font-size: var(--text-xl); font-weight: 900; }
+      ul { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); }
+      li::before { content: '✓ '; color: var(--odys-blue); font-weight: 900; }
+      li.off { color: var(--color-text-muted); text-decoration: line-through; &::before { content: '– '; color: inherit; } }
+      > button { align-self: flex-start; margin-top: auto; } }
+    .tier.is-current { border-color: var(--odys-blue); background: var(--color-primary-soft); }
+    .tier__current { align-self: flex-start; margin-top: auto; padding: 2px 10px; border-radius: var(--radius-pill); background: var(--odys-blue); color: #fff; font-size: var(--text-xs); font-weight: 800; }
+    .auto { display: flex; align-items: flex-start; gap: var(--space-3); cursor: pointer;
+      input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--odys-blue); flex-shrink: 0; }
+      > span { display: flex; flex-direction: column; gap: 2px; } }
     @media (min-width: 640px) { .two { grid-template-columns: 1fr 1fr; } }
     .hint, .muted { font-size: var(--text-sm); color: var(--color-text-muted); }
   `,
@@ -107,6 +156,30 @@ export default class AgencySettingsPage implements OnInit {
   protected readonly city = signal('');
   protected readonly country = signal('');
   protected readonly saleTerms = signal('');
+  protected readonly tiers = AGENCY_TIERS.map((key) => ({ key, ...AGENCY_TIER_MODULES[key] }));
+
+  protected async changeTier(tier: AgencyTier): Promise<void> {
+    const mine = this.mine();
+    if (!mine) return;
+    await this.run(async () => {
+      const result = await this.api.setTier(mine.agency.id, tier);
+      this.mine.set({ ...mine, agency: result.agency, modules: result.modules });
+      this.message.set(`Piano ${result.modules.label} attivo.`);
+    });
+  }
+
+  protected async setAutomation(which: 'umbrella' | 'license', on: boolean): Promise<void> {
+    const mine = this.mine();
+    if (!mine) return;
+    const umbrella = which === 'umbrella' ? on : mine.agency.autoUmbrellaNew;
+    const license = which === 'license' ? on : mine.agency.autoLicenseNew;
+    await this.run(async () => {
+      const agency = await this.api.setAutomations(mine.agency.id, umbrella, license);
+      this.mine.set({ ...mine, agency });
+      this.message.set('Automazioni aggiornate.');
+    });
+  }
+
   protected readonly canEdit = computed(() => agencyCan(this.mine()?.role, 'profile.edit'));
   protected readonly roleLabel = computed(() => (this.mine() ? AGENCY_ROLE_LABELS[this.mine()!.role] : ''));
   private slugTouched = false;

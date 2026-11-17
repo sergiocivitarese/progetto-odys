@@ -36,3 +36,16 @@ test('indirizzo pubblico dell’agenzia', () => {
   assert.equal(isValidAgencySlug('-no'), false);
   assert.equal(isValidAgencySlug('a'), false);
 });
+
+test('moduli a piano: membri, dati avanzati e automazioni per livello (AG-08)', async () => {
+  const { AGENCY_TIER_MODULES, canAddMember, tierForModule, isAgencyTier } = await import('../src/lib/agency.ts');
+  assert.equal(canAddMember('start', 4), true);
+  assert.equal(canAddMember('start', 5), false);
+  assert.equal(canAddMember('pro', 19), true);
+  assert.equal(canAddMember('business', 500), true);
+  assert.equal(tierForModule('advancedAnalytics'), 'pro');
+  assert.equal(tierForModule('automations'), 'business');
+  assert.equal(AGENCY_TIER_MODULES.start.advancedAnalytics, false);
+  assert.equal(isAgencyTier('pro'), true);
+  assert.equal(isAgencyTier('gold'), false);
+});

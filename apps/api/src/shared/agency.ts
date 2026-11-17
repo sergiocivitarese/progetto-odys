@@ -1,4 +1,4 @@
-import type { AgencyDashboardBooking, AgencyDashboardCoordinator, AgencyDashboardPayment, AgencyDashboardTrip, AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
+import type { AgencyTier, AgencyDashboardBooking, AgencyDashboardCoordinator, AgencyDashboardPayment, AgencyDashboardTrip, AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
 import type { AuthUser } from './auth';
 import type { CoordinatorCard, PublishedTripSummary } from './catalog';
 
@@ -28,6 +28,10 @@ export interface Agency {
   aiEnabled: boolean;
   aiMinMarginPercent: number | null;
   aiSuppliers: string[];
+  /** Livello del piano Agenzia e automazioni (AG-08). */
+  tier: AgencyTier;
+  autoUmbrellaNew: boolean;
+  autoLicenseNew: boolean;
   createdAt: string;
 }
 
@@ -141,6 +145,9 @@ export interface AgencyRepository {
   generation(id: string): Promise<AgencyAiGeneration | null>;
   recordGeneration(agencyId: string, tripId: string, info: { destination: string; title: string; days: number; totalCents?: number; budgetCents?: number }): Promise<string>;
   reviewGeneration(id: string): Promise<void>;
+  /** Moduli a piano (AG-08): livello (solo il proprietario) e automazioni (proprietario e amministratori, piano Business). */
+  setTier(agencyId: string, tier: AgencyTier): Promise<Agency>;
+  setAutomations(agencyId: string, umbrella: boolean, license: boolean): Promise<Agency>;
   /** Dashboard (AG-07): solo proprietario e amministratori. */
   dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData>;
 }

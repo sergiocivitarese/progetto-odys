@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
+import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, AgencyTier, BillingCycle } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
 import type { Agency, AgencyAiGeneration, AgencyDashboardData, AgencyInvite, AgencyMember, AgencyProfileInput, AgencyPublicProfile, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
 import type { AuthUser } from '../../shared/auth';
@@ -11,17 +11,19 @@ import type { PublishedTripSummary } from '../../shared/catalog';
 interface AgencyRow {
   id: string; legal_name: string; display_name: string; slug: string; description: string; logo_url: string | null; email: string | null;
   phone: string | null; website: string | null; city: string | null; country: string | null; license_seats: number; billing_cycle: BillingCycle; sale_terms: string | null;
-  ai_enabled?: boolean; ai_min_margin_percent?: number | null; ai_suppliers?: string[] | null; created_at: string;
+  ai_enabled?: boolean; ai_min_margin_percent?: number | null; ai_suppliers?: string[] | null;
+  tier?: AgencyTier; auto_umbrella_new?: boolean; auto_license_new?: boolean; created_at: string;
 }
 
-const AGENCY_COLUMNS = 'id, legal_name, display_name, slug, description, logo_url, email, phone, website, city, country, license_seats, billing_cycle, sale_terms, ai_enabled, ai_min_margin_percent, ai_suppliers, created_at';
+const AGENCY_COLUMNS = 'id, legal_name, display_name, slug, description, logo_url, email, phone, website, city, country, license_seats, billing_cycle, sale_terms, ai_enabled, ai_min_margin_percent, ai_suppliers, tier, auto_umbrella_new, auto_license_new, created_at';
 
 function toAgency(row: AgencyRow): Agency {
   return {
     id: row.id, legalName: row.legal_name, displayName: row.display_name, slug: row.slug, description: row.description,
     logoUrl: row.logo_url ?? undefined, email: row.email ?? undefined, phone: row.phone ?? undefined, website: row.website ?? undefined,
     city: row.city ?? undefined, country: row.country ?? undefined, licenseSeats: row.license_seats, billingCycle: row.billing_cycle, saleTerms: row.sale_terms ?? '',
-    aiEnabled: Boolean(row.ai_enabled), aiMinMarginPercent: row.ai_min_margin_percent ?? null, aiSuppliers: row.ai_suppliers ?? [], createdAt: row.created_at,
+    aiEnabled: Boolean(row.ai_enabled), aiMinMarginPercent: row.ai_min_margin_percent ?? null, aiSuppliers: row.ai_suppliers ?? [],
+    tier: row.tier ?? 'start', autoUmbrellaNew: Boolean(row.auto_umbrella_new), autoLicenseNew: Boolean(row.auto_license_new), createdAt: row.created_at,
   };
 }
 
@@ -217,6 +219,16 @@ class SupabaseAgencyRepository implements AgencyRepository {
   async reviewGeneration(id: string): Promise<void> {
     if (!isUuid(id)) throw new HttpError(404, 'Generazione non trovata.');
     await this.call('review_agency_ai_generation', { p_generation_id: id });
+  }
+
+  async setTier(agencyId: string, tier: AgencyTier): Promise<Agency> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    return toAgency(await this.call<AgencyRow>('set_agency_tier', { p_agency_id: agencyId, p_tier: tier }));
+  }
+
+  async setAutomations(agencyId: string, umbrella: boolean, license: boolean): Promise<Agency> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    return toAgency(await this.call<AgencyRow>('set_agency_automations', { p_agency_id: agencyId, p_umbrella: umbrella, p_license: license }));
   }
 
   async dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData> {

@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import type { AgencyDashboardSummary, AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle, DashboardPeriodKey, LicenseQuote } from '@odys/domain';
+import type { AgencyDashboardSummary, AgencyTier, AgencyTierModules, AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle, DashboardPeriodKey, LicenseQuote } from '@odys/domain';
 import { ApiClient } from './api-client';
 import type { CoordinatorCard, PublishedTripSummary } from './catalog.api';
 
@@ -23,6 +23,10 @@ export interface Agency {
   aiEnabled: boolean;
   aiMinMarginPercent: number | null;
   aiSuppliers: string[];
+  /** Livello del piano Agenzia e automazioni (AG-08). */
+  tier: AgencyTier;
+  autoUmbrellaNew: boolean;
+  autoLicenseNew: boolean;
   createdAt: string;
 }
 
@@ -32,7 +36,7 @@ export interface AgencyAiGeneration {
 }
 export interface AgencyAiSettings { enabled: boolean; minMarginPercent: number | null; suppliers: string[] }
 
-export interface MyAgency { agency: Agency; role: AgencyRole; memberId: string; linkType?: AgencyLinkType; quote: LicenseQuote }
+export interface MyAgency { agency: Agency; role: AgencyRole; memberId: string; linkType?: AgencyLinkType; quote: LicenseQuote; modules: AgencyTierModules }
 
 export interface AgencyMember {
   id: string; userId: string; firstName: string; lastName: string; email?: string; role: AgencyRole; linkType?: AgencyLinkType;
@@ -83,6 +87,8 @@ export class AgencyApi {
   ai(id: string) { return this.api.get<{ settings: AgencyAiSettings; generations: AgencyAiGeneration[] }>(`/agency/${encodeURIComponent(id)}/ai`); }
   setAi(id: string, settings: AgencyAiSettings) { return this.api.put<AgencyAiSettings>(`/agency/${encodeURIComponent(id)}/ai`, settings); }
   reviewGeneration(generationId: string) { return this.api.post<void>(`/agency/ai/generations/${encodeURIComponent(generationId)}/review`, {}); }
-  dashboard(id: string, periodo: DashboardPeriodKey) { return this.api.get<{ summary: AgencyDashboardSummary; periods: Record<DashboardPeriodKey, string> }>(`/agency/${encodeURIComponent(id)}/dashboard`, { periodo }); }
+  setTier(id: string, tier: AgencyTier) { return this.api.put<{ agency: Agency; modules: AgencyTierModules }>(`/agency/${encodeURIComponent(id)}/tier`, { tier }); }
+  setAutomations(id: string, umbrella: boolean, license: boolean) { return this.api.put<Agency>(`/agency/${encodeURIComponent(id)}/automations`, { umbrella, license }); }
+  dashboard(id: string, periodo: DashboardPeriodKey) { return this.api.get<{ summary: AgencyDashboardSummary; advanced: boolean; unlockTier: AgencyTier | null; periods: Record<DashboardPeriodKey, string> }>(`/agency/${encodeURIComponent(id)}/dashboard`, { periodo }); }
   publicProfile(slug: string) { return this.api.get<AgencyPublicProfile>(`/agencies/${encodeURIComponent(slug)}`); }
 }

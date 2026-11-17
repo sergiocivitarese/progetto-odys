@@ -116,3 +116,42 @@ export function agencySlug(value: string): string {
 export function isValidAgencySlug(value: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{1,46}[a-z0-9])$/.test(value);
 }
+
+// ---------------------------------------------------------------------------
+// Moduli a piano (AG-08): cosa sblocca ciascun livello del piano Agenzia
+// ---------------------------------------------------------------------------
+
+export const AGENCY_TIERS = ['start', 'pro', 'business'] as const;
+export type AgencyTier = (typeof AGENCY_TIERS)[number];
+
+export interface AgencyTierModules {
+  label: string;
+  /** Membri del team oltre al proprietario (inviti in attesa compresi); null = senza limite. */
+  maxMembers: number | null;
+  /** Canali di prenotazione e classifica dei coordinatori nella dashboard (AG-07). */
+  advancedAnalytics: boolean;
+  /** Regole automatiche all'ingresso dei coordinatori (ombrello, licenza). */
+  automations: boolean;
+}
+
+/** Valori provvisori: limiti e prezzi dei piani agenzia sono un punto aperto del cliente. Stessi valori in `agency_tier_*` (migrazione 0025). */
+export const AGENCY_TIER_MODULES: Record<AgencyTier, AgencyTierModules> = {
+  start: { label: 'Start', maxMembers: 5, advancedAnalytics: false, automations: false },
+  pro: { label: 'Pro', maxMembers: 20, advancedAnalytics: true, automations: false },
+  business: { label: 'Business', maxMembers: null, advancedAnalytics: true, automations: true },
+};
+
+export function isAgencyTier(value: unknown): value is AgencyTier {
+  return typeof value === 'string' && (AGENCY_TIERS as readonly string[]).includes(value);
+}
+
+/** Il livello più basso che sblocca un modulo, per l'invito all'upgrade. */
+export function tierForModule(module: 'advancedAnalytics' | 'automations'): AgencyTier {
+  return AGENCY_TIERS.find((tier) => AGENCY_TIER_MODULES[tier][module])!;
+}
+
+/** Si può aggiungere un membro? `members` = membri attivi e invitati, proprietario escluso. */
+export function canAddMember(tier: AgencyTier, members: number): boolean {
+  const max = AGENCY_TIER_MODULES[tier].maxMembers;
+  return max === null || members < max;
+}

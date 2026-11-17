@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { agencyCan, describeEntitlements, isValidAgencySlug, type AgencyAction, type AgencyLinkType, type AgencyMemberStatus, type AgencyRole, type BillingCycle } from '@odys/domain';
+import { AGENCY_TIER_MODULES, agencyCan, canAddMember, describeEntitlements, isValidAgencySlug, type AgencyTier, type AgencyAction, type AgencyLinkType, type AgencyMemberStatus, type AgencyRole, type BillingCycle } from '@odys/domain';
 import type { Agency, AgencyAiGeneration, AgencyDashboardData, AgencyMember, AgencyProfileInput, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
 import type { CoordinatorCard, PublishedTrip, PublishedTripSummary } from '../../shared/catalog';
 import { HttpError } from '../../shared/http';
@@ -72,7 +72,7 @@ class MemoryAgencyRepository implements AgencyRepository {
     if (!isValidAgencySlug(input.slug)) throw new HttpError(422, 'Indirizzo non valido.');
     if ([...this.db.agencies.values()].some((agency) => agency.slug === input.slug)) throw new HttpError(409, 'Questo indirizzo è già usato da un’altra agenzia.');
     const now = new Date().toISOString();
-    const agency: MemoryAgency = { id: randomUUID(), ownerId: this.userId, legalName: input.legalName, displayName: input.displayName, slug: input.slug, description: '', licenseSeats: 0, billingCycle: 'monthly', saleTerms: '', aiEnabled: false, aiMinMarginPercent: null, aiSuppliers: [], createdAt: now };
+    const agency: MemoryAgency = { id: randomUUID(), ownerId: this.userId, legalName: input.legalName, displayName: input.displayName, slug: input.slug, description: '', licenseSeats: 0, billingCycle: 'monthly', saleTerms: '', aiEnabled: false, aiMinMarginPercent: null, aiSuppliers: [], tier: 'start', autoUmbrellaNew: false, autoLicenseNew: false, createdAt: now };
     this.db.agencies.set(agency.id, agency);
     const owner: MemoryAgencyMember = { id: randomUUID(), agencyId: agency.id, userId: this.userId, role: 'owner', status: 'active', licensed: false, createdAt: now, acceptedAt: now };
     this.db.agencyMembers.set(owner.id, owner);
@@ -117,6 +117,11 @@ class MemoryAgencyRepository implements AgencyRepository {
   async invite(agencyId: string, email: string, role: AgencyRole): Promise<string> {
     this.require(agencyId, 'team.invite');
     if (role === 'owner') throw new HttpError(422, 'Il proprietario è uno solo e non si invita.');
+    const agency = this.db.agencies.get(agencyId)!;
+    const members = [...this.db.agencyMembers.values()].filter((member) => member.agencyId === agencyId && member.role !== 'owner' && (member.status === 'invited' || member.status === 'active')).length;
+    if (!canAddMember(agency.tier, members)) {
+      throw new HttpError(422, `Il piano ${AGENCY_TIER_MODULES[agency.tier].label} prevede al massimo ${AGENCY_TIER_MODULES[agency.tier].maxMembers} membri nel team: passa a un piano superiore per invitarne altri.`);
+    }
     const target = [...this.db.users.values()].find((user) => (user.profile.email ?? '').toLowerCase() === email.trim().toLowerCase() && user.profile.status === 'active');
     if (!target) throw new HttpError(404, 'Nessun account Odys attivo con questa email: chiedi alla persona di registrarsi.');
     const existing = [...this.db.agencyMembers.values()].find((member) => member.agencyId === agencyId && member.userId === target.profile.id);
@@ -143,6 +148,16 @@ class MemoryAgencyRepository implements AgencyRepository {
     member.status = accept ? 'active' : 'declined';
     member.acceptedAt = accept ? new Date().toISOString() : undefined;
     this.audit(accept ? 'agency.invite_accept' : 'agency.invite_decline', memberId);
+    // Automazioni del piano Business (AG-08), come `respond_agency_invite()`.
+    const agency = this.db.agencies.get(member.agencyId);
+    if (accept && member.role === 'coordinator' && agency && AGENCY_TIER_MODULES[agency.tier].automations) {
+      if (agency.autoUmbrellaNew) member.umbrellaDefault = true;
+      const used = [...this.db.agencyMembers.values()].filter((item) => item.agencyId === agency.id && item.status === 'active' && item.licensed).length;
+      if (agency.autoLicenseNew && used < agency.licenseSeats) {
+        this.db.user(member.userId).plans.push('coordinator_premium');
+        Object.assign(member, { licensed: true, linkType: 'licensed' });
+      }
+    }
     return member.status;
   }
 
@@ -302,6 +317,25 @@ class MemoryAgencyRepository implements AgencyRepository {
     if (!item || !this.staff(item.agencyId, ['owner', 'admin'])) throw new HttpError(404, 'Generazione non trovata.');
     item.status = 'approved';
     this.audit('agency.ai_review', id, { agency: item.agencyId });
+  }
+
+  async setTier(agencyId: string, tier: AgencyTier): Promise<Agency> {
+    const agency = this.require(agencyId, 'licenses.seats', 'Il piano dell’agenzia lo sceglie il proprietario.');
+    const members = [...this.db.agencyMembers.values()].filter((member) => member.agencyId === agencyId && member.role !== 'owner' && (member.status === 'invited' || member.status === 'active')).length;
+    const max = AGENCY_TIER_MODULES[tier].maxMembers;
+    if (max !== null && members > max) throw new HttpError(422, `Il team ha ${members} membri: il piano scelto ne prevede al massimo ${max}.`);
+    const automations = AGENCY_TIER_MODULES[tier].automations;
+    Object.assign(agency, { tier, autoUmbrellaNew: agency.autoUmbrellaNew && automations, autoLicenseNew: agency.autoLicenseNew && automations });
+    this.audit('agency.tier', agencyId, { tier });
+    return this.view(agency);
+  }
+
+  async setAutomations(agencyId: string, umbrella: boolean, license: boolean): Promise<Agency> {
+    const agency = this.require(agencyId, 'profile.edit');
+    if ((umbrella || license) && !AGENCY_TIER_MODULES[agency.tier].automations) throw new HttpError(403, 'Le automazioni sono incluse nel piano Business.');
+    Object.assign(agency, { autoUmbrellaNew: umbrella, autoLicenseNew: license });
+    this.audit('agency.automations', agencyId, { umbrella, license });
+    return this.view(agency);
   }
 
   /** Stessi dati di `agency_dashboard_data()` (migrazione 0022). */

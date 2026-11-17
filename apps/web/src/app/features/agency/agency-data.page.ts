@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { agencyCan, BOOKING_CHANNEL_LABELS, DASHBOARD_PERIODS, type AgencyDashboardSummary, type DashboardPeriodKey } from '@odys/domain';
+import { AGENCY_TIER_MODULES, agencyCan, BOOKING_CHANNEL_LABELS, DASHBOARD_PERIODS, type AgencyDashboardSummary, type DashboardPeriodKey } from '@odys/domain';
+
+/** Senza i dati avanzati (AG-08) canali e classifica arrivano vuoti. */
+type DashboardData = Omit<AgencyDashboardSummary, 'channels' | 'leaderboard'> & { channels: AgencyDashboardSummary['channels'] | null; leaderboard: AgencyDashboardSummary['leaderboard'] | null };
 import { apiErrorMessage } from '../../core/api/api-client';
 import { AgencyApi, type MyAgency } from '../../core/api/agency.api';
 import { formatPrice } from '../../core/api/catalog.api';
@@ -46,28 +49,37 @@ import { ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent } fr
           <div class="kpi"><span class="kpi__value">{{ d.activeCoordinators }}<small>/{{ d.coordinators }}</small></span><span class="kpi__label">coordinatori attivi</span></div>
         </div>
 
+        @if (!advanced()) {
+          <a class="locked" routerLink="/agenzia">
+            <span class="locked__icon"><odys-icon name="lock" [size]="20" /></span>
+            <span><strong>Canali di prenotazione e classifica dei coordinatori</strong><span class="muted">Dati avanzati inclusi dal piano {{ unlockLabel() }}: scopri da dove arrivano le prenotazioni e chi rende di più.</span></span>
+            <odys-icon name="chevron-right" />
+          </a>
+        }
+        @if (d.channels; as channels) {
         <section class="card" aria-labelledby="ch-title">
           <h2 id="ch-title">Prenotazioni per canale</h2>
           @if (bookings() > 0) {
             <div class="split" role="img" [attr.aria-label]="channelsLabel()">
-              <span class="split__odys" [style.flex-grow]="d.channels.odys"></span>
-              <span class="split__direct" [style.flex-grow]="d.channels.direct"></span>
+              <span class="split__odys" [style.flex-grow]="channels.odys"></span>
+              <span class="split__direct" [style.flex-grow]="channels.direct"></span>
             </div>
             <ul class="legend">
-              <li><span class="dot dot--odys" aria-hidden="true"></span>{{ channelLabels.odys }} <strong>{{ d.channels.odys }}</strong></li>
-              <li><span class="dot dot--direct" aria-hidden="true"></span>{{ channelLabels.direct }} <strong>{{ d.channels.direct }}</strong>@if (d.channels.directShare !== null) { · {{ d.channels.directShare }}%}</li>
+              <li><span class="dot dot--odys" aria-hidden="true"></span>{{ channelLabels.odys }} <strong>{{ channels.odys }}</strong></li>
+              <li><span class="dot dot--direct" aria-hidden="true"></span>{{ channelLabels.direct }} <strong>{{ channels.direct }}</strong>@if (channels.directShare !== null) { · {{ channels.directShare }}%}</li>
             </ul>
           } @else {
             <p class="muted">Nessuna prenotazione con acconto nel periodo.</p>
           }
           <p class="muted small">«Canali diretti»: chi arriva dal link del kit social condiviso fuori da Odys o da un viaggio su invito (regola provvisoria).</p>
         </section>
-
+        }
+        @if (d.leaderboard; as leaderboard) {
         <section class="card" aria-labelledby="lb-title">
           <h2 id="lb-title">Classifica dei coordinatori</h2>
-          @if (d.leaderboard.length) {
+          @if (leaderboard.length) {
             <ol class="board">
-              @for (row of d.leaderboard; track row.userId; let i = $index) {
+              @for (row of leaderboard; track row.userId; let i = $index) {
                 <li class="board__row">
                   <span class="board__rank" [class.board__rank--top]="i === 0 && row.revenueCents > 0">{{ i + 1 }}</span>
                   <span class="board__main">
@@ -83,6 +95,7 @@ import { ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent } fr
             <p class="muted">Invita i coordinatori nel team: qui vedrai ricavi e riempimento di ciascuno.</p>
           }
         </section>
+        }
       } @else if (!loading() && !error()) {
         <odys-empty-state icon="chart-column" title="Nessun dato" description="I dati dell’agenzia li vedono proprietario e amministratori." />
       } @else if (loading()) {
@@ -105,6 +118,9 @@ import { ChipComponent, EmptyStateComponent, IconComponent, NoticeComponent } fr
     .kpi { display: flex; flex-direction: column; gap: 2px; padding: var(--space-4) var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border); text-align: center; }
     .kpi__value { font-family: var(--font-brand); font-weight: 900; font-size: var(--text-2xl); font-variant-numeric: tabular-nums; small { font-size: 0.55em; color: var(--color-text-muted); } }
     .kpi__label { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); line-height: 1.25; }
+    .locked { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-brand-panel); color: var(--color-on-brand); text-decoration: none;
+      > span:nth-child(2) { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; } .muted { color: var(--color-on-brand-muted); } }
+    .locked__icon { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; background: rgb(255 255 255 / 0.12); }
     .card { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border); h2 { font-size: var(--text-lg); } }
     .split { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; > span { flex-basis: 0; } }
     .split__odys { background: var(--odys-blue); }
@@ -131,10 +147,12 @@ export default class AgencyDataPage {
   protected readonly channelLabels = BOOKING_CHANNEL_LABELS;
   protected readonly period = signal<DashboardPeriodKey>('month');
   protected readonly mine = signal<MyAgency | null>(null);
-  protected readonly data = signal<AgencyDashboardSummary | null>(null);
+  protected readonly data = signal<DashboardData | null>(null);
+  protected readonly advanced = signal(true);
+  protected readonly unlockLabel = signal('Pro');
   protected readonly loading = signal(true);
   protected readonly error = signal('');
-  protected readonly bookings = computed(() => (this.data()?.channels.odys ?? 0) + (this.data()?.channels.direct ?? 0));
+  protected readonly bookings = computed(() => (this.data()?.channels?.odys ?? 0) + (this.data()?.channels?.direct ?? 0));
   protected readonly channelsLabel = computed(() => {
     const c = this.data()?.channels;
     return c ? `${BOOKING_CHANNEL_LABELS.odys} ${c.odys}, ${BOOKING_CHANNEL_LABELS.direct} ${c.direct}` : '';
@@ -155,7 +173,11 @@ export default class AgencyDataPage {
       this.mine.set(mine);
       if (!mine || !agencyCan(mine.role, 'licenses.assign')) { this.data.set(null); return; }
       const result = await this.api.dashboard(mine.agency.id, period);
-      if (period === this.period()) this.data.set(result.summary);
+      if (period === this.period()) {
+        this.data.set(result.summary);
+        this.advanced.set(result.advanced);
+        this.unlockLabel.set(result.unlockTier ? AGENCY_TIER_MODULES[result.unlockTier].label : 'Pro');
+      }
     } catch (error) {
       this.error.set(apiErrorMessage(error, 'Non è stato possibile leggere i dati.'));
     } finally {

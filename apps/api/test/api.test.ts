@@ -1014,6 +1014,10 @@ test('dashboard dell’agenzia: fatturato, riempimento, canali e classifica dei 
   }
 
   assert.equal((await call('GET', `/agency/${agency}/dashboard`, undefined, coach)).status, 403);
+  // Canali e classifica sono dati avanzati (AG-08): con Start restano chiusi.
+  const basic = await call<{ advanced: boolean; unlockTier: string; summary: { channels: unknown; leaderboard: unknown; revenue: { grossCents: number } } }>('GET', `/agency/${agency}/dashboard`, undefined, owner);
+  assert.deepEqual([basic.data.advanced, basic.data.unlockTier, basic.data.summary.channels, basic.data.summary.leaderboard, basic.data.summary.revenue.grossCents], [false, 'pro', null, null, 40000]);
+  await call('PUT', `/agency/${agency}/tier`, { tier: 'pro' }, owner);
   const dash = await call<{ summary: { revenue: { grossCents: number }; averageFill: number; publishedTrips: number; activeCoordinators: number; channels: { odys: number; direct: number; directShare: number }; leaderboard: Array<{ name: string; revenueCents: number; fill: number }> } }>('GET', `/agency/${agency}/dashboard?periodo=month`, undefined, owner);
   assert.equal(dash.status, 200);
   assert.equal(dash.data.summary.revenue.grossCents, 2 * 20000, 'due acconti da un quarto della quota');
@@ -1103,4 +1107,33 @@ test('AI dell’agenzia per i coordinatori: fornitori convenzionati, storico, ma
   assert.equal((await call('POST', `/agency/ai/generations/${history.data.generations[0].id}/review`, {}, coach)).status, 404);
   assert.equal((await call('POST', `/agency/ai/generations/${history.data.generations[0].id}/review`, {}, owner)).status, 204);
   assert.equal((await call('POST', `/coordinator/trips/${created.data.id}/publish`, {}, coach)).status, 200, 'dopo l’approvazione si pubblica');
+});
+
+test('moduli a piano dell’agenzia: limite del team, automazioni Business all’ingresso dei coordinatori (AG-08)', async () => {
+  const owner = 'token-piani-agenzia';
+  const ownerId = db.addUser(owner, undefined, 'titolare@piani.example');
+  db.user(ownerId).plans = ['agency'];
+  const agency = (await call<{ id: string }>('POST', '/agency', { legalName: 'Piani Srl', displayName: 'Piani', slug: 'piani-api' }, owner)).data.id;
+  for (let i = 0; i < 6; i += 1) db.addUser(`token-piani-${i}`, undefined, `p${i}@piani.example`);
+  for (let i = 0; i < 5; i += 1) assert.equal((await call('POST', `/agency/${agency}/team`, { email: `p${i}@piani.example`, role: 'operator' }, owner)).status, 201);
+  const full = await call<{ error: string }>('POST', `/agency/${agency}/team`, { email: 'p5@piani.example', role: 'operator' }, owner);
+  assert.equal(full.status, 422);
+  assert.match(full.data.error, /Start prevede al massimo 5 membri/);
+  assert.equal((await call('PUT', `/agency/${agency}/automations`, { umbrella: true, license: true }, owner)).status, 403);
+
+  const upgraded = await call<{ modules: { automations: boolean; maxMembers: number | null } }>('PUT', `/agency/${agency}/tier`, { tier: 'business' }, owner);
+  assert.deepEqual([upgraded.data.modules.automations, upgraded.data.modules.maxMembers], [true, null]);
+  await call('PUT', `/agency/${agency}/licenses`, { seats: 1 }, owner);
+  assert.equal((await call('PUT', `/agency/${agency}/automations`, { umbrella: true, license: true }, owner)).status, 200);
+
+  const coach = 'token-piani-coord';
+  const coachId = db.addUser(coach, undefined, 'coach@piani.example');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator' });
+  const invite = (await call<{ id: string }>('POST', `/agency/${agency}/team`, { email: 'coach@piani.example', role: 'coordinator' }, owner)).data.id;
+  await call('POST', `/agency/invites/${invite}/accept`, {}, coach);
+  const team = await call<Array<{ id: string; licensed: boolean; umbrellaDefault: boolean }>>('GET', `/agency/${agency}/team`, undefined, owner);
+  const member = team.data.find((item) => item.id === invite);
+  assert.deepEqual([member?.licensed, member?.umbrellaDefault], [true, true]);
+  assert.equal((await call<{ plan: string }>('GET', '/me/entitlements', undefined, coach)).data.plan, 'coordinator_premium');
+  assert.equal((await call('PUT', `/agency/${agency}/tier`, { tier: 'start' }, owner)).status, 422, 'il team supera il limite di Start');
 });
