@@ -19,8 +19,18 @@ export interface Agency {
   billingCycle: BillingCycle;
   /** Condizioni di vendita mostrate nel checkout dei viaggi in ombrello (AG-12). */
   saleTerms: string;
+  /** AI dell'agenzia per i coordinatori del team (AG-06). */
+  aiEnabled: boolean;
+  aiMinMarginPercent: number | null;
+  aiSuppliers: string[];
   createdAt: string;
 }
+
+export interface AgencyAiGeneration {
+  id: string; agencyId: string; coordinatorId: string; coordinatorName?: string; destination: string; title: string; days: number;
+  totalCents?: number; budgetCents?: number; suppliers: string[]; status: 'to_review' | 'approved'; publishedTripId?: string; createdAt: string;
+}
+export interface AgencyAiSettings { enabled: boolean; minMarginPercent: number | null; suppliers: string[] }
 
 export interface MyAgency { agency: Agency; role: AgencyRole; memberId: string; linkType?: AgencyLinkType; quote: LicenseQuote }
 
@@ -70,6 +80,9 @@ export class AgencyApi {
   setUmbrellaDefault(memberId: string, on: boolean) { return this.api.put<void>(`/agency/members/${encodeURIComponent(memberId)}/umbrella`, { on }); }
   proposals(id: string) { return this.api.get<AgencyProposal[]>(`/agency/${encodeURIComponent(id)}/proposals`); }
   decideProposal(tripId: string, approve: boolean, note?: string) { return this.api.post<void>(`/agency/proposals/${encodeURIComponent(tripId)}/${approve ? 'approve' : 'reject'}`, note ? { note } : {}); }
+  ai(id: string) { return this.api.get<{ settings: AgencyAiSettings; generations: AgencyAiGeneration[] }>(`/agency/${encodeURIComponent(id)}/ai`); }
+  setAi(id: string, settings: AgencyAiSettings) { return this.api.put<AgencyAiSettings>(`/agency/${encodeURIComponent(id)}/ai`, settings); }
+  reviewGeneration(generationId: string) { return this.api.post<void>(`/agency/ai/generations/${encodeURIComponent(generationId)}/review`, {}); }
   dashboard(id: string, periodo: DashboardPeriodKey) { return this.api.get<{ summary: AgencyDashboardSummary; periods: Record<DashboardPeriodKey, string> }>(`/agency/${encodeURIComponent(id)}/dashboard`, { periodo }); }
   publicProfile(slug: string) { return this.api.get<AgencyPublicProfile>(`/agencies/${encodeURIComponent(slug)}`); }
 }

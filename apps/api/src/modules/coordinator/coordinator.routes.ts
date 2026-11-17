@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { dashboardRange, DASHBOARD_PERIODS, isDashboardPeriod, MAX_TRIP_PARTICIPANTS, normalizeCostItems, SERVICE_RATE, summarizeDashboard, type Itinerary } from '@odys/domain';
+import { dashboardRange, DASHBOARD_PERIODS, isDashboardPeriod, MAX_TRIP_PARTICIPANTS, normalizeCostItems, SERVICE_RATE, summarizeDashboard, summarizePricing, type Itinerary } from '@odys/domain';
 import { currentUser, requireAuth, type AuthProvider } from '../../shared/auth';
 import { COORDINATOR_GUIDELINES_VERSION, coordinatorAlerts, type PlaceStory, type PublishedTripInput, type PublishedTripStatus, type TripVisibility } from '../../shared/catalog';
 import type { CoordinatorApplicationInput, ParticipationCounts } from '../../shared/community';
@@ -286,12 +286,13 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
 
   router.post('/trips', handle(async (req, res) => {
     const user = currentUser(res);
-    const body = requireObject<{ sourceTripId?: unknown; generator?: unknown; agencyId?: unknown }>(req.body, 'Richiesta non valida.');
+    const body = requireObject<{ sourceTripId?: unknown; generator?: unknown; agencyId?: unknown; agencyAi?: unknown }>(req.body, 'Richiesta non valida.');
     // Viaggio del catalogo di un'agenzia (AG-03): nasce senza coordinatore, lo assegna lo staff.
     const agencyId = typeof body.agencyId === 'string' && /^[0-9a-f-]{36}$/i.test(body.agencyId) ? body.agencyId : undefined;
     if (body.agencyId !== undefined && !agencyId) throw new HttpError(400, 'Agenzia non valida.');
     let itinerary: Itinerary;
     let sourceTripId: string | undefined;
+    let agencyAi: { agencyId: string; destination: string; title: string; days: number; totalCents?: number; budgetCents?: number } | undefined;
     /** Titolo di riserva se il passo 1 non ne ha uno: quello generato o del viaggio di partenza. */
     let generatedTitle: string | undefined;
     if (body.generator !== undefined) {
@@ -301,6 +302,14 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
       const generated = generateFromBody(body.generator);
       itinerary = generated.itinerary;
       generatedTitle = generated.title;
+      // AG-06: con l'AI dell'agenzia i fornitori convenzionati vanno nelle indicazioni dell'itinerario, e la generazione nello storico.
+      if (typeof body.agencyAi === 'string') {
+        const membership = (await store.agency(user).mine()).find((item) => item.agency.id === body.agencyAi && item.role === 'coordinator');
+        if (!membership || !membership.agency.aiEnabled) throw new HttpError(403, 'L’AI di questa agenzia non è attiva per te.');
+        const suppliers = membership.agency.aiSuppliers;
+        if (suppliers.length) itinerary = { ...itinerary, constraints: [itinerary.constraints, `Fornitori convenzionati di ${membership.agency.displayName}, da usare per primi: ${suppliers.join(', ')}.`].filter(Boolean).join(' ') };
+        agencyAi = { agencyId: membership.agency.id, destination: generated.destination, title: generated.title, days: generated.days.length, totalCents: generated.totalCents, budgetCents: generated.budgetCents };
+      }
     } else {
       if (typeof body.sourceTripId !== 'string') throw new HttpError(400, 'Scegli uno dei tuoi viaggi da cui partire o genera l’itinerario.');
       const source = await store.trips(user).get(body.sourceTripId);
@@ -335,6 +344,12 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
       agencyId,
     });
     await store.account(user).record({ action: 'published_trip.create', entity: 'published_trip', entityId: created.id });
+    if (agencyAi) {
+      const { agencyId: aiAgency, ...info } = agencyAi;
+      await store.agency(user).recordGeneration(aiAgency, created.id, info);
+      res.status(201).json(await repo(res).get(created.id));
+      return;
+    }
     res.status(201).json(created);
   }));
 
@@ -408,10 +423,31 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
     const current = await repo(res).get(String(req.params.id));
     if (!current) throw new HttpError(404, 'Viaggio non trovato.');
     if (status === 'draft' && ['active', 'completed'].includes(current.effectiveStatus)) throw new HttpError(422, 'Un viaggio in corso o concluso non può tornare in bozza.');
+    if ((status === 'published' || status === 'scheduled') && current.aiGenerationId) await checkAgencyMargin(res, current);
     const updated = await repo(res).setStatus(current.id, status, scheduledFor);
     await store.account(currentUser(res)).record({ action: `published_trip.${req.params.action}`, entity: 'published_trip', entityId: current.id });
     res.json(updated);
   }));
+
+  /**
+   * AG-06: un viaggio generato con l'AI dell'agenzia, con margine sotto il minimo dell'agenzia,
+   * si pubblica solo dopo che l'agenzia ha approvato la generazione.
+   */
+  async function checkAgencyMargin(res: Parameters<typeof currentUser>[0], trip: { id: string; aiGenerationId?: string; priceCents?: number; capacity?: number }): Promise<void> {
+    const user = currentUser(res);
+    const agencies = store.agency(user);
+    const generation = trip.aiGenerationId ? await agencies.generation(trip.aiGenerationId) : null;
+    if (!generation || generation.status === 'approved') return;
+    const agency = (await agencies.mine()).find((item) => item.agency.id === generation.agencyId)?.agency;
+    const minimum = agency?.aiMinMarginPercent;
+    if (minimum === null || minimum === undefined || !trip.priceCents) return;
+    const pricing = await repo(res).pricing(trip.id);
+    const margin = summarizePricing({ priceCents: trip.priceCents, capacity: trip.capacity, costs: pricing?.costs ?? [], serviceRate: SERVICE_RATE }).marginPerParticipantCents ?? 0;
+    const percent = Math.round((margin / trip.priceCents) * 100);
+    if (percent < minimum) {
+      throw new HttpError(422, `Il margine (${percent}%) è sotto il minimo di ${agency?.displayName ?? 'dell’agenzia'} (${minimum}%): serve la sua approvazione prima di pubblicare.`);
+    }
+  }
 
   return router;
 }

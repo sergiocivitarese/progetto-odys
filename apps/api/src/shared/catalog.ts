@@ -70,6 +70,8 @@ export interface PublishedTripSummary {
   approvalStatus?: 'pending' | 'approved' | 'rejected';
   approvalNote?: string;
   approvalRequestedAt?: string;
+  /** Generazione con l'AI dell'agenzia da cui nasce il viaggio (AG-06). */
+  aiGenerationId?: string;
   status: PublishedTripStatus;
   /** Stato reale considerando le date: un viaggio pubblicato in corso è "active". */
   effectiveStatus: PublishedTripStatus;

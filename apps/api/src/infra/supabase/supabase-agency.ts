@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { AgencyLinkType, AgencyMemberStatus, AgencyRole, BillingCycle } from '@odys/domain';
 import type { AppConfig } from '../../config/env';
-import type { Agency, AgencyDashboardData, AgencyInvite, AgencyMember, AgencyProfileInput, AgencyPublicProfile, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
+import type { Agency, AgencyAiGeneration, AgencyDashboardData, AgencyInvite, AgencyMember, AgencyProfileInput, AgencyPublicProfile, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
 import type { AuthUser } from '../../shared/auth';
 import { HttpError } from '../../shared/http';
 import { dbError, userClient } from './client';
@@ -10,16 +10,18 @@ import type { PublishedTripSummary } from '../../shared/catalog';
 
 interface AgencyRow {
   id: string; legal_name: string; display_name: string; slug: string; description: string; logo_url: string | null; email: string | null;
-  phone: string | null; website: string | null; city: string | null; country: string | null; license_seats: number; billing_cycle: BillingCycle; sale_terms: string | null; created_at: string;
+  phone: string | null; website: string | null; city: string | null; country: string | null; license_seats: number; billing_cycle: BillingCycle; sale_terms: string | null;
+  ai_enabled?: boolean; ai_min_margin_percent?: number | null; ai_suppliers?: string[] | null; created_at: string;
 }
 
-const AGENCY_COLUMNS = 'id, legal_name, display_name, slug, description, logo_url, email, phone, website, city, country, license_seats, billing_cycle, sale_terms, created_at';
+const AGENCY_COLUMNS = 'id, legal_name, display_name, slug, description, logo_url, email, phone, website, city, country, license_seats, billing_cycle, sale_terms, ai_enabled, ai_min_margin_percent, ai_suppliers, created_at';
 
 function toAgency(row: AgencyRow): Agency {
   return {
     id: row.id, legalName: row.legal_name, displayName: row.display_name, slug: row.slug, description: row.description,
     logoUrl: row.logo_url ?? undefined, email: row.email ?? undefined, phone: row.phone ?? undefined, website: row.website ?? undefined,
-    city: row.city ?? undefined, country: row.country ?? undefined, licenseSeats: row.license_seats, billingCycle: row.billing_cycle, saleTerms: row.sale_terms ?? '', createdAt: row.created_at,
+    city: row.city ?? undefined, country: row.country ?? undefined, licenseSeats: row.license_seats, billingCycle: row.billing_cycle, saleTerms: row.sale_terms ?? '',
+    aiEnabled: Boolean(row.ai_enabled), aiMinMarginPercent: row.ai_min_margin_percent ?? null, aiSuppliers: row.ai_suppliers ?? [], createdAt: row.created_at,
   };
 }
 
@@ -167,6 +169,54 @@ class SupabaseAgencyRepository implements AgencyRepository {
   async decideProposal(tripId: string, approve: boolean, note?: string): Promise<void> {
     if (!isUuid(tripId)) throw new HttpError(404, 'Proposta non trovata.');
     await this.call('decide_agency_proposal', { p_trip_id: tripId, p_approve: approve, p_note: note ?? null });
+  }
+
+  async setAi(agencyId: string, settings: { enabled: boolean; minMarginPercent: number | null; suppliers: string[] }): Promise<Agency> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    const { data, error } = await this.db.from('agencies')
+      .update({ ai_enabled: settings.enabled, ai_min_margin_percent: settings.minMarginPercent, ai_suppliers: settings.suppliers })
+      .eq('id', agencyId).select(AGENCY_COLUMNS).maybeSingle();
+    if (error) throw agencyError(error);
+    if (!data) throw new HttpError(403, 'Le impostazioni dell’AI le cambiano proprietario e amministratori.');
+    return toAgency(data as AgencyRow);
+  }
+
+  private static generationFrom(row: Record<string, unknown>, names = new Map<string, string>()): AgencyAiGeneration {
+    return {
+      id: String(row['id']), agencyId: String(row['agency_id']), coordinatorId: String(row['coordinator_id']), coordinatorName: names.get(String(row['coordinator_id'])),
+      destination: String(row['destination']), title: String(row['title']), days: Number(row['days']),
+      totalCents: (row['total_cents'] as number | null) ?? undefined, budgetCents: (row['budget_cents'] as number | null) ?? undefined,
+      suppliers: (row['suppliers'] as string[] | null) ?? [], status: row['status'] as AgencyAiGeneration['status'],
+      publishedTripId: (row['published_trip_id'] as string | null) ?? undefined, createdAt: String(row['created_at']),
+    };
+  }
+
+  async aiGenerations(agencyId: string): Promise<AgencyAiGeneration[]> {
+    if (!isUuid(agencyId)) throw new HttpError(404, 'Agenzia non trovata.');
+    const { data, error } = await this.db.from('agency_ai_generations').select('*').eq('agency_id', agencyId).order('created_at', { ascending: false }).limit(200);
+    if (error) throw dbError(error);
+    const team = await this.team(agencyId).catch(() => []);
+    const names = new Map(team.map((member) => [member.userId, `${member.firstName} ${member.lastName.slice(0, 1)}.`]));
+    return (data as Array<Record<string, unknown>>).map((row) => SupabaseAgencyRepository.generationFrom(row, names));
+  }
+
+  async generation(id: string): Promise<AgencyAiGeneration | null> {
+    if (!isUuid(id)) return null;
+    const { data, error } = await this.db.from('agency_ai_generations').select('*').eq('id', id).maybeSingle();
+    if (error) throw dbError(error);
+    return data ? SupabaseAgencyRepository.generationFrom(data as Record<string, unknown>) : null;
+  }
+
+  async recordGeneration(agencyId: string, tripId: string, info: { destination: string; title: string; days: number; totalCents?: number; budgetCents?: number }): Promise<string> {
+    return String(await this.call('record_agency_ai_generation', {
+      p_agency_id: agencyId, p_trip_id: tripId, p_destination: info.destination, p_title: info.title, p_days: info.days,
+      p_total_cents: info.totalCents ?? null, p_budget_cents: info.budgetCents ?? null,
+    }));
+  }
+
+  async reviewGeneration(id: string): Promise<void> {
+    if (!isUuid(id)) throw new HttpError(404, 'Generazione non trovata.');
+    await this.call('review_agency_ai_generation', { p_generation_id: id });
   }
 
   async dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData> {

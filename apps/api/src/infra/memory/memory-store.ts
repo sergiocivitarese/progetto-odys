@@ -15,6 +15,7 @@ import type {
 } from '../../shared/data';
 import { HttpError } from '../../shared/http';
 import { MemoryCreatorData, memoryCreator } from './memory-creator';
+import type { AgencyAiGeneration } from '../../shared/agency';
 import { agencyRoleOf, memoryAgency, type MemoryAgency, type MemoryAgencyMember } from './memory-agency';
 import {
   COORDINATOR_GUIDELINES_VERSION,
@@ -107,6 +108,7 @@ export class MemoryDatabase {
   readonly creator = new MemoryCreatorData();
   readonly agencies = new Map<string, MemoryAgency>();
   readonly agencyMembers = new Map<string, MemoryAgencyMember>();
+  readonly aiGenerations: AgencyAiGeneration[] = [];
   readonly reports: Array<ReportReview & { reporterId: string }> = [];
   readonly users = new Map<string, MemoryUser>();
   /** follower → coordinatori seguiti. */

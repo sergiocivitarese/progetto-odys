@@ -33,6 +33,7 @@ interface PublishedRow {
   approval_status?: 'pending' | 'approved' | 'rejected' | null;
   approval_note?: string | null;
   approval_requested_at?: string | null;
+  ai_generation_id?: string | null;
   series_id?: string | null;
   organizer?: 'coordinator' | 'agency';
   source_trip_id: string | null;
@@ -85,7 +86,7 @@ const SUMMARY_COLUMNS = 'id, coordinator_id, source_trip_id, status, title, summ
 // `place_stories` non è tra le colonne leggibili: il testo esce solo dalla funzione che verifica il diritto (TP-08).
 const DETAIL_COLUMNS = `${SUMMARY_COLUMNS}, itinerary`;
 // Area coordinatore e agenzia (solo utenti collegati): anche lo stato della proposta all'agenzia (AG-05).
-const OWNER_COLUMNS = `${DETAIL_COLUMNS}, approval_status, approval_note, approval_requested_at`;
+const OWNER_COLUMNS = `${DETAIL_COLUMNS}, approval_status, approval_note, approval_requested_at, ai_generation_id`;
 
 function toCard(row: CoordinatorRow | undefined, id: string): CoordinatorCard {
   if (!row) return { id, displayName: 'Coordinatore Odys', interests: [] };
@@ -141,6 +142,7 @@ function toSummary(row: PublishedRow, coordinator: CoordinatorCard, agency?: Org
     approvalStatus: row.approval_status ?? undefined,
     approvalNote: row.approval_note ?? undefined,
     approvalRequestedAt: row.approval_requested_at ?? undefined,
+    aiGenerationId: row.ai_generation_id ?? undefined,
     id: row.id,
     status: row.status,
     effectiveStatus: effectiveStatus(row.status, row.start_date ?? undefined, row.end_date ?? undefined, row.scheduled_for ?? undefined),

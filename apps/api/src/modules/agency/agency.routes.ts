@@ -171,6 +171,30 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
     res.status(204).end();
   }));
 
+  // AI per i coordinatori (AG-06): impostazioni e storico delle generazioni.
+  router.get('/:id/ai', handle(async (req, res) => {
+    const mine = (await repo(res).mine()).find((item) => item.agency.id === String(req.params.id));
+    if (!mine) throw new HttpError(404, 'Agenzia non trovata.');
+    const generations = await repo(res).aiGenerations(mine.agency.id);
+    res.json({ settings: { enabled: mine.agency.aiEnabled, minMarginPercent: mine.agency.aiMinMarginPercent, suppliers: mine.agency.aiSuppliers }, generations });
+  }));
+
+  router.put('/:id/ai', handle(async (req, res) => {
+    const body = requireObject<{ enabled?: unknown; minMarginPercent?: unknown; suppliers?: unknown }>(req.body, 'Richiesta non valida.');
+    if (typeof body.enabled !== 'boolean') throw new HttpError(400, 'Indica se l’AI è attiva.');
+    const minimum = body.minMarginPercent === null || body.minMarginPercent === undefined || body.minMarginPercent === '' ? null : Number(body.minMarginPercent);
+    if (minimum !== null && (!Number.isInteger(minimum) || minimum < 0 || minimum > 90)) throw new HttpError(400, 'Il margine minimo va da 0 a 90%.');
+    const suppliers = Array.isArray(body.suppliers) ? body.suppliers.filter((item): item is string => typeof item === 'string').map((item) => item.trim().slice(0, 80)).filter(Boolean) : [];
+    if (suppliers.length > 20) throw new HttpError(400, 'Al massimo 20 fornitori convenzionati.');
+    const agency = await repo(res).setAi(String(req.params.id), { enabled: body.enabled, minMarginPercent: minimum, suppliers });
+    res.json({ enabled: agency.aiEnabled, minMarginPercent: agency.aiMinMarginPercent, suppliers: agency.aiSuppliers });
+  }));
+
+  router.post('/ai/generations/:generationId/review', handle(async (req, res) => {
+    await repo(res).reviewGeneration(String(req.params.generationId));
+    res.status(204).end();
+  }));
+
   // Dashboard (AG-07): numeri calcolati dai pagamenti e dalle prenotazioni registrati dal server.
   router.get('/:id/dashboard', handle(async (req, res) => {
     const periodo = req.query['periodo'] ?? 'month';

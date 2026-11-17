@@ -117,6 +117,12 @@ const server = app.listen(config.port, async () => {
     ] });
     await call('POST', `/coordinator/trips/${draftTrip.id}/submit`, {});
   }
+  // AI dell'agenzia (AG-06): attiva, con fornitori convenzionati e margine minimo; Nora genera un viaggio.
+  await as(AGENCY, 'PUT', `/agency/${agency.id}/ai`, { enabled: true, minMarginPercent: 30, suppliers: ['Masseria Lupo', 'Bus Sila Express'] });
+  await call('POST', '/coordinator/trips', {
+    generator: { destination: 'Tropea', surprise: false, dates: { mode: 'precise', departure: `${year}-06-12`, returnDate: `${year}-06-15` }, duration: '3-5', budget: 650, interests: ['Mare', 'Cibo'], seed: 4 },
+    agencyAi: agency.id, capacity: 10, price: 590, summary: 'Quattro giorni tra Tropea, Capo Vaticano e Pizzo, con cene di pesce.',
+  });
   console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);
   console.log(`Agenzia di prova: token «${AGENCY}», pagina pubblica /agenzie/sud-lento`);
 });

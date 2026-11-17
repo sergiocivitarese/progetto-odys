@@ -36,6 +36,7 @@ export interface PublishedTripSummary {
   approvalStatus?: 'pending' | 'approved' | 'rejected';
   approvalNote?: string;
   approvalRequestedAt?: string;
+  aiGenerationId?: string;
   id: string;
   status: PublishedTripStatus;
   effectiveStatus: PublishedTripStatus;
@@ -269,6 +270,8 @@ export interface PublishedTripForm {
   generator?: GeneratorRequest;
   /** Viaggio del catalogo di un'agenzia (AG-03). */
   agencyId?: string;
+  /** Generazione con l'AI di questa agenzia (AG-06). */
+  agencyAi?: string;
 }
 
 export type CoordinatorAction = 'publish' | 'schedule' | 'unpublish' | 'cancel' | 'archive';

@@ -1,4 +1,4 @@
-import { AgencyApi } from '../../core/api/agency.api';
+import { AgencyApi, type MyAgency } from '../../core/api/agency.api';
 import { DatePipe } from '@angular/common';
 import { AfterViewInit, ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -44,6 +44,9 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   private readonly agencies = inject(AgencyApi);
   /** Ruolo nell'agenzia: proprietario e amministratori pubblicano i viaggi coperti (AG-11). */
   private readonly agencyRole = signal<string | null>(null);
+  /** AI dell'agenzia per i coordinatori del team (AG-06): l'agenzia e la scelta di usarla. */
+  protected readonly aiAgency = signal<MyAgency['agency'] | null>(null);
+  protected readonly useAgencyAi = signal(true);
   private readonly router = inject(Router);
   protected readonly trips = inject(TripsStore);
   private readonly access = viewChild.required(CoordinatorAccessComponent);
@@ -206,7 +209,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
     await this.run(async () => {
       const base = { ...this.form(), agencyId: this.agenzia() || undefined };
       const created = this.origin() === 'generator'
-        ? await this.api.createPublished({ ...base, generator: this.generatorRequest() })
+        ? await this.api.createPublished({ ...base, generator: this.generatorRequest(), agencyAi: this.aiAgency() && this.useAgencyAi() ? this.aiAgency()!.id : undefined })
         : await (async () => {
           if (!this.sourceTripId()) throw new Error('Scegli uno dei tuoi viaggi da cui partire.');
           return this.api.createPublished({ ...base, sourceTripId: this.sourceTripId() });
@@ -226,7 +229,10 @@ export default class PublishedTripEditorPage implements AfterViewInit {
 
   async start(): Promise<void> {
     this.ready.set(true);
-    void this.agencies.mine().then((mine) => this.agencyRole.set(mine?.role ?? null)).catch(() => undefined);
+    void this.agencies.mine().then((mine) => {
+      this.agencyRole.set(mine?.role ?? null);
+      this.aiAgency.set(mine && mine.role === 'coordinator' && mine.agency.aiEnabled ? mine.agency : null);
+    }).catch(() => undefined);
     await this.trips.load();
     const id = this.id();
     if (!id) {

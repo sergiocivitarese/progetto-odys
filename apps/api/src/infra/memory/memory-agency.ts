@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { agencyCan, describeEntitlements, isValidAgencySlug, type AgencyAction, type AgencyLinkType, type AgencyMemberStatus, type AgencyRole, type BillingCycle } from '@odys/domain';
-import type { Agency, AgencyDashboardData, AgencyMember, AgencyProfileInput, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
+import type { Agency, AgencyAiGeneration, AgencyDashboardData, AgencyMember, AgencyProfileInput, AgencyRepository, AgencyStore, MyAgency } from '../../shared/agency';
 import type { CoordinatorCard, PublishedTrip, PublishedTripSummary } from '../../shared/catalog';
 import { HttpError } from '../../shared/http';
 import type { MemoryDatabase } from './memory-store';
@@ -72,7 +72,7 @@ class MemoryAgencyRepository implements AgencyRepository {
     if (!isValidAgencySlug(input.slug)) throw new HttpError(422, 'Indirizzo non valido.');
     if ([...this.db.agencies.values()].some((agency) => agency.slug === input.slug)) throw new HttpError(409, 'Questo indirizzo è già usato da un’altra agenzia.');
     const now = new Date().toISOString();
-    const agency: MemoryAgency = { id: randomUUID(), ownerId: this.userId, legalName: input.legalName, displayName: input.displayName, slug: input.slug, description: '', licenseSeats: 0, billingCycle: 'monthly', saleTerms: '', createdAt: now };
+    const agency: MemoryAgency = { id: randomUUID(), ownerId: this.userId, legalName: input.legalName, displayName: input.displayName, slug: input.slug, description: '', licenseSeats: 0, billingCycle: 'monthly', saleTerms: '', aiEnabled: false, aiMinMarginPercent: null, aiSuppliers: [], createdAt: now };
     this.db.agencies.set(agency.id, agency);
     const owner: MemoryAgencyMember = { id: randomUUID(), agencyId: agency.id, userId: this.userId, role: 'owner', status: 'active', licensed: false, createdAt: now, acceptedAt: now };
     this.db.agencyMembers.set(owner.id, owner);
@@ -260,6 +260,48 @@ class MemoryAgencyRepository implements AgencyRepository {
     if (approve) await this.publish(this.userId, tripId);
     Object.assign(trip, { approvalStatus: approve ? 'approved' : 'rejected', approvalNote: note?.trim() || undefined });
     this.audit(approve ? 'agency.proposal_approve' : 'agency.proposal_reject', tripId, { agency: trip.agencyId });
+  }
+
+  async setAi(agencyId: string, settings: { enabled: boolean; minMarginPercent: number | null; suppliers: string[] }): Promise<Agency> {
+    const agency = this.require(agencyId, 'profile.edit', 'Le impostazioni dell’AI le cambiano proprietario e amministratori.');
+    Object.assign(agency, { aiEnabled: settings.enabled, aiMinMarginPercent: settings.minMarginPercent, aiSuppliers: [...settings.suppliers] });
+    return this.view(agency);
+  }
+
+  private generationView(item: AgencyAiGeneration): AgencyAiGeneration {
+    const profile = this.db.users.get(item.coordinatorId)?.profile;
+    return { ...structuredClone(item), coordinatorName: profile ? `${profile.firstName} ${profile.lastName.slice(0, 1)}.` : undefined };
+  }
+
+  async aiGenerations(agencyId: string) {
+    this.require(agencyId, 'team.view');
+    return this.db.aiGenerations.filter((item) => item.agencyId === agencyId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((item) => this.generationView(item));
+  }
+
+  async generation(id: string) {
+    const item = this.db.aiGenerations.find((generation) => generation.id === id);
+    if (!item || (item.coordinatorId !== this.userId && !this.staff(item.agencyId))) return null;
+    return this.generationView(item);
+  }
+
+  /** Come `record_agency_ai_generation()`. */
+  async recordGeneration(agencyId: string, tripId: string, info: { destination: string; title: string; days: number; totalCents?: number; budgetCents?: number }): Promise<string> {
+    const agency = this.db.agencies.get(agencyId);
+    if (!agency || !agency.aiEnabled || !this.hasCoordinator(agencyId, this.userId)) throw new HttpError(403, 'L’AI di questa agenzia non è attiva per te.');
+    const trip = this.db.published.get(tripId);
+    if (!trip || trip.coordinatorId !== this.userId) throw new HttpError(404, 'Viaggio non trovato.');
+    const generation: AgencyAiGeneration = { id: randomUUID(), agencyId, coordinatorId: this.userId, ...info, suppliers: [...agency.aiSuppliers], status: 'to_review', publishedTripId: tripId, createdAt: new Date().toISOString() };
+    this.db.aiGenerations.push(generation);
+    trip.aiGenerationId = generation.id;
+    this.audit('agency.ai_generate', generation.id, { agency: agencyId, trip: tripId });
+    return generation.id;
+  }
+
+  async reviewGeneration(id: string): Promise<void> {
+    const item = this.db.aiGenerations.find((generation) => generation.id === id);
+    if (!item || !this.staff(item.agencyId, ['owner', 'admin'])) throw new HttpError(404, 'Generazione non trovata.');
+    item.status = 'approved';
+    this.audit('agency.ai_review', id, { agency: item.agencyId });
   }
 
   /** Stessi dati di `agency_dashboard_data()` (migrazione 0022). */

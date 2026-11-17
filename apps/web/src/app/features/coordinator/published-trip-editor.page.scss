@@ -58,3 +58,8 @@ li:has(.is-current) { flex-grow: 2.6; }
 .proposal { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-primary-soft); }
 .proposal__state { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
 .proposal__state--wait { color: var(--color-link); }
+
+// AI dell'agenzia (AG-06).
+.agency-ai { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--color-primary-soft); cursor: pointer;
+  input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--odys-blue); flex-shrink: 0; }
+  > span { display: flex; flex-direction: column; gap: 2px; } }

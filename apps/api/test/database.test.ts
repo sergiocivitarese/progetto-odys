@@ -755,3 +755,28 @@ test('proposte all’agenzia: il coordinatore propone, l’agenzia approva pubbl
   assert.equal((await asAnon(() => db.query('select id from public.published_trips where id = $1', [trip.id]))).rows.length, 1, 'ora è nel catalogo pubblico');
   void agency;
 });
+
+test('AI dell’agenzia per i coordinatori: interruttore, storico scritto dal server, revisione dello staff (AG-06)', async () => {
+  const owner = (await db.query<{ id: string }>(`select id from auth.users where email = 'agenzia@example.com'`)).rows[0].id;
+  const agency = (await db.query<{ id: string }>('select id from public.agencies where owner_id = $1', [owner])).rows[0].id;
+  const trip = (await asUser(sara, () => db.query<{ id: string }>(`insert into public.published_trips (title, itinerary) values ('Aspromonte con l’AI', $1) returning id`, [JSON.stringify(itinerary)]))).rows[0].id;
+  const record = (who: string) => asUser(who, () => db.query<{ id: string }>(`select public.record_agency_ai_generation($1, $2, 'Aspromonte', 'Aspromonte in 4 giorni', 4, 52000, 60000) as id`, [agency, trip]));
+
+  await assert.rejects(record(sara), /non è attiva/);
+  await asUser(owner, () => db.query(`update public.agencies set ai_enabled = true, ai_min_margin_percent = 30, ai_suppliers = '{Masseria Lupo,Bus Sila}' where id = $1`, [agency]));
+  // Una coordinatrice del team non cambia le impostazioni: la regola d'accesso esclude la riga.
+  assert.equal((await asUser(sara, () => db.query('update public.agencies set ai_enabled = false where id = $1', [agency]))).affectedRows ?? 0, 0);
+  await assert.rejects(record(marco), /non è attiva/);
+  const generation = (await record(sara)).rows[0].id;
+  await assert.rejects(asUser(sara, () => db.query('update public.published_trips set ai_generation_id = null where id = $1', [trip])), /solo dal generatore/);
+  await assert.rejects(asUser(sara, () => db.query(`insert into public.agency_ai_generations (agency_id, coordinator_id, destination, title, days) values ($1, $2, 'x', 'x', 1)`, [agency, sara])), /permission denied/);
+
+  const seen = await asUser(owner, () => db.query<{ status: string; suppliers: string[]; published_trip_id: string }>('select status, suppliers, published_trip_id from public.agency_ai_generations where id = $1', [generation]));
+  assert.deepEqual([seen.rows[0].status, seen.rows[0].suppliers, seen.rows[0].published_trip_id], ['to_review', ['Masseria Lupo', 'Bus Sila'], trip]);
+  const marta = (await db.query<{ id: string }>(`select id from auth.users where email = 'marta@example.com'`)).rows[0].id;
+  assert.equal((await asUser(marta, () => db.query('select id from public.agency_ai_generations'))).rows.length, 0);
+  await assert.rejects(asUser(sara, () => db.query('select public.review_agency_ai_generation($1)', [generation])), /non trovata/);
+  await asUser(owner, () => db.query('select public.review_agency_ai_generation($1)', [generation]));
+  assert.equal((await asUser(sara, () => db.query<{ status: string }>('select status from public.agency_ai_generations where id = $1', [generation]))).rows[0].status, 'approved');
+
+});

@@ -24,6 +24,27 @@ export interface Agency {
   billingCycle: BillingCycle;
   /** Condizioni di vendita mostrate nel checkout dei viaggi in ombrello (AG-12). */
   saleTerms: string;
+  /** AI dell'agenzia per i coordinatori del team (AG-06). */
+  aiEnabled: boolean;
+  aiMinMarginPercent: number | null;
+  aiSuppliers: string[];
+  createdAt: string;
+}
+
+/** Generazione con l'AI dell'agenzia (AG-06): storico con stato e viaggio in cui è stata convertita. */
+export interface AgencyAiGeneration {
+  id: string;
+  agencyId: string;
+  coordinatorId: string;
+  coordinatorName?: string;
+  destination: string;
+  title: string;
+  days: number;
+  totalCents?: number;
+  budgetCents?: number;
+  suppliers: string[];
+  status: 'to_review' | 'approved';
+  publishedTripId?: string;
   createdAt: string;
 }
 
@@ -114,6 +135,12 @@ export interface AgencyRepository {
   /** Proposte in attesa dei coordinatori (AG-05) e decisione: approvare pubblica il viaggio. */
   proposals(agencyId: string): Promise<PublishedTripSummary[]>;
   decideProposal(tripId: string, approve: boolean, note?: string): Promise<void>;
+  /** AI per i coordinatori (AG-06): impostazioni (proprietario e amministratori), storico e revisione. */
+  setAi(agencyId: string, settings: { enabled: boolean; minMarginPercent: number | null; suppliers: string[] }): Promise<Agency>;
+  aiGenerations(agencyId: string): Promise<AgencyAiGeneration[]>;
+  generation(id: string): Promise<AgencyAiGeneration | null>;
+  recordGeneration(agencyId: string, tripId: string, info: { destination: string; title: string; days: number; totalCents?: number; budgetCents?: number }): Promise<string>;
+  reviewGeneration(id: string): Promise<void>;
   /** Dashboard (AG-07): solo proprietario e amministratori. */
   dashboardData(agencyId: string, since: string): Promise<AgencyDashboardData>;
 }

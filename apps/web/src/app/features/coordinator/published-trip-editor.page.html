@@ -84,6 +84,15 @@
               </div>
               @if (origin() === 'generator') {
                 <p class="hint">Odys prepara un giorno per ogni data, con meta e interessi del passo 1. Dopo potrai riordinare i giorni e cambiare ogni attività.</p>
+                @if (aiAgency(); as ai) {
+                  <label class="agency-ai">
+                    <input type="checkbox" [checked]="useAgencyAi()" (change)="useAgencyAi.set($any($event.target).checked)" />
+                    <span>
+                      <strong>Usa l’AI di {{ ai.displayName }}</strong>
+                      <span class="hint">@if (ai.aiSuppliers.length) {Fornitori convenzionati, da usare per primi: {{ ai.aiSuppliers.join(', ') }}. }@if (ai.aiMinMarginPercent !== null) {Sotto un margine del {{ ai.aiMinMarginPercent }}% serve l’approvazione dell’agenzia per pubblicare.}</span>
+                    </span>
+                  </label>
+                }
                 <dl class="recap">
                   <div><dt>Meta</dt><dd>{{ destination() || '—' }}</dd></div>
                   <div><dt>Date</dt><dd>{{ startDate() && endDate() ? (startDate() | date: 'd MMM') + ' – ' + (endDate() | date: 'd MMM y') : 'da scegliere al passo 1' }}</dd></div>

@@ -1063,3 +1063,44 @@ test('proposte all’agenzia con margine, pareggio e valutazione; approvare pubb
   assert.deepEqual([published.data.status, published.data.approvalStatus], ['published', 'approved']);
   assert.equal((await call<unknown[]>('GET', `/agency/${agency}/proposals`, undefined, owner)).data.length, 0);
 });
+
+test('AI dell’agenzia per i coordinatori: fornitori convenzionati, storico, margine minimo con approvazione (AG-06)', async () => {
+  const owner = 'token-ai-agenzia';
+  const ownerId = db.addUser(owner, undefined, 'titolare@ai.example');
+  db.user(ownerId).plans = ['agency'];
+  const coach = 'token-ai-coord';
+  const coachId = db.addUser(coach, undefined, 'coach@ai.example');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Ugo', lastName: 'Pini' });
+  await call('POST', '/coordinator/guidelines', {}, coach);
+  const agency = (await call<{ id: string }>('POST', '/agency', { legalName: 'Sole Srl', displayName: 'Sole', slug: 'sole-ai' }, owner)).data.id;
+  const member = (await call<{ id: string }>('POST', `/agency/${agency}/team`, { email: 'coach@ai.example', role: 'coordinator' }, owner)).data.id;
+  await call('POST', `/agency/invites/${member}/accept`, {}, coach);
+
+  const year = new Date().getFullYear() + 1;
+  const generator = { destination: 'Cagliari', surprise: false, dates: { mode: 'precise', departure: `${year}-05-02`, returnDate: `${year}-05-05` }, duration: '3-5', budget: 700, interests: ['Mare', 'Cibo'], seed: 2 };
+  const body = { generator, agencyAi: agency, capacity: 10, price: 500, summary: 'Quattro giorni tra Cagliari, Villasimius e le saline, al ritmo del mare.' };
+  assert.equal((await call('POST', '/coordinator/trips', body, coach)).status, 403, 'AI non ancora attiva');
+
+  assert.equal((await call('PUT', `/agency/${agency}/ai`, { enabled: true, minMarginPercent: 40, suppliers: ['Hotel Marina', 'Barche Su Pisu'] }, coach)).status, 403);
+  const settings = await call<{ enabled: boolean; suppliers: string[] }>('PUT', `/agency/${agency}/ai`, { enabled: true, minMarginPercent: 40, suppliers: ['Hotel Marina', 'Barche Su Pisu'] }, owner);
+  assert.deepEqual([settings.data.enabled, settings.data.suppliers], [true, ['Hotel Marina', 'Barche Su Pisu']]);
+
+  const created = await call<{ id: string; aiGenerationId: string; itinerary: Itinerary }>('POST', '/coordinator/trips', body, coach);
+  assert.equal(created.status, 201);
+  assert.ok(created.data.aiGenerationId);
+  assert.match(created.data.itinerary.constraints ?? '', /Hotel Marina, Barche Su Pisu/);
+
+  // Storico (AG-06): da revisionare, convertita nel viaggio.
+  const history = await call<{ generations: Array<{ id: string; status: string; publishedTripId: string; coordinatorName: string }> }>('GET', `/agency/${agency}/ai`, undefined, owner);
+  assert.deepEqual(history.data.generations.map((item) => [item.status, item.publishedTripId, item.coordinatorName]), [['to_review', created.data.id, 'Ugo P.']]);
+
+  // Margine sotto il 40%: 500 € − 50 € di servizio − 300 € di costi a testa = 150 € (30%).
+  await call('PUT', `/coordinator/trips/${created.data.id}`, { startDate: `${year}-05-02`, endDate: `${year}-05-05` }, coach);
+  await call('PUT', `/coordinator/trips/${created.data.id}/pricing`, { costs: [{ label: 'Hotel Marina', category: 'alloggi', basis: 'per_person', amountCents: 30000 }] }, coach);
+  const blocked = await call<{ error: string }>('POST', `/coordinator/trips/${created.data.id}/publish`, {}, coach);
+  assert.equal(blocked.status, 422);
+  assert.match(blocked.data.error, /30%.*minimo di Sole \(40%\)/);
+  assert.equal((await call('POST', `/agency/ai/generations/${history.data.generations[0].id}/review`, {}, coach)).status, 404);
+  assert.equal((await call('POST', `/agency/ai/generations/${history.data.generations[0].id}/review`, {}, owner)).status, 204);
+  assert.equal((await call('POST', `/coordinator/trips/${created.data.id}/publish`, {}, coach)).status, 200, 'dopo l’approvazione si pubblica');
+});
