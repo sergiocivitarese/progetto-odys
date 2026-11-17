@@ -1,3 +1,4 @@
+import { OrganizerBadgeComponent } from '../../shared/travel/organizer-badge.component';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -13,7 +14,7 @@ import { EmptyStateComponent, IconComponent, NoticeComponent } from '../../share
  */
 @Component({
   selector: 'odys-checkout-page',
-  imports: [FormsModule, RouterLink, EmptyStateComponent, IconComponent, NoticeComponent],
+  imports: [FormsModule, RouterLink, EmptyStateComponent, IconComponent, NoticeComponent, OrganizerBadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page checkout">
@@ -64,9 +65,20 @@ import { EmptyStateComponent, IconComponent, NoticeComponent } from '../../share
             </label>
           </fieldset>
 
+          @if (b.trip?.organizerAgency; as agency) {
+            <div class="agency">
+              <odys-organizer-badge [agency]="agency" />
+              @if (agency.saleTerms) {
+                <details>
+                  <summary>Condizioni di vendita di {{ agency.name }}</summary>
+                  <p class="agency__terms">{{ agency.saleTerms }}</p>
+                </details>
+              }
+            </div>
+          }
           <label class="terms">
             <input type="checkbox" [ngModel]="terms()" (ngModelChange)="terms.set($event)" name="terms" [disabled]="paying()" />
-            <span>Accetto le <a routerLink="/termini" target="_blank">condizioni di partecipazione</a> e la politica di cancellazione del viaggio.</span>
+            <span>Accetto le <a routerLink="/termini" target="_blank">condizioni di partecipazione</a>@if (b.trip?.organizerAgency; as agency) {, le condizioni di vendita di {{ agency.name }}} e la politica di cancellazione del viaggio.</span>
           </label>
 
           <odys-notice tone="info">Pagamento di prova: nessun addebito reale. Il fornitore dei pagamenti verrà collegato quando sarà scelto.</odys-notice>
@@ -101,6 +113,9 @@ import { EmptyStateComponent, IconComponent, NoticeComponent } from '../../share
     .timer--expired { background: var(--color-surface-muted); color: var(--color-text-muted); }
     .kicker { color: var(--color-link); font-weight: 700; }
     h1 { font-size: clamp(2rem, 1.4rem + 3vw, 2.75rem); }
+    .agency { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); border: var(--border-width) solid var(--color-border);
+      summary { cursor: pointer; font-size: var(--text-sm); font-weight: 700; min-height: 32px; } }
+    .agency__terms { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); white-space: pre-line; }
     .summary { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); border-radius: var(--radius-xl); background: var(--color-surface); border: var(--border-width) solid var(--color-border); }
     .summary__cover { display: flex; align-items: flex-end; flex-shrink: 0; width: 96px; height: 96px; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--odys-blue); color: #fff; overflow: hidden;
       span { font-weight: 900; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: -0.02em; line-height: 1; overflow-wrap: anywhere; } }

@@ -27,7 +27,7 @@ export function navigationFor(has: (entitlement: Entitlement) => boolean): Navig
       tone: 'agency',
       items: [
         { label: 'Dati', path: '/in-arrivo/dati-agenzia', icon: 'chart-column' },
-        { label: 'Catalogo', path: '/coordinatore', icon: 'box' },
+        { label: 'Catalogo', path: '/agenzia/catalogo', icon: 'box' },
         { label: 'AI', path: '/in-arrivo/ai-agenzia', icon: 'sparkles' },
         { label: 'Team', path: '/agenzia/team', icon: 'users' },
         { label: 'Impostazioni', path: '/agenzia', icon: 'settings', exact: true },

@@ -31,6 +31,12 @@
           </span>
           <odys-icon name="chevron-right" [size]="20" />
         </a>
+        @if (t.organizerAgency; as agency) {
+          <div class="organizer">
+            <odys-organizer-badge [agency]="agency" />
+            <p class="muted small">L’agenzia è l’organizzatore responsabile: contratto, incassi, garanzie e assicurazione sono a suo nome.</p>
+          </div>
+        }
 
         @if (t.affinity && t.affinity.percent > 0) {
           <p class="affinity"><span>{{ t.affinity.percent }}% per te</span>{{ t.affinity.explanation }}</p>

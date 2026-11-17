@@ -1,8 +1,12 @@
 <div class="page">
-  <a routerLink="/coordinatore" class="back"><odys-icon name="arrow-left" [size]="16" /> I tuoi viaggi</a>
+  @if (agencyTrip()) {
+    <a routerLink="/agenzia/catalogo" class="back"><odys-icon name="arrow-left" [size]="16" /> Catalogo dell’agenzia</a>
+  } @else {
+    <a routerLink="/coordinatore" class="back"><odys-icon name="arrow-left" [size]="16" /> I tuoi viaggi</a>
+  }
   <header class="head">
     <div>
-      <p class="eyebrow">{{ isNew() ? 'Crea viaggio' : 'Stato: ' + statusLabel() }}</p>
+      <p class="eyebrow">{{ isNew() ? (agencyTrip() ? 'Nuovo viaggio dell’agenzia' : 'Crea viaggio') : 'Stato: ' + statusLabel() }}@if (existing()?.organizerAgency; as org) { · {{ existing()?.agencyOwned ? 'catalogo di ' : 'coperto da ' }}{{ org.name }}}</p>
       <h1>{{ title() || (isNew() ? 'Nuovo viaggio' : 'Viaggio senza titolo') }}</h1>
     </div>
     @if (existing(); as trip) {

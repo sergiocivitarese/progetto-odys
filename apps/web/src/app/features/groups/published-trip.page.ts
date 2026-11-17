@@ -1,3 +1,4 @@
+import { OrganizerBadgeComponent } from '../../shared/travel/organizer-badge.component';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { displayDayDate, MAX_TRIP_PARTICIPANTS } from '@odys/domain';
@@ -22,7 +23,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
  */
 @Component({
   selector: 'odys-published-trip-page',
-  imports: [RouterLink, ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, StopsMapComponent],
+  imports: [RouterLink, ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, StopsMapComponent, OrganizerBadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './published-trip.page.html',
   styleUrl: './published-trip.page.scss',

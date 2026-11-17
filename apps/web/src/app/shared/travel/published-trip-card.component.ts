@@ -1,3 +1,4 @@
+import { OrganizerBadgeComponent } from './organizer-badge.component';
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { formatAmount, formatDateRange, initialsOf, PUBLISHED_STATUS_LABELS, urgencyLabel, type PublishedTripSummary } from '../../core/api/catalog.api';
@@ -21,7 +22,7 @@ export function toneOf(id: string): TripCardTone {
  */
 @Component({
   selector: 'odys-published-trip-card',
-  imports: [RouterLink, IconComponent],
+  imports: [RouterLink, IconComponent, OrganizerBadgeComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[class]': '"tone-" + (tone() ?? autoTone()) + " size-" + size()' },
   template: `
@@ -45,6 +46,7 @@ export function toneOf(id: string): TripCardTone {
         <a [routerLink]="['/gruppi', trip().id]">{{ headline() }}</a>
       </h3>
       <p class="tagline">{{ size() === 'lg' ? (trip().summary || trip().title) : trip().title }}</p>
+      @if (trip().organizerAgency; as agency) {<odys-organizer-badge class="organizer" [agency]="agency" [compact]="true" />}
 
       @if (size() === 'lg') {
         <div class="strip">
@@ -91,6 +93,7 @@ export function toneOf(id: string): TripCardTone {
       a::after { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
       a:focus-visible { outline: none; }
       a:focus-visible::after { outline: 3px solid var(--card-fg); outline-offset: -5px; } }
+    .organizer { margin-top: var(--space-2); }
     .tagline { margin-top: var(--space-3); color: var(--card-soft); font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
     .strip { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: auto; padding: var(--space-2); border-radius: var(--radius-lg); background: #fff; color: var(--odys-ink); }

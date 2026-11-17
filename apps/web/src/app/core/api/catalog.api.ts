@@ -25,6 +25,13 @@ export interface CoordinatorCard {
 }
 
 export interface PublishedTripSummary {
+  /** Chi organizza ed è responsabile (AG-11): con `agency` il viaggio è coperto da un'agenzia. */
+  organizer?: 'coordinator' | 'agency';
+  organizerAgency?: { id: string; name: string; slug: string; saleTerms: string };
+  agencyId?: string;
+  /** Viaggio del catalogo dell'agenzia e serie delle sue partenze (AG-03). */
+  agencyOwned?: boolean;
+  seriesId?: string;
   id: string;
   status: PublishedTripStatus;
   effectiveStatus: PublishedTripStatus;
@@ -256,6 +263,8 @@ export interface PublishedTripForm {
   itinerary?: Itinerary;
   /** Creazione con il generatore (CB-03): stessi parametri della schermata Generatore. */
   generator?: GeneratorRequest;
+  /** Viaggio del catalogo di un'agenzia (AG-03). */
+  agencyId?: string;
 }
 
 export type CoordinatorAction = 'publish' | 'schedule' | 'unpublish' | 'cancel' | 'archive';

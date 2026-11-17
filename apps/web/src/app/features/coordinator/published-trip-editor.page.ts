@@ -49,6 +49,10 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   readonly id = input<string>();
   /** `?passo=` per riaprire l'editor su un passo preciso. */
   readonly passo = input<string>();
+  /** `?agenzia=` : il nuovo viaggio nasce nel catalogo di questa agenzia (AG-03). */
+  readonly agenzia = input<string>();
+  /** Viaggio dell'agenzia (catalogo): il ritorno porta al catalogo. */
+  protected readonly agencyTrip = computed(() => Boolean(this.existing()?.agencyOwned || (this.isNew() && this.agenzia())));
 
   protected readonly steps: Array<{ n: Step; label: string }> = [
     { n: 1, label: 'Meta' },
@@ -191,7 +195,7 @@ export default class PublishedTripEditorPage implements AfterViewInit {
   /** Fine del passo 2 per un viaggio nuovo: nasce la bozza e si continua dal suo itinerario. */
   private async create(): Promise<void> {
     await this.run(async () => {
-      const base = this.form();
+      const base = { ...this.form(), agencyId: this.agenzia() || undefined };
       const created = this.origin() === 'generator'
         ? await this.api.createPublished({ ...base, generator: this.generatorRequest() })
         : await (async () => {

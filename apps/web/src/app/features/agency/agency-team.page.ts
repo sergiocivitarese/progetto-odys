@@ -135,6 +135,12 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
                       <button type="button" class="act act--primary" [disabled]="busy() === member.id || free() === 0" [attr.title]="free() === 0 ? 'Nessuna licenza libera' : null" (click)="assign(member)">Assegna licenza</button>
                     }
                   }
+                  @if (member.role === 'coordinator' && member.status === 'active' && can('licenses.assign')) {
+                    <label class="umbrella" [attr.title]="'I viaggi nuovi di ' + member.firstName + ' nascono coperti dall’agenzia'">
+                      <input type="checkbox" role="switch" [checked]="member.umbrellaDefault" [disabled]="busy() === member.id" (change)="toggleUmbrellaDefault(member, $any($event.target).checked)" />
+                      Ombrello predefinito
+                    </label>
+                  }
                   @if (member.role !== 'owner' && can('team.remove')) {
                     <button type="button" class="act act--ghost" [disabled]="busy() === member.id" (click)="remove(member)">{{ confirming() === member.id ? 'Conferma' : (member.status === 'invited' ? 'Annulla invito' : 'Rimuovi') }}</button>
                   }
@@ -196,6 +202,8 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent } 
     .tag--go { background: var(--odys-lime); color: var(--odys-ink); }
     .tag--warn { background: var(--color-danger-soft); color: var(--color-danger-text); }
     .member__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+    .umbrella { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; font-size: var(--text-xs); font-weight: 700; cursor: pointer;
+      input { width: 18px; height: 18px; accent-color: var(--odys-blue); } }
     .act { min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-pill); border: var(--border-width) solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text); font: inherit; font-size: var(--text-sm); font-weight: 800; cursor: pointer;
       &:disabled { opacity: 0.45; cursor: default; } }
     .act--primary { border-color: var(--odys-blue); background: var(--odys-blue); color: #fff; }
@@ -304,6 +312,14 @@ export default class AgencyTeamPage implements OnInit {
       await this.api.revokeLicense(member.id);
       await this.refreshTeam();
       return `Licenza revocata: ${member.firstName} resta nel team come associato.`;
+    });
+  }
+
+  protected async toggleUmbrellaDefault(member: AgencyMember, on: boolean): Promise<void> {
+    await this.run(member.id, async () => {
+      await this.api.setUmbrellaDefault(member.id, on);
+      await this.refreshTeam();
+      return on ? `I nuovi viaggi di ${member.firstName} nasceranno coperti dall’agenzia.` : `I nuovi viaggi di ${member.firstName} restano sotto la sua responsabilità.`;
     });
   }
 

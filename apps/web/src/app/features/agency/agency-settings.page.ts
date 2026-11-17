@@ -22,6 +22,7 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, T
         @if (mine(); as m) {
           <p class="meta"><span class="role">{{ roleLabel() }}</span>
             <a [routerLink]="['/agenzie', m.agency.slug]"><odys-icon name="arrow-up-right" [size]="14" /> Pagina pubblica</a>
+            <a routerLink="/agenzia/catalogo"><odys-icon name="box" [size]="14" /> Catalogo</a>
             <a routerLink="/agenzia/team"><odys-icon name="users" [size]="14" /> Team e licenze</a>
           </p>
         }
@@ -66,9 +67,11 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, T
             <odys-text-field label="Città" [(value)]="city" [disabled]="!canEdit()" />
             <odys-text-field label="Paese" [(value)]="country" [disabled]="!canEdit()" />
           </div>
+          <h3>Condizioni di vendita</h3>
+          <odys-text-field label="Condizioni dell’agenzia (facoltative)" [multiline]="true" hint="Le leggono i viaggiatori nel checkout dei viaggi coperti dall’agenzia: acconto, rimborsi, annullamenti, garanzie." [(value)]="saleTerms" [disabled]="!canEdit()" />
           @if (canEdit()) {<button odysButton type="submit" variant="accent" icon="check" [loading]="busy()">Salva il profilo</button>}
         </form>
-        <p class="hint">Le parti dell’area agenzia ancora da costruire (catalogo multi-partenza, AI per i coordinatori, dati e modalità ombrello) arrivano nei prossimi aggiornamenti.</p>
+        <p class="hint">Le parti dell’area agenzia ancora da costruire (AI per i coordinatori, dati e proposte da approvare) arrivano nei prossimi aggiornamenti.</p>
       }
     </div>
   `,
@@ -103,6 +106,7 @@ export default class AgencySettingsPage implements OnInit {
   protected readonly website = signal('');
   protected readonly city = signal('');
   protected readonly country = signal('');
+  protected readonly saleTerms = signal('');
   protected readonly canEdit = computed(() => agencyCan(this.mine()?.role, 'profile.edit'));
   protected readonly roleLabel = computed(() => (this.mine() ? AGENCY_ROLE_LABELS[this.mine()!.role] : ''));
   private slugTouched = false;
@@ -120,7 +124,7 @@ export default class AgencySettingsPage implements OnInit {
         const a = mine.agency;
         this.legalName.set(a.legalName); this.displayName.set(a.displayName); this.slug.set(a.slug); this.description.set(a.description);
         this.logoUrl.set(a.logoUrl ?? ''); this.email.set(a.email ?? ''); this.phone.set(a.phone ?? ''); this.website.set(a.website ?? '');
-        this.city.set(a.city ?? ''); this.country.set(a.country ?? '');
+        this.city.set(a.city ?? ''); this.country.set(a.country ?? ''); this.saleTerms.set(a.saleTerms ?? '');
       }
     } catch (error) {
       this.error.set(apiErrorMessage(error));
@@ -138,7 +142,7 @@ export default class AgencySettingsPage implements OnInit {
   private form(): AgencyProfileForm {
     return {
       legalName: this.legalName().trim(), displayName: this.displayName().trim(), slug: this.slug().trim(), description: this.description().trim(),
-      logoUrl: this.logoUrl().trim(), email: this.email().trim(), phone: this.phone().trim(), website: this.website().trim(), city: this.city().trim(), country: this.country().trim(),
+      logoUrl: this.logoUrl().trim(), email: this.email().trim(), phone: this.phone().trim(), website: this.website().trim(), city: this.city().trim(), country: this.country().trim(), saleTerms: this.saleTerms().trim(),
     };
   }
 

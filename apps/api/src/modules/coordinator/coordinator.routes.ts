@@ -190,8 +190,14 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
 
   router.use(handle(async (_req, res, next) => {
     const coordinator = repo(res);
-    if (!(await coordinator.isCoordinator())) throw new HttpError(403, 'Questa area è riservata ai coordinatori approvati.');
-    if (!(await coordinator.hasAcceptedGuidelines())) throw new HttpError(428, 'Accetta le linee guida del coordinatore per continuare.');
+    if (await coordinator.isCoordinator()) {
+      if (!(await coordinator.hasAcceptedGuidelines())) throw new HttpError(428, 'Accetta le linee guida del coordinatore per continuare.');
+      next();
+      return;
+    }
+    // AG-03: lo staff dell'agenzia lavora sui viaggi dell'agenzia con lo stesso editor. Il database verifica ogni viaggio.
+    const staff = (await store.agency(currentUser(res)).mine()).filter((item) => item.role !== 'coordinator');
+    if (!staff.length) throw new HttpError(403, 'Questa area è riservata ai coordinatori approvati.');
     next();
   }));
 
@@ -280,7 +286,10 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
 
   router.post('/trips', handle(async (req, res) => {
     const user = currentUser(res);
-    const body = requireObject<{ sourceTripId?: unknown; generator?: unknown }>(req.body, 'Richiesta non valida.');
+    const body = requireObject<{ sourceTripId?: unknown; generator?: unknown; agencyId?: unknown }>(req.body, 'Richiesta non valida.');
+    // Viaggio del catalogo di un'agenzia (AG-03): nasce senza coordinatore, lo assegna lo staff.
+    const agencyId = typeof body.agencyId === 'string' && /^[0-9a-f-]{36}$/i.test(body.agencyId) ? body.agencyId : undefined;
+    if (body.agencyId !== undefined && !agencyId) throw new HttpError(400, 'Agenzia non valida.');
     let itinerary: Itinerary;
     let sourceTripId: string | undefined;
     /** Titolo di riserva se il passo 1 non ne ha uno: quello generato o del viaggio di partenza. */
@@ -323,6 +332,7 @@ export function coordinatorRouter(auth: AuthProvider, store: DataStore): Router 
       ageMin: input.ageMin,
       ageMax: input.ageMax,
       placeStories: input.placeStories ?? [],
+      agencyId,
     });
     await store.account(user).record({ action: 'published_trip.create', entity: 'published_trip', entityId: created.id });
     res.status(201).json(created);

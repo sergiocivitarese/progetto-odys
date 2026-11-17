@@ -28,6 +28,7 @@ export const routes: Routes = [
   { path: 'coordinatori/:id', title: 'Coordinatore · Odys', loadComponent: () => import('./features/coordinators/coordinator-profile.page') },
   { path: 'agenzie/:slug', title: 'Agenzia · Odys', loadComponent: () => import('./features/agency/agency-public.page') },
   { path: 'agenzia', title: 'Agenzia · Odys', canActivate: [authGuard], loadComponent: () => import('./features/agency/agency-settings.page') },
+  { path: 'agenzia/catalogo', title: 'Catalogo · Odys', canActivate: [authGuard], loadComponent: () => import('./features/agency/agency-catalog.page') },
   { path: 'agenzia/team', title: 'Team e licenze · Odys', canActivate: [authGuard], loadComponent: () => import('./features/agency/agency-team.page') },
   { path: 'coordinatore', canActivate: [authGuard], loadChildren: () => import('./features/coordinator/coordinator.routes') },
   { path: 'admin', pathMatch: 'full', redirectTo: 'admin/segnalazioni' },

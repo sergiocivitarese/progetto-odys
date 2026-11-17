@@ -907,3 +907,74 @@ test('agenzia: profilo pubblico, team con inviti, licenze a scaglioni che danno 
   const mine = await call<{ role: string; quote: { totalCents: number } }>('GET', '/agency', undefined, owner);
   assert.deepEqual([mine.data.role, mine.data.quote.totalCents], ['owner', 14700]);
 });
+
+test('catalogo dell’agenzia: partenze, coordinatore assegnato, ombrello e trasparenza per il viaggiatore (AG-03, AG-04, AG-11, AG-12)', async () => {
+  const owner = 'token-cat-agenzia';
+  const ownerId = db.addUser(owner, undefined, 'titolare@catalogo.example');
+  db.user(ownerId).plans = ['agency'];
+  const coach = 'token-cat-coord';
+  const coachId = db.addUser(coach, undefined, 'coach@catalogo.example');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Ada', lastName: 'Riva' });
+  await call('POST', '/coordinator/guidelines', {}, coach);
+  const traveler = 'token-cat-viaggiatore';
+  db.addUser(traveler, undefined, 'viaggiatore@catalogo.example');
+
+  const agency = (await call<{ id: string }>('POST', '/agency', { legalName: 'Mare Lento Srl', displayName: 'Mare Lento', slug: 'mare-lento' }, owner)).data.id;
+  await call('PUT', `/agency/${agency}`, { saleTerms: 'Acconto rimborsabile fino a 30 giorni dalla partenza.' }, owner);
+  const invite = (await call<{ id: string }>('POST', `/agency/${agency}/team`, { email: 'coach@catalogo.example', role: 'coordinator' }, owner)).data.id;
+  await call('POST', `/agency/invites/${invite}/accept`, {}, coach);
+
+  // AG-03: lo staff (anche senza essere coordinatore) crea un viaggio del catalogo con l'editor del coordinatore.
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Ponza' } });
+  const source = await call<Trip>('POST', '/trips', { itinerary: generated.data }, owner);
+  const year = new Date().getFullYear() + 1;
+  const created = await call<{ id: string; agencyOwned: boolean; organizer: string; coordinator: { id: string } }>('POST', '/coordinator/trips', {
+    sourceTripId: source.data.id, agencyId: agency, title: 'Ponza in barca', price: 650, capacity: 10,
+    summary: 'Quattro giorni tra calette, grotte e cene di pesce a Ponza.', startDate: `${year}-06-05`, endDate: `${year}-06-08`,
+  }, owner);
+  assert.equal(created.status, 201);
+  assert.deepEqual([created.data.agencyOwned, created.data.organizer, created.data.coordinator.id], [true, 'agency', '']);
+  const trip = created.data.id;
+  assert.equal((await call('POST', '/coordinator/trips', { sourceTripId: source.data.id, agencyId: agency, title: 'Abusivo' }, traveler)).status, 403);
+
+  // AG-04: senza coordinatore non si pubblica; si assegna un coordinatore del team.
+  const blocked = await call<{ error: string }>('POST', `/coordinator/trips/${trip}/publish`, {}, owner);
+  assert.equal(blocked.status, 422);
+  assert.match(blocked.data.error, /Assegna un coordinatore/);
+  assert.equal((await call('PUT', `/agency/trips/${trip}/coordinator`, { userId: ownerId }, owner)).status, 422);
+  assert.equal((await call('PUT', `/agency/trips/${trip}/coordinator`, { userId: coachId }, owner)).status, 204);
+  assert.equal((await call('POST', `/coordinator/trips/${trip}/publish`, {}, owner)).status, 200);
+
+  // Seconda partenza dello stesso viaggio, in bozza.
+  const departure = await call<{ id: string }>('POST', `/agency/trips/${trip}/departures`, { startDate: `${year}-07-03`, endDate: `${year}-07-06` }, owner);
+  assert.equal(departure.status, 201);
+  const catalog = await call<{ trips: Array<{ id: string; seriesId?: string; status: string; coordinator: { id: string } }> }>('GET', `/agency/${agency}/catalog`, undefined, owner);
+  assert.equal(catalog.data.trips.length, 2);
+  assert.equal(new Set(catalog.data.trips.map((item) => item.seriesId)).size, 1, 'stessa serie');
+  assert.deepEqual(catalog.data.trips.find((item) => item.id === departure.data.id)?.coordinator.id, '');
+
+  // AG-11: ombrello su un viaggio della coordinatrice, deciso dall'agenzia; poi lo pubblica l'agenzia.
+  const ownTrip = (await call<{ id: string }>('POST', '/coordinator/trips', {
+    sourceTripId: (await call<Trip>('POST', '/trips', { itinerary: generated.data }, coach)).data.id, title: 'Ventotene slow', price: 480, capacity: 8,
+    summary: 'Tre giorni a Ventotene tra snorkeling, storia e tramonti.', startDate: `${year}-05-10`, endDate: `${year}-05-12`,
+  }, coach)).data.id;
+  assert.equal((await call('PUT', `/agency/${agency}/umbrella/${ownTrip}`, { on: true }, coach)).status, 403);
+  assert.equal((await call('PUT', `/agency/${agency}/umbrella/${ownTrip}`, { on: true }, owner)).status, 204);
+  const denied = await call<{ error: string }>('POST', `/coordinator/trips/${ownTrip}/publish`, {}, coach);
+  assert.equal(denied.status, 403);
+  assert.match(denied.data.error, /lo pubblica l’agenzia/);
+  assert.equal((await call('POST', `/coordinator/trips/${ownTrip}/publish`, {}, owner)).status, 200);
+
+  // AG-12: il viaggiatore vede chi organizza e le condizioni dell'agenzia.
+  const detail = await call<{ organizer: string; organizerAgency?: { name: string; saleTerms: string } }>('GET', `/catalog/trips/${ownTrip}`, undefined, traveler);
+  assert.deepEqual([detail.data.organizer, detail.data.organizerAgency?.name, detail.data.organizerAgency?.saleTerms], ['agency', 'Mare Lento', 'Acconto rimborsabile fino a 30 giorni dalla partenza.']);
+  const theirs = await call<{ coordinatorTrips: Array<{ id: string; organizer: string }> }>('GET', `/agency/${agency}/catalog`, undefined, owner);
+  assert.deepEqual(theirs.data.coordinatorTrips.map((item) => [item.id, item.organizer]), [[ownTrip, 'agency']]);
+
+  // Ombrello predefinito: il prossimo viaggio della coordinatrice nasce coperto.
+  assert.equal((await call('PUT', `/agency/members/${invite}/umbrella`, { on: true }, owner)).status, 204);
+  const next = await call<{ organizer: string }>('POST', '/coordinator/trips', { sourceTripId: source.data.id, title: 'Palmarola' }, coach);
+  assert.equal(next.status, 404, 'il viaggio di partenza è della titolare: la coordinatrice non lo vede');
+  const own2 = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coach);
+  assert.equal((await call<{ organizer: string }>('POST', '/coordinator/trips', { sourceTripId: own2.data.id, title: 'Palmarola' }, coach)).data.organizer, 'agency');
+});

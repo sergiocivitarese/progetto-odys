@@ -113,3 +113,6 @@ odys-stops-map { display: block; margin-bottom: var(--space-4); }
 .locked { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-xl); background: var(--odys-lime); color: var(--odys-ink); text-decoration: none; line-height: 1.35; span { flex: 1; } strong { font-weight: 900; } }
 
 .day-link { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; &:hover { color: var(--color-link); } }
+
+// Viaggio coperto da un'agenzia (AG-12).
+.organizer { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-3); }

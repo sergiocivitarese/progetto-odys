@@ -1,3 +1,4 @@
+import { AgencyApi } from '../../core/api/agency.api';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -83,6 +84,7 @@ import { ButtonComponent, IconComponent, NoticeComponent, TextFieldComponent } f
 })
 export class CoordinatorAccessComponent {
   private readonly api = inject(CatalogApi);
+  private readonly agencies = inject(AgencyApi);
   readonly accepted = output<void>();
   readonly state = signal<'checking' | 'not-coordinator' | 'guidelines' | 'ready'>('checking');
   protected readonly busy = signal(false);
@@ -107,6 +109,11 @@ export class CoordinatorAccessComponent {
       const status = await this.api.coordinatorStatus();
       this.application.set(status.application);
       this.state.set(!status.isCoordinator ? 'not-coordinator' : status.guidelinesAccepted ? 'ready' : 'guidelines');
+      // AG-03: lo staff dell'agenzia usa l'editor per i viaggi dell'agenzia anche senza essere coordinatore.
+      if (!status.isCoordinator) {
+        const mine = await this.agencies.mine().catch(() => null);
+        if (mine && mine.role !== 'coordinator') this.state.set('ready');
+      }
     } catch {
       this.state.set('not-coordinator');
     }

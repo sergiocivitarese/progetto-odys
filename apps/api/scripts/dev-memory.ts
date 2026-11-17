@@ -88,6 +88,18 @@ const server = app.listen(config.port, async () => {
   const noraInvite = await as<{ id: string }>(AGENCY, 'POST', `/agency/${agency.id}/team`, { email: 'coordinatrice@odys.test', role: 'coordinator' });
   await call('POST', `/agency/invites/${noraInvite.id}/accept`, {});
   await as(AGENCY, 'POST', `/agency/${agency.id}/team`, { email: 'viaggiatrice@odys.test', role: 'operator' });
+  // Catalogo dell'agenzia (AG-03, AG-04) e ombrello (AG-11).
+  await as(AGENCY, 'PUT', `/agency/${agency.id}`, { saleTerms: 'Acconto rimborsabile fino a 45 giorni dalla partenza. Organizzatore responsabile: Sud Lento Viaggi Srl, fondo di garanzia e assicurazione inclusi.' });
+  const agencySource = await as<{ id: string }>(AGENCY, 'POST', '/trips', { itinerary: await call('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Gargano' } }) });
+  const catalogTrip = await as<{ id: string }>(AGENCY, 'POST', '/coordinator/trips', {
+    sourceTripId: agencySource.id, agencyId: agency.id, title: 'Gargano tra foreste e trabucchi', price: 720, capacity: 12, country: 'Italia', interests: ['Natura', 'Cibo'],
+    summary: 'Cinque giorni tra Foresta Umbra, Vieste e i trabucchi della costa, in piccolo gruppo.', startDate: `${year}-05-20`, endDate: `${year}-05-24`,
+  });
+  await as(AGENCY, 'PUT', `/agency/trips/${catalogTrip.id}/coordinator`, { userId });
+  await as(AGENCY, 'POST', `/coordinator/trips/${catalogTrip.id}/publish`, {});
+  await as(AGENCY, 'POST', `/agency/trips/${catalogTrip.id}/departures`, { startDate: `${year}-09-16`, endDate: `${year}-09-20` });
+  const draftTrip = (await call<Array<{ id: string; status: string }>>('GET', '/coordinator/trips')).find((trip) => trip.status === 'draft');
+  if (draftTrip) await as(AGENCY, 'PUT', `/agency/${agency.id}/umbrella/${draftTrip.id}`, { on: true });
   console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);
   console.log(`Agenzia di prova: token «${AGENCY}», pagina pubblica /agenzie/sud-lento`);
 });

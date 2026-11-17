@@ -29,6 +29,7 @@ function profileFrom(body: unknown): AgencyProfileInput {
     website: text(raw['website'], 'Sito', 300),
     city: text(raw['city'], 'Città', 80),
     country: text(raw['country'], 'Paese', 80),
+    saleTerms: text(raw['saleTerms'], 'Condizioni di vendita', 4000),
   };
   if (out.slug !== undefined && !isValidAgencySlug(out.slug)) throw new HttpError(400, 'Indirizzo: lettere minuscole, numeri e trattini (da 3 a 48 caratteri).');
   if (out.logoUrl && !/^https:\/\//.test(out.logoUrl)) throw new HttpError(400, 'Il logo deve essere un indirizzo https.');
@@ -97,6 +98,44 @@ export function agencyRouter(auth: AuthProvider, store: DataStore): Router {
     if (!cycle) throw new HttpError(400, 'Fatturazione non valida.');
     const agency = await repo(res).setSeats(String(req.params.id), seats, cycle as BillingCycle);
     res.json({ agency, quote: licenseQuote(agency.licenseSeats, agency.billingCycle) });
+  }));
+
+  // Catalogo (AG-03, AG-04): viaggi dell'agenzia con le loro partenze e viaggi dei coordinatori del team.
+  router.get('/:id/catalog', handle(async (req, res) => {
+    const catalog = await repo(res).catalog(String(req.params.id));
+    const all = [...catalog.trips, ...catalog.coordinatorTrips];
+    const taken = await store.catalog(currentUser(res)).seatsTaken(all.map((trip) => trip.id)).catch(() => new Map<string, number>());
+    const withSeats = <T extends { id: string }>(trips: T[]) => trips.map((trip) => ({ ...trip, seatsTaken: taken.get(trip.id) ?? 0 }));
+    res.json({ trips: withSeats(catalog.trips), coordinatorTrips: withSeats(catalog.coordinatorTrips) });
+  }));
+
+  router.post('/trips/:tripId/departures', handle(async (req, res) => {
+    const body = requireObject<{ startDate?: unknown; endDate?: unknown }>(req.body, 'Richiesta non valida.');
+    const isDate = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (!isDate(body.startDate) || !isDate(body.endDate)) throw new HttpError(400, 'Indica date di partenza e rientro valide.');
+    res.status(201).json({ id: await repo(res).addDeparture(String(req.params.tripId), body.startDate, body.endDate) });
+  }));
+
+  router.put('/trips/:tripId/coordinator', handle(async (req, res) => {
+    const { userId } = requireObject<{ userId?: unknown }>(req.body, 'Richiesta non valida.');
+    if (userId !== null && typeof userId !== 'string') throw new HttpError(400, 'Coordinatore non valido.');
+    await repo(res).assignCoordinator(String(req.params.tripId), userId);
+    res.status(204).end();
+  }));
+
+  // Ombrello (AG-11): per viaggio e come valore predefinito del coordinatore.
+  router.put('/:id/umbrella/:tripId', handle(async (req, res) => {
+    const { on } = requireObject<{ on?: unknown }>(req.body, 'Richiesta non valida.');
+    if (typeof on !== 'boolean') throw new HttpError(400, 'Richiesta non valida.');
+    await repo(res).setUmbrella(String(req.params.id), String(req.params.tripId), on);
+    res.status(204).end();
+  }));
+
+  router.put('/members/:memberId/umbrella', handle(async (req, res) => {
+    const { on } = requireObject<{ on?: unknown }>(req.body, 'Richiesta non valida.');
+    if (typeof on !== 'boolean') throw new HttpError(400, 'Richiesta non valida.');
+    await repo(res).setUmbrellaDefault(String(req.params.memberId), on);
+    res.status(204).end();
   }));
 
   // Inviti ricevuti da qualunque utente.
