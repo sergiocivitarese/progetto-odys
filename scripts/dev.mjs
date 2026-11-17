@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Avvia backend (http://localhost:3000) e frontend (http://localhost:4200) insieme.
- * Uso: `npm run dev` dalla cartella del progetto.
+ * Uso: `npm run dev` dalla cartella del progetto (API collegata a Supabase, file apps/api/.env)
+ *      `npm run dev:demo` per la modalità demo: API in memoria con account di prova, senza Supabase.
  */
 import { spawn } from 'node:child_process';
 import net from 'node:net';
@@ -31,9 +32,10 @@ if (busy.length) {
   process.exit(1);
 }
 
+const demo = process.argv.includes('--demo');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const services = [
-  { name: 'api', color: '\x1b[38;2;216;246;78m', args: ['run', 'dev', '-w', '@odys/api'] },
+  { name: 'api', color: '\x1b[38;2;216;246;78m', args: ['run', demo ? 'dev:memory' : 'dev', '-w', '@odys/api'] },
   { name: 'web', color: '\x1b[38;2;49;87;255m', args: ['run', 'start', '-w', 'web', '--', '--port', '4200'] },
 ];
 

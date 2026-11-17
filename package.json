@@ -12,6 +12,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:demo": "node scripts/dev.mjs --demo",
     "package:demo": "tsx scripts/package-demo.mts",
     "package:source": "tsx scripts/package-source.mts",
     "dev:api": "npm run dev -w @odys/api",

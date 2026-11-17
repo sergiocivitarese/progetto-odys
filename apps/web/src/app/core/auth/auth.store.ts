@@ -1,5 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import type { AuthChangeEvent, Session, SupabaseClient } from '@supabase/supabase-js';
+import type { DemoUser } from '../api/services.api';
 import { ConfigStore } from '../state/config.store';
 import { authErrorMessage } from './auth-errors';
 
@@ -34,6 +35,9 @@ export class AuthStore {
   /** Errore riportato da un link email (es. link scaduto), letto dall'URL all'avvio. */
   readonly linkError = signal<string | null>(null);
   readonly available = signal(false);
+  /** Modalità demo (API in memoria): account di prova al posto di Supabase. */
+  readonly demoUsers = signal<DemoUser[]>([]);
+  readonly demo = computed(() => this.demoUsers().length > 0);
   readonly session = signal<Session | null>(null);
   readonly lastEvent = signal<AuthChangeEvent | null>(null);
   readonly user = computed(() => this.session()?.user ?? null);
@@ -58,6 +62,15 @@ export class AuthStore {
   private async init(): Promise<void> {
     try {
       await this.config.ensureLoaded();
+      const demo = this.config.config()?.demo;
+      if (demo?.users.length) {
+        this.demoUsers.set(demo.users);
+        this.available.set(true);
+        const token = readDemoToken();
+        const user = demo.users.find((item) => item.token === token);
+        if (user) this.session.set(demoSession(user));
+        return;
+      }
       const auth = this.config.config()?.auth;
       if (!auth) return;
       this.linkError.set(readLinkError());
@@ -84,12 +97,19 @@ export class AuthStore {
   /** Token da inviare al backend; aggiornato automaticamente se in scadenza. */
   async accessToken(): Promise<string | null> {
     await this.start();
+    if (this.demo()) return this.session()?.access_token ?? null;
     if (!this.client) return null;
     const { data } = await this.client.auth.getSession();
     return data.session?.access_token ?? null;
   }
 
   async signIn(email: string, password: string): Promise<void> {
+    if (this.demo()) {
+      const user = this.demoUsers().find((item) => item.email === email.trim().toLowerCase());
+      if (!user) throw new Error('In modalità demo si entra solo con gli account di prova qui sotto.');
+      this.signInDemo(user);
+      return;
+    }
     const { error } = await this.requireClient().auth.signInWithPassword({ email: email.trim(), password });
     if (error) throw new Error(authErrorMessage(error));
   }
@@ -132,7 +152,15 @@ export class AuthStore {
     if (error) throw new Error(authErrorMessage(error));
   }
 
+  /** Modalità demo: entra con un account di prova (qualsiasi password). */
+  signInDemo(user: DemoUser): void {
+    writeDemoToken(user.token);
+    this.lastEvent.set('SIGNED_IN');
+    this.session.set(demoSession(user));
+  }
+
   async signOut(): Promise<void> {
+    if (this.demo()) writeDemoToken(null);
     await this.client?.auth.signOut();
     this.session.set(null);
     await clearOfflineData();
@@ -140,6 +168,7 @@ export class AuthStore {
 
   /** Dopo l'eliminazione dell'account: pulisce la sessione locale senza chiamare il server. */
   async clearLocalSession(): Promise<void> {
+    if (this.demo()) writeDemoToken(null);
     await this.client?.auth.signOut({ scope: 'local' });
     this.session.set(null);
     await clearOfflineData();
@@ -153,9 +182,49 @@ export class AuthStore {
   }
 
   private requireClient(): SupabaseClient {
+    if (this.demo()) throw new Error('Non disponibile in modalità demo: qui si usano gli account di prova, senza Supabase.');
     if (!this.client) throw new Error('Accesso non disponibile: il server non ha ancora Supabase configurato.');
     return this.client;
   }
+}
+
+const DEMO_KEY = 'odys-demo-session';
+
+function readDemoToken(): string | null {
+  try {
+    return localStorage.getItem(DEMO_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeDemoToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(DEMO_KEY, token);
+    else localStorage.removeItem(DEMO_KEY);
+  } catch {
+    // Archivio del browser non disponibile: la sessione demo dura fino al ricaricamento.
+  }
+}
+
+/** Sessione nel formato di Supabase: il token è quello dell'account di prova sull'API in memoria. */
+function demoSession(user: DemoUser): Session {
+  return {
+    access_token: user.token,
+    refresh_token: 'demo',
+    token_type: 'bearer',
+    expires_in: 31536000,
+    expires_at: 4102444800,
+    user: {
+      id: user.token,
+      email: user.email,
+      aud: 'authenticated',
+      role: 'authenticated',
+      app_metadata: {},
+      user_metadata: { first_name: user.firstName, last_name: user.lastName },
+      created_at: new Date(0).toISOString(),
+    },
+  };
 }
 
 /** Legge l'eventuale errore che Supabase aggiunge all'URL quando un link email non è valido. */

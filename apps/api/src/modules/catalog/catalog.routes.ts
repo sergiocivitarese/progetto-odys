@@ -3,8 +3,18 @@ import { findPlace, groupTrips, OPEN_METEO_ATTRIBUTION, MAP_PROVIDER_ATTRIBUTION
 import { supabaseConfigured, type AppConfig } from '../../config/env';
 import { handle } from '../../shared/http';
 
+/** Account di prova della modalità demo: il token vale solo per l'API in memoria. */
+export interface DemoUser {
+  token: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  /** Ruolo mostrato nella pagina di accesso, es. «Coordinatrice Premium». */
+  label: string;
+}
+
 /** Contenuti di sola lettura: configurazione pubblica, idee di gruppo demo, schede luogo. */
-export function catalogRouter(config: AppConfig): Router {
+export function catalogRouter(config: AppConfig, demoUsers?: DemoUser[]): Router {
   const router = Router();
 
   router.get('/config', handle((_req, res) => {
@@ -23,8 +33,10 @@ export function catalogRouter(config: AppConfig): Router {
         weather: 'Open-Meteo',
       },
       // URL e chiave pubblica (anon) di Supabase: servono al browser per login e registrazione.
-      auth: supabaseConfigured(config) ? { url: config.supabase.url, anonKey: config.supabase.anonKey } : null,
-      accountDeletion: Boolean(config.supabase.serviceRoleKey),
+      // In modalità demo il browser non parla con Supabase: accede con gli account di prova.
+      auth: !demoUsers && supabaseConfigured(config) ? { url: config.supabase.url, anonKey: config.supabase.anonKey } : null,
+      demo: demoUsers ? { users: demoUsers } : null,
+      accountDeletion: !demoUsers && Boolean(config.supabase.serviceRoleKey),
       attributions: { weather: OPEN_METEO_ATTRIBUTION, maps: MAP_PROVIDER_ATTRIBUTION },
     });
   }));

@@ -7,7 +7,17 @@ export interface PublicConfig {
   attributions: { weather: string; maps: string };
   /** Supabase (URL e chiave pubblica) se l'archivio è configurato sul server. */
   auth: { url: string; anonKey: string } | null;
+  /** Modalità demo (API in memoria): account di prova, senza Supabase. */
+  demo?: { users: DemoUser[] } | null;
   accountDeletion: boolean;
+}
+
+export interface DemoUser {
+  token: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  label: string;
 }
 
 export interface EnrichResult {

@@ -1,12 +1,11 @@
 /**
- * API di Odys con l'archivio in memoria, per provare le schermate riservate
- * (area coordinatore) senza un account reale né scritture su Supabase.
+ * Modalità demo di Odys: API con l'archivio in memoria e dati di prova, senza
+ * Supabase né chiavi. Per provare tutti i ruoli (viaggiatrice, coordinatrice,
+ * agenzia, amministratore) senza account reali.
  *
- * Uso: npm run dev:memory -w @odys/api   →   http://localhost:3000
- * Nel browser (app su :4200 o :4300) basta impostare nella console:
- *   localStorage.setItem('odys-auth', JSON.stringify({ access_token: 'demo-coordinatore', refresh_token: 'demo',
- *     token_type: 'bearer', expires_in: 31536000, expires_at: 4102444800, user: { id: 'demo-coordinatore', email: 'coordinatrice@odys.test', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} } }))
- * e ricaricare. Il token vale solo per questo server e i dati spariscono al riavvio.
+ * Uso: npm run dev:demo (dalla radice: API su :3000 e app su :4200)
+ * La pagina «Accedi» mostra i pulsanti «Entra come…»: il token vale solo per
+ * questo server e i dati spariscono al riavvio.
  */
 import { FALLBACK_TRIP_FORM } from '@odys/domain';
 import { createApp } from '../src/app';
@@ -32,7 +31,18 @@ const TRAVELER = 'demo-viaggiatrice';
 const travelerId = db.addUser(TRAVELER, 'demo-viaggiatrice', 'viaggiatrice@odys.test');
 Object.assign(db.user(travelerId).profile, { firstName: 'Lia', lastName: 'Bassi' });
 
-const app = createApp(config, { auth: memoryAuthProvider(db), store: memoryDataStore(db) });
+// Amministratore di prova: candidature, segnalazioni e ruoli (pagine /admin).
+const ADMIN = 'demo-admin';
+const adminId = db.addUser(ADMIN, 'demo-admin', 'admin@odys.test');
+Object.assign(db.user(adminId).profile, { role: 'admin', firstName: 'Ada', lastName: 'Rossi' });
+
+const demoUsers = [
+  { token: TRAVELER, email: 'viaggiatrice@odys.test', firstName: 'Lia', lastName: 'Bassi', label: 'Viaggiatrice · prenotazione in corso, invito in agenzia' },
+  { token: TOKEN, email: 'coordinatrice@odys.test', firstName: 'Nora', lastName: 'Conti', label: 'Coordinatrice Premium · viaggi in vendita, dati, team agenzia' },
+  { token: 'demo-agenzia', email: 'titolare@odys.test', firstName: 'Olga', lastName: 'Ferri', label: 'Titolare di agenzia · Sud Lento, catalogo, proposte, AI' },
+  { token: ADMIN, email: 'admin@odys.test', firstName: 'Ada', lastName: 'Rossi', label: 'Amministratrice · candidature, segnalazioni, ruoli' },
+];
+const app = createApp(config, { auth: memoryAuthProvider(db), store: memoryDataStore(db), demoUsers });
 const server = app.listen(config.port, async () => {
   const base = `http://localhost:${config.port}/api`;
   const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
@@ -123,8 +133,8 @@ const server = app.listen(config.port, async () => {
     generator: { destination: 'Tropea', surprise: false, dates: { mode: 'precise', departure: `${year}-06-12`, returnDate: `${year}-06-15` }, duration: '3-5', budget: 650, interests: ['Mare', 'Cibo'], seed: 4 },
     agencyAi: agency.id, capacity: 10, price: 590, summary: 'Quattro giorni tra Tropea, Capo Vaticano e Pizzo, con cene di pesce.',
   });
-  console.log(`Odys API in memoria su ${base} · coordinatrice di prova: token «${TOKEN}»`);
-  console.log(`Agenzia di prova: token «${AGENCY}», pagina pubblica /agenzie/sud-lento`);
+  console.log(`Odys in modalità demo: API in memoria su ${base}, dati di prova pronti.`);
+  console.log('Apri http://localhost:4200/accedi e scegli «Entra come…» (viaggiatrice, coordinatrice, agenzia, amministratrice).');
 });
 
 process.on('SIGTERM', () => server.close());

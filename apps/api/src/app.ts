@@ -3,7 +3,7 @@ import express, { type Express } from 'express';
 import { configureDomain } from '@odys/domain';
 import type { AppConfig } from './config/env';
 import { errorHandler } from './shared/http';
-import { catalogRouter } from './modules/catalog/catalog.routes';
+import { catalogRouter, type DemoUser } from './modules/catalog/catalog.routes';
 import { geoRouter } from './modules/geo/geo.routes';
 import { GeoService } from './modules/geo/geo.service';
 import { itineraryRouter } from './modules/itinerary/itinerary.routes';
@@ -36,6 +36,8 @@ export interface AppDependencies {
   fetch?: typeof fetch;
   /** Fornitore dei pagamenti (i test ne usano uno immediato). */
   payments?: PaymentProvider;
+  /** Modalità demo (archivio in memoria): account di prova offerti nella pagina di accesso. */
+  demoUsers?: DemoUser[];
 }
 
 /**
@@ -54,7 +56,7 @@ export function createApp(config: AppConfig, deps: AppDependencies = {}): Expres
   const store = deps.store ?? supabaseDataStore(config);
 
   app.get('/api/health', (_req, res) => { res.json({ status: 'ok' }); });
-  app.use('/api', catalogRouter(config));
+  app.use('/api', catalogRouter(config, deps.demoUsers));
   app.use('/api/me', accountRouter(auth, store));
   app.use('/api/trips', tripsRouter(auth, store));
   app.use('/api/catalog', publishedRouter(auth, store));
