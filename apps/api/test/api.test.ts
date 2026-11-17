@@ -1137,3 +1137,17 @@ test('moduli a piano dellâ€™agenzia: limite del team, automazioni Business allâ€
   assert.equal((await call<{ plan: string }>('GET', '/me/entitlements', undefined, coach)).data.plan, 'coordinator_premium');
   assert.equal((await call('PUT', `/agency/${agency}/tier`, { tier: 'start' }, owner)).status, 422, 'il team supera il limite di Start');
 });
+
+test('le liste del catalogo non mostrano le bozze nemmeno a chi le ha scritte', async () => {
+  const coach = 'token-bozze-coord';
+  const coachId = db.addUser(coach, undefined, 'bozze@example.com');
+  Object.assign(db.user(coachId).profile, { role: 'coordinator', firstName: 'Bea' });
+  await call('POST', '/coordinator/guidelines', {}, coach);
+  const generated = await call<Itinerary>('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Bolzano' } });
+  const own = await call<Trip>('POST', '/trips', { itinerary: generated.data }, coach);
+  const draft = (await call<{ id: string }>('POST', '/coordinator/trips', { sourceTripId: own.data.id, title: 'Bozza segreta Bolzano' }, coach)).data.id;
+  const mine = await call<Array<{ id: string }>>('GET', '/catalog/trips', undefined, coach);
+  assert.ok(!mine.data.some((trip) => trip.id === draft));
+  const profile = await call<{ trips: Array<{ id: string }> }>('GET', `/catalog/coordinators/${coachId}`, undefined, coach);
+  assert.ok(!profile.data.trips.some((trip) => trip.id === draft));
+});

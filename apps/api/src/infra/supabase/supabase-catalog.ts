@@ -229,8 +229,11 @@ class SupabaseCatalogRepository implements CatalogRepository {
     if (error) throw dbError(error);
     const rows = data as PublishedRow[];
     const context = await contextFor(this.db, rows);
+    // Le liste del catalogo mostrano solo viaggi pubblici anche a chi coordina o gestisce un'agenzia:
+    // le regole d'accesso gli lascerebbero leggere le sue bozze, che non devono finire in Esplora o sul profilo pubblico.
     return rows
       .map((row) => summaryOf(row, context))
+      .filter((trip) => ['published', 'active', 'completed'].includes(trip.effectiveStatus))
       .filter((trip) => filters.includeCompleted || trip.effectiveStatus !== 'completed');
   }
 
