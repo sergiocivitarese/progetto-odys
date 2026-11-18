@@ -1,4 +1,4 @@
-<title>Demo di Odys per Windows</title>
+<title>Demo di Odys</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -127,6 +127,7 @@
   details[open] summary { border-bottom: 1px solid var(--border); }
   details > div { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }
 
+  [data-os="mac"] .only-win, [data-os="win"] .only-mac { display: none; }
   section { display: flex; flex-direction: column; gap: 16px; }
   .lead { color: var(--muted); max-width: 62ch; }
   .copy { font: inherit; font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 3px 10px; cursor: pointer; margin-left: 6px; }
@@ -149,11 +150,11 @@
       Odys
     </div>
     <p class="tagline">Plan. Discover. Experience.</p>
-    <h1>Come provare la demo di Odys sul tuo PC Windows</h1>
+    <h1>Come provare la demo di Odys sul tuo <span class="only-win">PC Windows</span><span class="only-mac">Mac</span></h1>
     <p>Questa guida ti accompagna passo per passo. Non serve saper programmare: installerai un solo programma gratuito e poi aprirai Odys con un doppio clic. Non serve creare un account: entri con i profili di prova già pronti.</p>
     <div class="facts">
       <span class="fact">Tempo: <b>circa 10 minuti</b></span>
-      <span class="fact">Serve: <b>PC con Windows 10 o 11</b></span>
+      <span class="fact">Serve: <b class="only-win">PC con Windows 10 o 11</b><b class="only-mac">Mac con macOS 13 o successivo</b></span>
       <span class="fact">Internet: <b>consigliata</b> (per mappe e meteo)</span>
     </div>
   </header>
@@ -161,8 +162,9 @@
 
   <section aria-labelledby="files-title">
     <h2 id="files-title">Cosa hai ricevuto</h2>
-    <p class="lead">Un file compresso chiamato <strong>Odys-Demo-Windows</strong> (con la data). Una volta estratto, nella cartella <strong>Odys-Demo</strong> trovi:</p>
+    <p class="lead">Un file compresso chiamato <strong class="only-win">Odys-Demo-Windows</strong><strong class="only-mac">Odys-Demo-Mac</strong> (con la data). Una volta estratto, nella cartella <strong>Odys-Demo</strong> trovi:</p>
     <ul class="files">
+      <li class="only-mac"><span class="ico go" aria-hidden="true">▶</span><div><div class="name">Avvia Odys.command</div><div class="desc">Il file da aprire con doppio clic per avviare la demo.</div></div></li>
       <li class="only-win"><span class="ico go" aria-hidden="true">▶</span><div><div class="name">Avvia Odys.bat</div><div class="desc">Il file da aprire con doppio clic per avviare la demo.</div></div></li>
       <li><span class="ico" aria-hidden="true">📄</span><div><div class="name">LEGGIMI - Guida alla demo.html</div><div class="desc">Questa guida.</div></div></li>
       <li><span class="ico" aria-hidden="true">📁</span><div><div class="name">app</div><div class="desc">Il contenuto di Odys. Non serve aprirla né modificarla.</div></div></li>
@@ -180,8 +182,10 @@
           <p>Node.js è il programma gratuito che fa funzionare Odys sul tuo computer. Si installa come qualsiasi altra applicazione e non aggiunge icone sulla scrivania.</p>
           <ol>
             <li>Apri il sito <a href="https://nodejs.org/it/download" target="_blank" rel="noopener">nodejs.org/it/download</a>.</li>
+            <li class="only-mac">Scarica il <strong>programma di installazione per macOS</strong> (file che finisce con <code>.pkg</code>), versione <strong>LTS</strong>.</li>
             <li class="only-win">Scarica il <strong>programma di installazione per Windows</strong> (file che finisce con <code>.msi</code>), versione <strong>LTS</strong>.</li>
             <li>Apri il file scaricato (lo trovi nella cartella <strong>Download</strong>).</li>
+            <li class="only-mac">Premi <strong>Continua</strong> fino alla fine, accetta la licenza e, se richiesto, inserisci la password del Mac.</li>
             <li class="only-win">Premi <strong>Next</strong> (Avanti) fino alla fine, accetta la licenza e premi <strong>Install</strong>. Se Windows chiede il permesso di apportare modifiche, rispondi <strong>Sì</strong>.</li>
             <li>Quando compare il messaggio di installazione completata, chiudi la finestra.</li>
           </ol>
@@ -195,6 +199,10 @@
           <p class="when">Solo la prima volta</p>
           <h3>Prepara la cartella</h3>
           <p>Se hai ricevuto la demo come file compresso (<code>.zip</code>), va prima estratta. Se hai già la cartella <strong>Odys-Demo</strong>, passa al punto 3.</p>
+          <ol class="only-mac">
+            <li>Fai doppio clic sul file <code>.zip</code>: il Mac crea la cartella accanto.</li>
+            <li>Sposta la cartella <strong>Odys-Demo</strong> dove preferisci, per esempio sulla Scrivania.</li>
+          </ol>
           <ol class="only-win">
             <li>Fai clic con il tasto destro sul file <code>.zip</code> e scegli <strong>Estrai tutto…</strong>, poi <strong>Estrai</strong>.</li>
             <li>Apri la cartella estratta <strong>Odys-Demo</strong>.</li>
@@ -208,11 +216,30 @@
         <div class="step-body">
           <p class="when">Ogni volta che vuoi usare la demo</p>
           <h3>Avvia Odys</h3>
+          <ol class="only-mac">
+            <li>Apri la cartella <strong>Odys-Demo</strong>.</li>
+            <li>Fai doppio clic su <strong>Avvia Odys.command</strong>.</li>
+            <li>Si apre una finestra nera con del testo (il Terminale) e, dopo qualche secondo, il browser con Odys.</li>
+          </ol>
           <ol class="only-win">
             <li>Apri la cartella <strong>Odys-Demo</strong>.</li>
             <li>Fai doppio clic su <strong>Avvia Odys.bat</strong>.</li>
             <li>Si apre una finestra nera con del testo e, dopo qualche secondo, il browser con Odys.</li>
           </ol>
+
+          <div class="only-mac">
+            <p><strong>La prima volta il Mac potrebbe bloccare il file</strong>, perché non proviene dall’App Store. Vedrai un messaggio simile a questo:</p>
+            <div class="mock" aria-label="Esempio di avviso del Mac">
+              <span class="mock-title">“Avvia Odys.command” non può essere aperto perché proviene da uno sviluppatore non identificato.</span>
+              <div class="mock-buttons"><span class="mock-btn hl">OK</span></div>
+            </div>
+            <ol>
+              <li>Premi <strong>OK</strong>.</li>
+              <li>Fai clic con il <strong>tasto destro</strong> (oppure Ctrl + clic) su <strong>Avvia Odys.command</strong> e scegli <strong>Apri</strong>.</li>
+              <li>Nella nuova finestra premi di nuovo <strong>Apri</strong>. Da ora in poi basterà il doppio clic.</li>
+            </ol>
+            <div class="note tip"><span class="i" aria-hidden="true">i</span><p>Sui Mac più recenti il pulsante <strong>Apri</strong> potrebbe non comparire. In quel caso apri <strong>Impostazioni di Sistema → Privacy e sicurezza</strong>, scorri in basso e premi <strong>Apri comunque</strong> accanto al nome del file.</p></div>
+          </div>
 
           <div class="only-win">
             <p><strong>La prima volta Windows potrebbe mostrare un avviso di protezione</strong>, perché il file non è firmato da un’azienda nota:</p>
@@ -264,6 +291,7 @@
           <h3>Chiudi Odys</h3>
           <ol>
             <li>Chiudi la scheda del browser.</li>
+            <li class="only-mac">Chiudi la finestra nera del Terminale (se chiede conferma, premi <strong>Termina</strong>).</li>
             <li class="only-win">Chiudi la finestra nera (oppure premi un tasto qualsiasi quando te lo chiede).</li>
           </ol>
           <p>La prossima volta ti basterà ripetere il <strong>passo 3</strong>.</p>
@@ -281,6 +309,7 @@
     <details>
       <summary>La finestra nera si apre e si chiude subito</summary>
       <div>
+        <p class="only-mac">Probabilmente il Mac ha bloccato il file. Segui le istruzioni del <strong>passo 3</strong> con il tasto destro → <strong>Apri</strong>.</p>
         <p class="only-win">Assicurati di aver estratto la cartella dal file <code>.zip</code> (passo 2) e di aver installato Node.js (passo 1).</p>
       </div>
     </details>
