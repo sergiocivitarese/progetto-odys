@@ -65,12 +65,15 @@ Apri http://localhost:4200/accedi e scegli con chi entrare:
 
 | Account demo | Cosa ci si prova |
 |---|---|
-| Lia Bassi, viaggiatrice | Esplora, dettaglio, prenotazione con acconto (pagamento simulato), Prossimo viaggio, invito in agenzia da accettare nel profilo |
-| Nora Conti, coordinatrice Premium | Area coordinatore, creazione del viaggio in 4 passi, prezzo e pareggio, kit social, partecipanti, pagina Dati, Creator Studio |
-| Olga Ferri, titolare di agenzia | Agenzia «Sud Lento»: profilo, team e licenze, catalogo con partenze, proposte da approvare, dashboard, AI per i coordinatori, piano |
-| Ada Rossi, amministratrice | Candidature, segnalazioni, ruoli e piani degli account |
+| Lia Bassi, Traveller Base | Esplora (15 viaggi), ricerca, idee salvate, prenotazione confermata e una in attesa, viaggio personale, invito in agenzia |
+| Marta Gallo, Traveller Premium | Generatore, Split delle spese a Lisbona, saldo pagato, viaggio concluso da recensire |
+| Paolo Riva, appena iscritto | Stati vuoti, candidatura da coordinatore in attesa |
+| Nora Conti, Coordinatore Premium | 12 viaggi (uno esaurito, uno quasi pieno con richieste da confermare, uno concluso con recensioni), prezzo e pareggio, kit social, post, pagina Dati |
+| Chiara Esposito, Coordinatore Base | Un viaggio in vendita e i post; statistiche bloccate con invito a Premium |
+| Olga Ferri, Agenzia | Agenzia «Sud Lento»: profilo, team e licenze, catalogo con partenze, proposta da approvare, dashboard, AI, piano |
+| Ada Rossi, Amministratore | Candidatura da approvare, segnalazioni da moderare, ruoli e piani |
 
-In modalità demo i dati vivono **in memoria** nell’API (`apps/api/scripts/dev-memory.ts`): si ricreano a ogni avvio,
+In modalità demo i dati vivono **in memoria** nell’API (`apps/api/src/demo/demo-data.ts` e `demo-catalog.ts`): si ricreano a ogni avvio,
 e le modifiche spariscono quando il server si ferma. Registrazione, recupero password e caricamento di foto e video
 non sono disponibili (sono servizi di Supabase).
 

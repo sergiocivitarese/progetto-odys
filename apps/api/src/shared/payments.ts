@@ -18,13 +18,13 @@ export interface PaymentProvider {
  * Fornitore simulato: nessun denaro si muove. Conferma dopo un breve ritardo,
  * così il client vede lo stato «in conferma» come con un fornitore vero.
  */
-export function simulatedPaymentProvider(delayMs = 1200): PaymentProvider {
+export function simulatedPaymentProvider(delayMs: number | (() => number) = 1200): PaymentProvider {
   return {
     name: 'simulated',
     charge(payment, confirm) {
       setTimeout(() => {
         confirm().catch((error) => console.error(`[pagamenti] conferma simulata non riuscita per ${payment.id}:`, error));
-      }, delayMs).unref?.();
+      }, typeof delayMs === 'function' ? delayMs() : delayMs).unref?.();
     },
   };
 }

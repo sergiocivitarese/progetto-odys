@@ -34,6 +34,8 @@ export class MemoryCreatorData {
   readonly saveTimes = new Map<string, string>();
   readonly views: Array<{ postId: string; userId?: string; at: string }> = [];
   readonly removedKeys: string[] = [];
+  /** Modalità demo: illustrazione SVG per id del media, servita al posto del file. */
+  readonly art = new Map<string, string>();
 }
 
 function snapshot(post: MemoryPost): CreatorPost {
@@ -217,7 +219,13 @@ export function memoryCreator(db: MemoryDatabase, data: MemoryCreatorData): Crea
     feed: (user) => new MemoryFeedRepository(data, user?.id),
     interactions: (user) => new MemoryInteractionsRepository(data, user.id),
     media: () => ({
-      async signedUrls(keys: string[]) { return new Map(keys.map((key) => [key, `memory://${key}`])); },
+      async signedUrls(keys: string[]) {
+        // Chiave «autore/post/media/versione.ext»: in demo il media può avere un'illustrazione.
+        return new Map(keys.map((key) => {
+          const art = data.art.get(key.split('/')[2] ?? '');
+          return [key, art ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(art)}` : `memory://${key}`];
+        }));
+      },
       async remove(keys: string[]) { data.removedKeys.push(...keys); },
     }),
   };

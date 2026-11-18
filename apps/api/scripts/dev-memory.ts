@@ -9,15 +9,15 @@
  */
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config/env';
-import { createDemoDatabase, seedDemoData } from '../src/demo/demo-data';
+import { createDemoDatabase, demoPayments, seedDemoData } from '../src/demo/demo-data';
 import { memoryAuthProvider, memoryDataStore } from '../src/infra/memory/memory-store';
 
 const config = loadConfig();
 const { db, demoUsers } = createDemoDatabase();
-const app = createApp(config, { auth: memoryAuthProvider(db), store: memoryDataStore(db), demoUsers });
+const app = createApp(config, { auth: memoryAuthProvider(db), store: memoryDataStore(db), demoUsers, payments: demoPayments });
 const server = app.listen(config.port, async () => {
   const base = `http://localhost:${config.port}/api`;
-  await seedDemoData(base);
+  await seedDemoData(base, db);
   console.log(`Odys in modalità demo: API in memoria su ${base}, dati di prova pronti.`);
   console.log('Apri http://localhost:4200/accedi e scegli «Entra come…» (viaggiatrice, coordinatrice, agenzia, amministratrice).');
 });

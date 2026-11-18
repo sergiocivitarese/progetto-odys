@@ -16,7 +16,7 @@ import path from 'node:path';
 import express from 'express';
 import { createApp } from './app';
 import { loadConfig } from './config/env';
-import { createDemoDatabase, seedDemoData } from './demo/demo-data';
+import { createDemoDatabase, demoPayments, seedDemoData } from './demo/demo-data';
 import { memoryAuthProvider, memoryDataStore } from './infra/memory/memory-store';
 
 const baseDir = path.dirname(path.resolve(process.argv[1] ?? '.'));
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   const demo = process.env.ODYS_MODE === 'demo' ? createDemoDatabase() : null;
   if (!demo && !config.supabase.url) console.log('  ℹ️  Accesso e salvataggio disattivati: config.env non contiene SUPABASE_URL.');
   const app = demo
-    ? createApp(config, { auth: memoryAuthProvider(demo.db), store: memoryDataStore(demo.db), demoUsers: demo.demoUsers })
+    ? createApp(config, { auth: memoryAuthProvider(demo.db), store: memoryDataStore(demo.db), demoUsers: demo.demoUsers, payments: demoPayments })
     : createApp(config);
 
   app.use(express.static(webDir, { index: false, maxAge: '1h' }));
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   app.listen(port, async () => {
     if (demo) {
       console.log('  Preparo i viaggi di prova...');
-      await seedDemoData(`http://localhost:${port}/api`);
+      await seedDemoData(`http://localhost:${port}/api`, demo.db);
     }
     const url = `http://localhost:${port}${demo ? '/accedi' : ''}`;
     console.log('');
