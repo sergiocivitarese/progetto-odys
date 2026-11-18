@@ -144,7 +144,8 @@ con l’account amministratore, nella pagina Account dell’utente.
 | `npm run build` | build di produzione |
 | `npm run db:migrate` | applica a Supabase le migrazioni non ancora applicate |
 | `npm run db:seed-accounts` | crea gli account di test su Supabase |
-| `npm run package:source` / `package:demo` | pacchetti zip del sorgente o della demo per il cliente |
+| `npm run package:demo` | zip della demo per chi non programma: `../consegna/Odys-Demo-Windows-<data>.zip`, con «Entra come…» e guida passo passo (`docs/guida-cliente.html`) |
+| `npm run package:source` | zip del sorgente, senza `.env` né dipendenze |
 
 Prima di ogni commit: `npm test` e `npm run typecheck` verdi, e la schermata cambiata provata nel browser.
 

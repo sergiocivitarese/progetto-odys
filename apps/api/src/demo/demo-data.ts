@@ -1,0 +1,142 @@
+/**
+ * Dati di prova della modalità demo (API con l'archivio in memoria): un account
+ * per ruolo e un mondo già popolato — viaggi in vendita, una prenotazione, un post,
+ * l'agenzia «Sud Lento» con catalogo, proposte e AI.
+ *
+ * Usati da `npm run dev:demo` (scripts/dev-memory.ts) e dallo zip per chi non
+ * programma (src/demo-server.ts, `npm run package:demo`).
+ */
+import { FALLBACK_TRIP_FORM } from '@odys/domain';
+import { MemoryDatabase } from '../infra/memory/memory-store';
+import type { DemoUser } from '../modules/catalog/catalog.routes';
+
+/** Archivio in memoria con gli account di prova (i contenuti li crea `seedDemoData`). */
+export function createDemoDatabase(): { db: MemoryDatabase; demoUsers: DemoUser[] } {
+  const db = new MemoryDatabase();
+  const TOKEN = 'demo-coordinatore';
+  const userId = db.addUser(TOKEN, 'demo-coordinatore', 'coordinatrice@odys.test');
+  Object.assign(db.user(userId).profile, { role: 'coordinator', firstName: 'Nora', lastName: 'Conti' });
+  Object.assign(db.user(userId).profile, { bio: 'Accompagno piccoli gruppi nel Sud Italia da dieci anni: ritmo lento, cucina di casa, luoghi fuori dalle guide.', interests: ['Storia', 'Cibo', 'Natura'] });
+  // Candidatura approvata: badge «verificato» e lingue nel profilo pubblico (CB-09).
+  db.applications.push({
+    id: 'demo-candidatura', userId, status: 'approved', createdAt: new Date().toISOString(), decidedAt: new Date().toISOString(),
+    motivation: 'Organizzo viaggi lenti in piccoli gruppi.', experience: 'Dieci anni di viaggi di gruppo nel Sud Italia.', tripsLed: 24,
+    languages: ['Italiano', 'Inglese', 'Spagnolo'], links: [],
+  });
+
+  // Coordinatore Premium: apre la pagina Dati (CP-01…CP-06). Una viaggiatrice di prova prenota.
+  db.user(userId).plans = ['coordinator_premium'];
+  const TRAVELER = 'demo-viaggiatrice';
+  const travelerId = db.addUser(TRAVELER, 'demo-viaggiatrice', 'viaggiatrice@odys.test');
+  Object.assign(db.user(travelerId).profile, { firstName: 'Lia', lastName: 'Bassi' });
+
+  // Amministratore di prova: candidature, segnalazioni e ruoli (pagine /admin).
+  const ADMIN = 'demo-admin';
+  const adminId = db.addUser(ADMIN, 'demo-admin', 'admin@odys.test');
+  Object.assign(db.user(adminId).profile, { role: 'admin', firstName: 'Ada', lastName: 'Rossi' });
+
+  // Titolare dell'agenzia di prova (piano Agenzia): l'agenzia la crea `seedDemoData`.
+  const agencyOwner = db.addUser('demo-agenzia', 'demo-agenzia', 'titolare@odys.test');
+  Object.assign(db.user(agencyOwner).profile, { firstName: 'Olga', lastName: 'Ferri' });
+  db.user(agencyOwner).plans = ['agency'];
+
+  const demoUsers: DemoUser[] = [
+    { token: TRAVELER, email: 'viaggiatrice@odys.test', firstName: 'Lia', lastName: 'Bassi', label: 'Viaggiatrice · prenotazione in corso, invito in agenzia' },
+    { token: TOKEN, email: 'coordinatrice@odys.test', firstName: 'Nora', lastName: 'Conti', label: 'Coordinatrice Premium · viaggi in vendita, dati, team agenzia' },
+    { token: 'demo-agenzia', email: 'titolare@odys.test', firstName: 'Olga', lastName: 'Ferri', label: 'Titolare di agenzia · Sud Lento, catalogo, proposte, AI' },
+    { token: ADMIN, email: 'admin@odys.test', firstName: 'Ada', lastName: 'Rossi', label: 'Amministratrice · candidature, segnalazioni, ruoli' },
+  ];
+  return { db, demoUsers };
+}
+
+/** Popola la demo chiamando l'API come farebbero gli utenti, con le stesse regole. `base` = `http://localhost:<porta>/api`. */
+export async function seedDemoData(base: string): Promise<void> {
+  const TOKEN = 'demo-coordinatore';
+  const TRAVELER = 'demo-viaggiatrice';
+  const userId = 'demo-coordinatore';
+  const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const response = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);
+    return (response.status === 204 ? undefined : await response.json()) as T;
+  };
+  const year = new Date().getFullYear() + 1;
+  await call('POST', '/coordinator/guidelines', {});
+  const itinerary = await call('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Matera' } });
+  const own = await call<{ id: string }>('POST', '/trips', { itinerary });
+  const onSale = await call<{ id: string }>('POST', '/coordinator/trips', {
+    sourceTripId: own.id, title: 'Matera e i Sassi in piccolo gruppo', price: 690, capacity: 12, country: 'Italia', interests: ['Storia', 'Cibo'],
+    summary: 'Quattro giorni tra Sassi, chiese rupestri e cucina lucana, con ritmo lento.', startDate: `${year}-04-02`, endDate: `${year}-04-05`,
+  });
+  await call('POST', `/coordinator/trips/${onSale.id}/publish`, {});
+  await call('PUT', `/coordinator/trips/${onSale.id}/pricing`, {
+    costs: [
+      { label: 'Masseria 3 notti', category: 'alloggi', basis: 'per_person', amountCents: 24000 },
+      { label: 'Pulmino con autista', category: 'trasporti', basis: 'group', amountCents: 120000 },
+      { label: 'Guida ai Sassi', category: 'attivita', basis: 'group', amountCents: 30000 },
+      { label: 'Il mio viaggio', category: 'altro', basis: 'group', amountCents: 25000 },
+    ],
+    targetEarningsCents: 150000,
+  });
+  await call('POST', '/coordinator/trips', { sourceTripId: own.id, title: 'Bozza: Basilicata d’autunno', price: 540, capacity: 8 });
+  const as = async <T>(token: string, method: string, path: string, body?: unknown): Promise<T> => {
+    const response = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);
+    return (response.status === 204 ? undefined : await response.json()) as T;
+  };
+  // Post collegato al viaggio, visto dalla viaggiatrice prima di prenotare (CP-06).
+  const post = await call<{ id: string }>('POST', '/studio/posts', { caption: 'Alba sui Sassi dal belvedere di Murgia Timone', rightsConfirmed: true, publishedTripId: onSale.id });
+  const media = await call<{ id: string }>('POST', `/studio/posts/${post.id}/media`, { mimeType: 'image/jpeg', sizeBytes: 1000, extension: 'jpg' });
+  await call('PATCH', `/studio/posts/${post.id}/media/${media.id}`, { status: 'ready' });
+  await call('POST', `/studio/posts/${post.id}/publish`, {});
+  await as(TRAVELER, 'GET', `/posts/${post.id}`);
+  await as(TRAVELER, 'GET', `/catalog/trips/${onSale.id}`);
+  const booking = await as<{ id: string }>(TRAVELER, 'POST', `/bookings/trips/${onSale.id}`, {});
+  await as(TRAVELER, 'POST', `/bookings/${booking.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true });
+  for (let i = 0; i < 30; i += 1) {
+    if ((await as<{ status: string }>(TRAVELER, 'GET', `/bookings/${booking.id}`)).status === 'pending') break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  await call('POST', `/coordinator/trips/${onSale.id}/participants/${booking.id}/confirm`, {});
+  // Agenzia di prova (R5): titolare con piano Agenzia, Nora coordinatrice nel team, la viaggiatrice invitata come operatrice.
+  const AGENCY = 'demo-agenzia';
+  const agency = await as<{ id: string }>(AGENCY, 'POST', '/agency', { legalName: 'Sud Lento Viaggi Srl', displayName: 'Sud Lento', slug: 'sud-lento' });
+  await as(AGENCY, 'PUT', `/agency/${agency.id}`, { description: 'Viaggi in piccoli gruppi tra Puglia, Basilicata e Calabria, con coordinatori del posto.', city: 'Matera', country: 'Italia', website: 'https://sudlento.example', email: 'ciao@sudlento.example' });
+  const noraInvite = await as<{ id: string }>(AGENCY, 'POST', `/agency/${agency.id}/team`, { email: 'coordinatrice@odys.test', role: 'coordinator' });
+  await call('POST', `/agency/invites/${noraInvite.id}/accept`, {});
+  await as(AGENCY, 'POST', `/agency/${agency.id}/team`, { email: 'viaggiatrice@odys.test', role: 'operator' });
+  // Catalogo dell'agenzia (AG-03, AG-04) e ombrello (AG-11).
+  await as(AGENCY, 'PUT', `/agency/${agency.id}`, { saleTerms: 'Acconto rimborsabile fino a 45 giorni dalla partenza. Organizzatore responsabile: Sud Lento Viaggi Srl, fondo di garanzia e assicurazione inclusi.' });
+  const agencySource = await as<{ id: string }>(AGENCY, 'POST', '/trips', { itinerary: await call('POST', '/itineraries/generate', { form: { ...FALLBACK_TRIP_FORM, destination: 'Gargano' } }) });
+  const catalogTrip = await as<{ id: string }>(AGENCY, 'POST', '/coordinator/trips', {
+    sourceTripId: agencySource.id, agencyId: agency.id, title: 'Gargano tra foreste e trabucchi', price: 720, capacity: 12, country: 'Italia', interests: ['Natura', 'Cibo'],
+    summary: 'Cinque giorni tra Foresta Umbra, Vieste e i trabucchi della costa, in piccolo gruppo.', startDate: `${year}-05-20`, endDate: `${year}-05-24`,
+  });
+  await as(AGENCY, 'PUT', `/agency/trips/${catalogTrip.id}/coordinator`, { userId });
+  await as(AGENCY, 'POST', `/coordinator/trips/${catalogTrip.id}/publish`, {});
+  await as(AGENCY, 'POST', `/agency/trips/${catalogTrip.id}/departures`, { startDate: `${year}-09-16`, endDate: `${year}-09-20` });
+  // Prenotazione dal link diretto del kit social (canale «diretto», AG-07).
+  const direct = await as<{ id: string }>(TRAVELER, 'POST', `/bookings/trips/${catalogTrip.id}`, { channel: 'direct' });
+  await as(TRAVELER, 'POST', `/bookings/${direct.id}/payments`, { kind: 'deposit', method: 'card', acceptTerms: true });
+  for (let i = 0; i < 30; i += 1) {
+    if ((await as<{ status: string }>(TRAVELER, 'GET', `/bookings/${direct.id}`)).status === 'pending') break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  await as(AGENCY, 'POST', `/coordinator/trips/${catalogTrip.id}/participants/${direct.id}/confirm`, {});
+  const draftTrip = (await call<Array<{ id: string; status: string }>>('GET', '/coordinator/trips')).find((trip) => trip.status === 'draft');
+  if (draftTrip) {
+    await as(AGENCY, 'PUT', `/agency/${agency.id}/umbrella/${draftTrip.id}`, { on: true });
+    // Nora completa la bozza coperta e la propone all'agenzia (AG-05).
+    await call('PUT', `/coordinator/trips/${draftTrip.id}`, { title: 'Basilicata d’autunno', summary: 'Quattro giorni tra Craco, Aliano e i calanchi, con cene in masseria.', startDate: `${year}-10-08`, endDate: `${year}-10-11`, price: 640, capacity: 8 });
+    await call('PUT', `/coordinator/trips/${draftTrip.id}/pricing`, { costs: [
+      { label: 'Masserie 3 notti', category: 'alloggi', basis: 'per_person', amountCents: 21000 },
+      { label: 'Pulmino', category: 'trasporti', basis: 'group', amountCents: 90000 },
+    ] });
+    await call('POST', `/coordinator/trips/${draftTrip.id}/submit`, {});
+  }
+  // AI dell'agenzia (AG-06): attiva, con fornitori convenzionati e margine minimo; Nora genera un viaggio.
+  await as(AGENCY, 'PUT', `/agency/${agency.id}/ai`, { enabled: true, minMarginPercent: 30, suppliers: ['Masseria Lupo', 'Bus Sila Express'] });
+  await call('POST', '/coordinator/trips', {
+    generator: { destination: 'Tropea', surprise: false, dates: { mode: 'precise', departure: `${year}-06-12`, returnDate: `${year}-06-15` }, duration: '3-5', budget: 650, interests: ['Mare', 'Cibo'], seed: 4 },
+    agencyAi: agency.id, capacity: 10, price: 590, summary: 'Quattro giorni tra Tropea, Capo Vaticano e Pizzo, con cene di pesce.',
+  });
+}

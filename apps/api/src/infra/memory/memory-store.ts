@@ -121,7 +121,7 @@ export class MemoryDatabase {
   /** token → utente, per simulare l'autenticazione nei test. */
   readonly tokens = new Map<string, { id: string; email: string }>();
 
-  addUser(token: string, id = randomUUID(), email = `${id}@example.com`): string {
+  addUser(token: string, id: string = randomUUID(), email = `${id}@example.com`): string {
     this.tokens.set(token, { id, email });
     this.users.set(id, {
       profile: { id, email, firstName: 'Utente', lastName: 'Test', interests: [], role: 'traveler', status: 'active', createdAt: new Date().toISOString() },

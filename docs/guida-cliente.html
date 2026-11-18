@@ -1,4 +1,4 @@
-<title>Guida alla demo Odys</title>
+<title>Demo di Odys per Windows</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -132,7 +132,6 @@
   .copy { font: inherit; font-size: 0.85rem; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; padding: 3px 10px; cursor: pointer; margin-left: 6px; }
   footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--border); padding-top: 20px; }
 
-  [data-os="mac"] .only-win, [data-os="win"] .only-mac { display: none; }
 
   @media (max-width: 520px) {
     body { font-size: 16px; }
@@ -143,37 +142,28 @@
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
-<main class="wrap" id="guide" data-os="mac">
+<main class="wrap" id="guide" data-os="win">
   <header class="hero">
     <div class="brand" aria-label="Odys">
       <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#D8F64E"/><path d="M32 12a20 20 0 1 1-13.2 35L10 54l3.4-11.6A20 20 0 0 1 32 12Zm0 9a11 11 0 1 0 0 22 11 11 0 0 0 0-22Z" fill="#111111"/><path d="M32 24.5c.7 3.8 2.7 5.8 6.5 6.5-3.8.7-5.8 2.7-6.5 6.5-.7-3.8-2.7-5.8-6.5-6.5 3.8-.7 5.8-2.7 6.5-6.5Z" fill="#111111"/></svg>
       Odys
     </div>
     <p class="tagline">Plan. Discover. Experience.</p>
-    <h1>Come aprire la demo di Odys sul tuo computer</h1>
-    <p>Questa guida ti accompagna passo per passo. Non serve saper programmare: installerai un solo programma gratuito e poi aprirai Odys con un doppio clic, come qualsiasi altra applicazione.</p>
+    <h1>Come provare la demo di Odys sul tuo PC Windows</h1>
+    <p>Questa guida ti accompagna passo per passo. Non serve saper programmare: installerai un solo programma gratuito e poi aprirai Odys con un doppio clic. Non serve creare un account: entri con i profili di prova già pronti.</p>
     <div class="facts">
       <span class="fact">Tempo: <b>circa 10 minuti</b></span>
-      <span class="fact">Serve: <b>Mac o PC Windows</b></span>
-      <span class="fact">Internet: <b>necessaria</b> (per accedere e salvare)</span>
+      <span class="fact">Serve: <b>PC con Windows 10 o 11</b></span>
+      <span class="fact">Internet: <b>consigliata</b> (per mappe e meteo)</span>
     </div>
   </header>
 
-  <section class="os" aria-labelledby="os-title">
-    <h2 id="os-title">Che computer usi?</h2>
-    <div class="os-switch" role="group" aria-label="Scegli il sistema operativo">
-      <button type="button" id="os-mac" data-choose="mac" aria-pressed="true">Mac</button>
-      <button type="button" id="os-win" data-choose="win" aria-pressed="false">Windows</button>
-    </div>
-    <p class="os-hint">La guida mostra solo le istruzioni per il computer scelto. Puoi cambiarlo quando vuoi.</p>
-  </section>
 
   <section aria-labelledby="files-title">
     <h2 id="files-title">Cosa hai ricevuto</h2>
-    <p class="lead">Una cartella chiamata <strong>odys-demo-cliente</strong>. Dentro trovi:</p>
+    <p class="lead">Un file compresso chiamato <strong>Odys-Demo-Windows</strong> (con la data). Una volta estratto, nella cartella <strong>Odys-Demo</strong> trovi:</p>
     <ul class="files">
-      <li class="only-mac"><span class="ico go" aria-hidden="true">▶</span><div><div class="name">Avvia Odys (Mac).command</div><div class="desc">Il file da aprire con doppio clic per avviare la demo.</div></div></li>
-      <li class="only-win"><span class="ico go" aria-hidden="true">▶</span><div><div class="name">Avvia Odys (Windows).bat</div><div class="desc">Il file da aprire con doppio clic per avviare la demo.</div></div></li>
+      <li class="only-win"><span class="ico go" aria-hidden="true">▶</span><div><div class="name">Avvia Odys.bat</div><div class="desc">Il file da aprire con doppio clic per avviare la demo.</div></div></li>
       <li><span class="ico" aria-hidden="true">📄</span><div><div class="name">LEGGIMI - Guida alla demo.html</div><div class="desc">Questa guida.</div></div></li>
       <li><span class="ico" aria-hidden="true">📁</span><div><div class="name">app</div><div class="desc">Il contenuto di Odys. Non serve aprirla né modificarla.</div></div></li>
     </ul>
@@ -190,10 +180,8 @@
           <p>Node.js è il programma gratuito che fa funzionare Odys sul tuo computer. Si installa come qualsiasi altra applicazione e non aggiunge icone sulla scrivania.</p>
           <ol>
             <li>Apri il sito <a href="https://nodejs.org/it/download" target="_blank" rel="noopener">nodejs.org/it/download</a>.</li>
-            <li class="only-mac">Scarica il <strong>programma di installazione per macOS</strong> (file che finisce con <code>.pkg</code>), versione <strong>LTS</strong>.</li>
             <li class="only-win">Scarica il <strong>programma di installazione per Windows</strong> (file che finisce con <code>.msi</code>), versione <strong>LTS</strong>.</li>
             <li>Apri il file scaricato (lo trovi nella cartella <strong>Download</strong>).</li>
-            <li class="only-mac">Premi <strong>Continua</strong> fino alla fine, accetta la licenza e, se richiesto, inserisci la password del Mac.</li>
             <li class="only-win">Premi <strong>Next</strong> (Avanti) fino alla fine, accetta la licenza e premi <strong>Install</strong>. Se Windows chiede il permesso di apportare modifiche, rispondi <strong>Sì</strong>.</li>
             <li>Quando compare il messaggio di installazione completata, chiudi la finestra.</li>
           </ol>
@@ -206,14 +194,10 @@
         <div class="step-body">
           <p class="when">Solo la prima volta</p>
           <h3>Prepara la cartella</h3>
-          <p>Se hai ricevuto la demo come file compresso (<code>.zip</code>), va prima estratta. Se hai già la cartella <strong>odys-demo-cliente</strong>, passa al punto 3.</p>
-          <ol class="only-mac">
-            <li>Fai doppio clic sul file <code>.zip</code>: il Mac crea la cartella accanto.</li>
-            <li>Sposta la cartella <strong>odys-demo-cliente</strong> dove preferisci, per esempio sulla Scrivania.</li>
-          </ol>
+          <p>Se hai ricevuto la demo come file compresso (<code>.zip</code>), va prima estratta. Se hai già la cartella <strong>Odys-Demo</strong>, passa al punto 3.</p>
           <ol class="only-win">
             <li>Fai clic con il tasto destro sul file <code>.zip</code> e scegli <strong>Estrai tutto…</strong>, poi <strong>Estrai</strong>.</li>
-            <li>Apri la cartella estratta <strong>odys-demo-cliente</strong>.</li>
+            <li>Apri la cartella estratta <strong>Odys-Demo</strong>.</li>
           </ol>
           <div class="note warn only-win"><span class="i" aria-hidden="true">!</span><p>Non avviare Odys da dentro il file <code>.zip</code> senza estrarlo: non funzionerebbe.</p></div>
         </div>
@@ -224,30 +208,11 @@
         <div class="step-body">
           <p class="when">Ogni volta che vuoi usare la demo</p>
           <h3>Avvia Odys</h3>
-          <ol class="only-mac">
-            <li>Apri la cartella <strong>odys-demo-cliente</strong>.</li>
-            <li>Fai doppio clic su <strong>Avvia Odys (Mac).command</strong>.</li>
-            <li>Si apre una finestra nera con del testo (il Terminale) e, dopo qualche secondo, il browser con Odys.</li>
-          </ol>
           <ol class="only-win">
-            <li>Apri la cartella <strong>odys-demo-cliente</strong>.</li>
-            <li>Fai doppio clic su <strong>Avvia Odys (Windows).bat</strong>.</li>
+            <li>Apri la cartella <strong>Odys-Demo</strong>.</li>
+            <li>Fai doppio clic su <strong>Avvia Odys.bat</strong>.</li>
             <li>Si apre una finestra nera con del testo e, dopo qualche secondo, il browser con Odys.</li>
           </ol>
-
-          <div class="only-mac">
-            <p><strong>La prima volta il Mac potrebbe bloccare il file</strong>, perché non proviene dall’App Store. Vedrai un messaggio simile a questo:</p>
-            <div class="mock" aria-label="Esempio di avviso del Mac">
-              <span class="mock-title">“Avvia Odys (Mac).command” non può essere aperto perché proviene da uno sviluppatore non identificato.</span>
-              <div class="mock-buttons"><span class="mock-btn hl">OK</span></div>
-            </div>
-            <ol>
-              <li>Premi <strong>OK</strong>.</li>
-              <li>Fai clic con il <strong>tasto destro</strong> (oppure Ctrl + clic) su <strong>Avvia Odys (Mac).command</strong> e scegli <strong>Apri</strong>.</li>
-              <li>Nella nuova finestra premi di nuovo <strong>Apri</strong>. Da ora in poi basterà il doppio clic.</li>
-            </ol>
-            <div class="note tip"><span class="i" aria-hidden="true">i</span><p>Sui Mac più recenti il pulsante <strong>Apri</strong> potrebbe non comparire. In quel caso apri <strong>Impostazioni di Sistema → Privacy e sicurezza</strong>, scorri in basso e premi <strong>Apri comunque</strong> accanto al nome del file.</p></div>
-          </div>
 
           <div class="only-win">
             <p><strong>La prima volta Windows potrebbe mostrare un avviso di protezione</strong>, perché il file non è firmato da un’azienda nota:</p>
@@ -263,14 +228,14 @@
             </ol>
           </div>
 
-          <p>Quando è tutto pronto, nella finestra nera leggerai:</p>
+          <p>Dopo qualche secondo («Preparo i viaggi di prova…»), nella finestra nera leggerai:</p>
           <div class="terminal" aria-label="Messaggio di avvio">
             <span class="g">✅ Odys è pronta!</span><br>
-            Si sta aprendo il browser su http://localhost:8080<br>
+            Si sta aprendo il browser su http://localhost:8080/accedi<br>
             ⚠️  Lascia aperta questa finestra mentre usi la demo.
           </div>
           <div class="note warn"><span class="i" aria-hidden="true">!</span><p><strong>Non chiudere la finestra nera</strong> mentre usi Odys: è il “motore” della demo. Puoi ridurla a icona.</p></div>
-          <p>Se il browser non si apre da solo, apri Chrome, Safari, Edge o Firefox e scrivi nella barra degli indirizzi: <span class="addr" id="address">http://localhost:8080</span><button type="button" class="copy" id="copy-address">Copia</button></p>
+          <p>Se il browser non si apre da solo, apri Chrome, Safari, Edge o Firefox e scrivi nella barra degli indirizzi: <span class="addr" id="address">http://localhost:8080/accedi</span><button type="button" class="copy" id="copy-address">Copia</button></p>
         </div>
       </li>
 
@@ -279,24 +244,16 @@
         <div class="step-body">
           <p class="when">Il giro della demo</p>
           <h3>Esplora Odys</h3>
-          <p>Alla prima apertura compare una breve introduzione: premi <strong>Inizia con Odys</strong>. Puoi esplorare e pianificare subito, senza account. Per salvare i viaggi crea un account gratuito:</p>
-          <ol>
-            <li>Premi <strong>Accedi</strong> in alto a destra, poi <strong>Registrati gratis</strong>.</li>
-            <li>Inserisci nome, cognome, data di nascita, email e una password (almeno 8 caratteri, con lettere e numeri), accetta i termini e premi <strong>Crea account</strong>.</li>
-            <li>Apri l’email di conferma che ricevi e premi il link: torni su Odys già collegato.</li>
-          </ol>
-          <p>Ecco cosa provare:</p>
+          <p>Alla prima apertura compare una breve introduzione: premi <strong>Inizia con Odys</strong>. Sotto c’è la pagina <strong>Accedi a Odys</strong>, con la scritta <strong>Modalità demo</strong>. Scegli con chi entrare premendo uno dei pulsanti <strong>Entra come…</strong>: non serve nessuna password.</p>
           <div class="tour">
-            <div><strong>Pianifica un viaggio</strong><span>Premi “Nuovo viaggio”, scegli destinazione e date, poi “Crea il mio itinerario”.</span></div>
-            <div><strong>Consulta l’itinerario</strong><span>Giorno per giorno: attività, spostamenti, meteo e mappa del giorno.</span></div>
-            <div><strong>Modifica il piano</strong><span>“Modifica itinerario” per aggiungere, spostare o eliminare attività, poi “Salva modifiche”.</span></div>
-            <div><strong>Date, budget, alloggio</strong><span>I pulsanti sotto il riepilogo ricalcolano il piano senza perdere il lavoro fatto.</span></div>
-            <div><strong>I miei viaggi</strong><span>Tutti i viaggi salvati nel tuo account: puoi riaprirli, rinominarli o eliminarli.</span></div>
-            <div><strong>Cronologia</strong><span>Ogni salvataggio crea una versione: dal viaggio premi “Cronologia” per vederle e ripristinarne una.</span></div>
-            <div><strong>Il tuo account</strong><span>Dal cerchio con le tue iniziali: profilo, interessi, idee salvate, attività e sicurezza.</span></div>
-            <div><strong>Tema chiaro o scuro</strong><span>Usa il sole e la luna in alto a destra. Stringi la finestra del browser per vedere la versione da telefono.</span></div>
+            <div><strong>Lia · viaggiatrice</strong><span>Esplora i viaggi di gruppo, cerca, salva le idee, prenota con l’acconto (pagamento simulato) e trova il viaggio in «Prossimo viaggio». Nel profilo c’è un invito di un’agenzia da accettare.</span></div>
+            <div><strong>Nora · coordinatrice</strong><span>Crea un viaggio in 4 passi, calcola prezzo e punto di pareggio, prepara il kit social, gestisce i partecipanti e guarda guadagni e statistiche nella pagina Dati.</span></div>
+            <div><strong>Olga · agenzia</strong><span>Agenzia «Sud Lento»: profilo e pagina pubblica, team e licenze, catalogo con più partenze, proposte dei coordinatori da approvare, dashboard e AI per il team.</span></div>
+            <div><strong>Ada · amministratrice</strong><span>Candidature dei coordinatori, segnalazioni dei contenuti, ruoli e piani degli account.</span></div>
           </div>
-          <div class="note ok"><span class="i" aria-hidden="true">✓</span><p>I viaggi salvati restano nel tuo account: li ritrovi anche dopo aver chiuso Odys o da un altro computer.</p></div>
+          <p>Per cambiare profilo: premi il cerchio con le iniziali in alto a destra, poi <strong>Esci</strong>, e scegli un altro <strong>Entra come…</strong>.</p>
+          <div class="note tip"><span class="i" aria-hidden="true">i</span><p>Stringi la finestra del browser per vedere la versione da telefono. Il sole e la luna in alto cambiano tema chiaro o scuro.</p></div>
+          <div class="note warn"><span class="i" aria-hidden="true">!</span><p>È una demo: quello che fai resta solo finché la finestra nera è aperta. Alla riapertura ritrovi la demo pulita, come la prima volta.</p></div>
         </div>
       </li>
 
@@ -307,7 +264,6 @@
           <h3>Chiudi Odys</h3>
           <ol>
             <li>Chiudi la scheda del browser.</li>
-            <li class="only-mac">Chiudi la finestra nera del Terminale (se chiede conferma, premi <strong>Termina</strong>).</li>
             <li class="only-win">Chiudi la finestra nera (oppure premi un tasto qualsiasi quando te lo chiede).</li>
           </ol>
           <p>La prossima volta ti basterà ripetere il <strong>passo 3</strong>.</p>
@@ -325,7 +281,6 @@
     <details>
       <summary>La finestra nera si apre e si chiude subito</summary>
       <div>
-        <p class="only-mac">Probabilmente il Mac ha bloccato il file. Segui le istruzioni del <strong>passo 3</strong> con il tasto destro → <strong>Apri</strong>.</p>
         <p class="only-win">Assicurati di aver estratto la cartella dal file <code>.zip</code> (passo 2) e di aver installato Node.js (passo 1).</p>
       </div>
     </details>
@@ -338,20 +293,12 @@
       <div><p>Succede se sul computer un altro programma usa già quell’indirizzo: Odys ne sceglie uno libero da sola (per esempio <code>localhost:8081</code>). Usa l’indirizzo scritto nella finestra nera.</p></div>
     </details>
     <details>
-      <summary>Non ricevo l’email di conferma</summary>
-      <div><p>Controlla la cartella spam o promozioni. Nella pagina di registrazione puoi premere <strong>Invia di nuovo l’email</strong>. Il link vale per un tempo limitato: se è scaduto, ripeti l’accesso e chiedine uno nuovo.</p></div>
-    </details>
-    <details>
-      <summary>Ho dimenticato la password</summary>
-      <div><p>Nella pagina di accesso premi <strong>Hai dimenticato la password?</strong>, inserisci la tua email e segui il link che ricevi.</p></div>
-    </details>
-    <details>
       <summary>Posso aprire la demo dal telefono?</summary>
       <div><p>In questa versione la demo funziona sul computer su cui è avviata. Per vedere come appare su telefono, restringi la finestra del browser: l’interfaccia si adatta automaticamente.</p></div>
     </details>
     <details>
       <summary>I dati sono reali?</summary>
-      <div><p>No. Luoghi, orari, tratte e viaggi di gruppo sono dati dimostrativi, e ogni informazione mostra il proprio stato (per esempio “Simulato” o “Da verificare”). Prenotazioni e pagamenti arriveranno nelle prossime fasi del progetto.</p></div>
+      <div><p>No. Persone, agenzia, viaggi, prenotazioni e pagamenti sono di prova: nessun pagamento è vero e nessuna email viene inviata. Registrazione e caricamento di foto e video non sono disponibili in questa demo.</p></div>
     </details>
   </section>
 
@@ -362,19 +309,6 @@
 
 <script>
   (function () {
-    var guide = document.getElementById('guide');
-    var buttons = document.querySelectorAll('[data-choose]');
-    function choose(os) {
-      guide.setAttribute('data-os', os);
-      buttons.forEach(function (button) { button.setAttribute('aria-pressed', String(button.getAttribute('data-choose') === os)); });
-      try { localStorage.setItem('odys-guide-os', os); } catch (e) {}
-    }
-    var saved = null;
-    try { saved = localStorage.getItem('odys-guide-os'); } catch (e) {}
-    var detected = /win/i.test(navigator.userAgent) ? 'win' : 'mac';
-    choose(saved === 'mac' || saved === 'win' ? saved : detected);
-    buttons.forEach(function (button) { button.addEventListener('click', function () { choose(button.getAttribute('data-choose')); }); });
-
     var copy = document.getElementById('copy-address');
     copy.addEventListener('click', function () {
       var text = document.getElementById('address').textContent;

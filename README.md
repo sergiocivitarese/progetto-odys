@@ -71,7 +71,7 @@ Le chiavi restano **solo sul server**: il browser non le vede mai.
 | `npm run typecheck` | controllo dei tipi di dominio e API |
 | `npm run build` | build di produzione (API + web) |
 | `npm run package:source` | crea `../consegna/odys-progetto-sorgente.zip`: il progetto completo e pulito da consegnare |
-| `npm run package:demo` | crea `../odys-demo-cliente` e `../consegna/odys-demo-cliente.zip`: demo pronta (doppio clic, serve solo Node.js) con guida per il cliente |
+| `npm run package:demo` | crea `../consegna/Odys-Demo-Windows-<data>.zip`: demo per chi non programma (PC Windows, serve solo Node.js), con «Entra come…» e la guida passo passo |
 
 ## Dove sono i dati
 

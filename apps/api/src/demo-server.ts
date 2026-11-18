@@ -6,7 +6,8 @@
  * Struttura attesa accanto al file impacchettato:
  *   server.cjs   ← questo server
  *   web/         ← build di produzione di apps/web
- *   config.env   ← indirizzo e chiave pubblica di Supabase (mai la chiave segreta)
+ *   config.env   ← ODYS_MODE=demo (dati e account di prova in memoria, «Entra come…»)
+ *                  oppure indirizzo e chiave pubblica di Supabase (mai la chiave segreta)
  */
 import { exec } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -15,6 +16,8 @@ import path from 'node:path';
 import express from 'express';
 import { createApp } from './app';
 import { loadConfig } from './config/env';
+import { createDemoDatabase, seedDemoData } from './demo/demo-data';
+import { memoryAuthProvider, memoryDataStore } from './infra/memory/memory-store';
 
 const baseDir = path.dirname(path.resolve(process.argv[1] ?? '.'));
 const webDir = path.join(baseDir, 'web');
@@ -58,8 +61,12 @@ async function main(): Promise<void> {
   }
   const port = await findPort(preferredPort);
   const config = { ...loadConfig({ ...process.env, DATA_DIR: path.join(baseDir, 'dati') }), port, corsOrigin: [] };
-  if (!config.supabase.url) console.log('  ℹ️  Accesso e salvataggio disattivati: config.env non contiene SUPABASE_URL.');
-  const app = createApp(config);
+  // Modalità demo: niente Supabase, dati di prova in memoria che ripartono puliti a ogni avvio.
+  const demo = process.env.ODYS_MODE === 'demo' ? createDemoDatabase() : null;
+  if (!demo && !config.supabase.url) console.log('  ℹ️  Accesso e salvataggio disattivati: config.env non contiene SUPABASE_URL.');
+  const app = demo
+    ? createApp(config, { auth: memoryAuthProvider(demo.db), store: memoryDataStore(demo.db), demoUsers: demo.demoUsers })
+    : createApp(config);
 
   app.use(express.static(webDir, { index: false, maxAge: '1h' }));
   // Tutte le pagine dell'app (es. /pianifica, /itinerario/…) sono servite da index.html.
@@ -68,8 +75,12 @@ async function main(): Promise<void> {
     res.sendFile(path.join(webDir, 'index.html'));
   });
 
-  app.listen(port, () => {
-    const url = `http://localhost:${port}`;
+  app.listen(port, async () => {
+    if (demo) {
+      console.log('  Preparo i viaggi di prova...');
+      await seedDemoData(`http://localhost:${port}/api`);
+    }
+    const url = `http://localhost:${port}${demo ? '/accedi' : ''}`;
     console.log('');
     console.log('  ✅ Odys è pronta!');
     console.log(`  Si sta aprendo il browser su ${url}`);
