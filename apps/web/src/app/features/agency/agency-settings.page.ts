@@ -107,7 +107,6 @@ import { ButtonComponent, EmptyStateComponent, IconComponent, NoticeComponent, T
             <span><strong>Licenza automatica</strong><span class="hint">Se ci sono licenze libere, chi entra come coordinatore riceve subito il Coordinatore Premium.</span></span>
           </label>
         </section>
-        <p class="hint">Le parti dell’area agenzia ancora da costruire (AI per i coordinatori, dati e proposte da approvare) arrivano nei prossimi aggiornamenti.</p>
       }
     </div>
   `,

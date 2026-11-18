@@ -39,6 +39,15 @@
         "@odys/api"
       ],
       "port": 3000
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:demo"
+      ],
+      "port": 4200
     }
   ]
 }
