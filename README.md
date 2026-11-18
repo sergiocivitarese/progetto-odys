@@ -26,6 +26,14 @@ npm run dev
 - Frontend: http://localhost:4200
 - Backend: http://localhost:3000/api/health
 
+Per provare subito tutti i ruoli **senza Supabase** (dati e account di prova in memoria, pulsanti «Entra come…» nella pagina di accesso):
+
+```bash
+npm run dev:demo
+```
+
+Chi riceve il progetto parte da [docs/guida-sviluppo.md](docs/guida-sviluppo.md): installazione, Supabase, account di test, stato dei lavori e cosa manca.
+
 Se sul computer c'è una versione di Node più vecchia, senza installare nulla:
 
 ```bash
@@ -56,8 +64,10 @@ Le chiavi restano **solo sul server**: il browser non le vede mai.
 | Comando | Cosa fa |
 |---|---|
 | `npm run dev` | avvia backend e frontend insieme |
-| `npm test` | test del dominio (65) e di database e API (34) |
+| `npm run dev:demo` | come sopra, con l'API in memoria e gli account di prova (senza Supabase) |
+| `npm test` | test del dominio (67) e di database e API (97) |
 | `npm run db:migrate` | applica le migrazioni SQL al database Supabase |
+| `npm run db:seed-accounts` | crea gli account di test (uno per ruolo) su un progetto Supabase di sviluppo |
 | `npm run typecheck` | controllo dei tipi di dominio e API |
 | `npm run build` | build di produzione (API + web) |
 | `npm run package:source` | crea `../consegna/odys-progetto-sorgente.zip`: il progetto completo e pulito da consegnare |
@@ -72,8 +82,9 @@ sono su Supabase: schema e regole di accesso in `supabase/migrations`, descrizio
 
 ## Documentazione
 
+- [Guida per chi continua lo sviluppo](docs/guida-sviluppo.md): installazione, ambiente, account di test, stato rispetto all'analisi funzionale e cosa manca.
 - [Architettura e guida ai blocchi](docs/architettura.md): come è organizzato il codice e come aggiungere o modificare una parte.
 - [Design system](docs/design-system.md): palette, tipografia, token, componenti e stati dei dati.
 - [Collegare Supabase](docs/supabase-setup.md): account, database, chiavi e configurazione dell'accesso.
 - [Roadmap](docs/roadmap.md): fasi dell'analisi funzionale e stato di avanzamento.
-- [docs/riferimenti](docs/riferimenti): analisi funzionale (`odys-requisiti-business-funzionali.docx`) e brand board (`odys-brand-board.webp`).
+- [docs/riferimenti](docs/riferimenti): analisi funzionale (`odys-requisiti-business-funzionali.docx`), specifiche per ruolo (`odys-specifiche-per-ruolo.pdf`), mockup e brand board (`odys-brand-board.webp`).

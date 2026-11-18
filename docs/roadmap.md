@@ -35,7 +35,7 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Chi scrive la storia dei luoghi | Il coordinatore, nell'editor del viaggio (deciso il 13 novembre 2026); il campo `source` distinguerà i testi generati. **Limite noto**: il Premium è verificato dall'API, ma la colonna `place_stories` è leggibile direttamente dal database da chi conosce la chiave pubblica: va chiusa con permessi di colonna |
 | Fornitore AI del generatore | Nessuno: l'itinerario lo prepara il motore locale di Odys (`packages/domain/src/lib/tripGenerator.ts`), con costi indicativi dichiarati come tali |
 | Prezzi e durata degli abbonamenti, prova gratuita | Nessun prezzo: il piano lo assegna l'amministratore dalla pagina Account |
-| Scaglioni e prezzi delle licenze | Non ancora sviluppato |
+| Scaglioni e prezzi delle licenze | Vedi «Prezzi delle licenze agenzia (AG-10)» più sotto |
 | Commissione Odys e come compare nel prezzo | Stima del 10% compresa nella quota (`SERVICE_RATE` in `packages/domain/src/lib/tripPricing.ts`), mostrata solo al coordinatore nei conti del viaggio (CB-04); non viene trattenuta dai pagamenti |
 | Algoritmo dell'affinità «X% per te» | Quota degli interessi del viaggio che l'utente condivide (`packages/domain/src/lib/affinity.ts`) |
 | Rimborso dell'acconto, richiesta non confermata | Nessun rimborso automatico: il pagamento è simulato |
@@ -56,8 +56,9 @@ Il cliente ha riorganizzato il prodotto in cinque profili cumulativi. Si lavora 
 | Durata della riserva del posto nel checkout | 15 minuti |
 | Conferma del pagamento simulato | La chiama il browser di chi paga (`confirm_simulated_payment`): **da togliere** quando arriva il fornitore reale, che conferma solo con il webhook (`confirm_payment`) |
 
-## Dove siamo arrivati (27 ottobre 2026)
-- Supabase "Odys" (Europa): migrazioni 0001–0008 applicate. Il progetto gratuito va in pausa dopo giorni senza attività: se login e catalogo smettono di funzionare, riattivarlo dalla dashboard.
+## Dove siamo arrivati (18 novembre 2026)
+- Guida per chi continua lo sviluppo: `docs/guida-sviluppo.md` (installazione, modalità demo `npm run dev:demo`, account di test `npm run db:seed-accounts`, cosa manca).
+- Supabase "Odys" (Europa): migrazioni 0001–0025 applicate. Il progetto gratuito va in pausa dopo giorni senza attività: se login e catalogo smettono di funzionare, riattivarlo dalla dashboard.
 - Codice su GitHub (`sergiocivitarese/progetto-odys`), un commit per ogni blocco di lavoro.
 - Servizi esterni gratuiti senza chiavi: Photon e OSRM su OpenStreetMap, tile OpenStreetMap, Open-Meteo (dettagli in `apps/api/.env.example`).
 - **Da collaudare con un account reale**: richiesta di partecipazione, candidatura e approvazione, Creator Studio (caricamento media), segnalazioni e pagine dell'amministratore. Per l'amministrazione serve un account con ruolo `admin` (dalla dashboard o dalla pagina Account di un altro amministratore).

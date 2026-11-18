@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "db:seed-accounts": "tsx --env-file-if-exists=.env scripts/seed-test-accounts.ts"
   },
   "dependencies": {
     "@odys/domain": "*",
