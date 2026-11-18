@@ -3,7 +3,7 @@
 Questa guida serve a chi riceve il progetto: come ottenere il codice, cosa installare, come avviare
 la webapp, con quali account provarla, dove mettere le mani e cosa manca rispetto all’analisi funzionale.
 
-Aggiornata al **18 novembre 2026**. Ramo di lavoro: `ruoli-traveller-base`.
+Aggiornata al **18 novembre 2026**. Ramo principale: `main` (contiene tutto il lavoro delle specifiche per ruolo).
 
 ---
 
@@ -23,8 +23,8 @@ Aggiornata al **18 novembre 2026**. Ramo di lavoro: `ruoli-traveller-base`.
 
 1. **GitHub**: il repository `sergiocivitarese/progetto-odys` è privato. Da GitHub → *Settings → Collaborators → Add people*,
    invita l’account GitHub del collega. Lui accetta l’invito dalla email o da github.com/notifications.
-2. **Ramo**: il lavoro recente sta nel ramo `ruoli-traveller-base`, non ancora unito a `main`.
-   Si può fare la *pull request* verso `main` prima di consegnare, oppure dire al collega di partire da questo ramo (§ 3).
+2. **Ramo**: tutto il lavoro è in `main` (il ramo `ruoli-traveller-base` è stato unito il 18 novembre 2026).
+   Per le modifiche nuove conviene un ramo per argomento e una *pull request* verso `main`.
 3. **Cosa non c’è nel repository** (giusto così): il file `apps/api/.env` con le chiavi e le password, le cartelle
    `node_modules` e i build. Le chiavi **non** si mandano per chat o email: se servono, si usa un gestore di password condiviso.
 4. **Supabase**: due strade, spiegate al § 4. La più sicura per tutti è che il collega usi **un suo progetto Supabase di sviluppo**:
@@ -51,10 +51,6 @@ git clone git@github.com:sergiocivitarese/progetto-odys.git
 
 ```bash
 cd progetto-odys
-```
-
-```bash
-git checkout ruoli-traveller-base
 ```
 
 ```bash
@@ -227,8 +223,7 @@ Le azioni che scrivono dati vanno ancora collaudate su Supabase.
 ### Da fare subito
 1. **Collaudo con account reali** su Supabase, con gli account del § 4.3: prenotazione e acconto, candidatura e approvazione,
    creazione e pubblicazione di un viaggio, Creator Studio con caricamento media, agenzia completa (inviti, licenze, ombrello, proposte), segnalazioni.
-2. **Unire il ramo** `ruoli-traveller-base` a `main` dopo il collaudo.
-3. **Chiudere un limite noto**: la colonna `place_stories` è leggibile direttamente dal database con la chiave pubblica.
+2. **Chiudere un limite noto**: la colonna `place_stories` è leggibile direttamente dal database con la chiave pubblica.
    Va protetta con permessi di colonna (vedi roadmap, punti aperti).
 
 ### Decisioni che aspettano il cliente (oggi c’è un valore provvisorio)
